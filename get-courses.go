@@ -69,7 +69,7 @@ func getPage(url string) ([]byte, error) {
 	return rb, nil
 }
 
-func GetPages(ch chan<- *PageData, wg *sync.WaitGroup) {
+func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer close(ch)
 	for _, campus := range campuses {
@@ -110,7 +110,7 @@ func GetPages(ch chan<- *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func SavePages(ch <-chan *PageData, wg *sync.WaitGroup) {
+func savePages(ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
 		filePath := filepath.Join(dataDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
@@ -124,7 +124,7 @@ func SavePages(ch <-chan *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func main() {
+func GetCourses() {
 	ch := make(chan *PageData)
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -136,8 +136,8 @@ func main() {
 		}
 	}
 
-	go GetPages(ch, &wg)
-	go SavePages(ch, &wg)
+	go getPages(ch, &wg)
+	go savePages(ch, &wg)
 
 	wg.Wait()
 
