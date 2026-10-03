@@ -2,11 +2,10 @@ package main
 
 import (
 	"bytes"
+	"degree-explorer/utils"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,28 +34,15 @@ var campusUrls = map[string]string{
 	"utsc": "https://utsc.calendar.utoronto.ca/search-courses?page=",
 }
 
-var client = &http.Client{Timeout: 30 * time.Second}
-
 var failures atomic.Int64
 
-func getPage(url string) ([]byte, error) {
-	log.Printf("\tgetting page %s...", url)
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected http status %d for %s", resp.StatusCode, url)
-	}
-
-	rb, err := io.ReadAll(resp.Body)
+func checkPageHasCourses(url string) ([]byte, error) {
+	page, err := utils.GetPage(url)
 	if err != nil {
 		return nil, err
 	}
 
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(rb))
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(page))
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +52,7 @@ func getPage(url string) ([]byte, error) {
 		return nil, ErrNoCourses
 	}
 
-	return rb, nil
+	return page, nil
 }
 
 func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
@@ -79,7 +65,7 @@ func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
 		skipped := 0
 		for {
 			pageUrl := campusUrls[campus] + strconv.Itoa(i)
-			page, err := getPage(pageUrl)
+			page, err := checkPageHasCourses(pageUrl)
 			if errors.Is(err, ErrNoCourses) {
 				log.Printf("finished processing all pages for %s", campus)
 				break
