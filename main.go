@@ -13,6 +13,7 @@ const (
 func main() {
 	cfg := LoadConfig()
 
+	// initialize db connection
 	db, err := store.Open(context.Background(), cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
@@ -23,5 +24,5 @@ func main() {
 		GetCoursePages(cfg)
 	}
 
-	ParseCoursePages(cfg)
+	// ParseCoursePages(cfg)
 }
