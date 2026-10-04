@@ -22,8 +22,6 @@ type PageData struct {
 	data   []byte
 }
 
-const dataDir = "data/"
-
 var ErrNoCourses = errors.New("no course entries found on the page")
 
 var campuses = []string{"utsg", "utm", "utsc"}
@@ -96,10 +94,10 @@ func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func savePages(ch <-chan *PageData, wg *sync.WaitGroup) {
+func savePages(cfg *Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
-		filePath := filepath.Join(dataDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
+		filePath := filepath.Join(cfg.DataDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
 		log.Printf("\t\tsaving to %s...", filePath)
 		if err := os.WriteFile(filePath, page.data, 0644); err != nil {
 			log.Printf("\t\tfailed to write file %s: %v", filePath, err)
@@ -110,20 +108,20 @@ func savePages(ch <-chan *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func GetCourses() {
+func GetCoursePages(cfg *Config) {
 	ch := make(chan *PageData)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	for _, campus := range campuses {
-		path := filepath.Join(dataDir, campus)
+		path := filepath.Join(cfg.DataDir, campus)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			log.Fatalf("failed to create directory %s: %v", path, err)
 		}
 	}
 
 	go getPages(ch, &wg)
-	go savePages(ch, &wg)
+	go savePages(cfg, ch, &wg)
 
 	wg.Wait()
 
