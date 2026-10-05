@@ -1,12 +1,15 @@
 package types
 
 type Campus string
+type ParseResult bool
 
 const (
-	ONLINE Campus = "online"
-	UTSG   Campus = "utsg"
-	UTM    Campus = "utm"
-	UTSC   Campus = "utsc"
+	ONLINE          Campus      = "online"
+	UTSG            Campus      = "utsg"
+	UTM             Campus      = "utm"
+	UTSC            Campus      = "utsc"
+	ParseSuccessful ParseResult = true
+	ParseFailure    ParseResult = false
 )
 
 type Course struct {

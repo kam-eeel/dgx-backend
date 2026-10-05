@@ -130,7 +130,7 @@ func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageR
 	}
 }
 
-func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) {
+func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) types.ParseResult {
 	pageResults := make(chan *pageResult)
 
 	var wg sync.WaitGroup
@@ -162,8 +162,10 @@ func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) {
 
 	if n := parseFailures.Load(); n == 0 {
 		log.Println("all course pages parsed and sent to db successfully!")
+		return types.ParseSuccessful
 	} else {
 		log.Printf("all course pages parsed and sent to db with %d failures\n", n)
+		return types.ParseFailure
 	}
 
 }
