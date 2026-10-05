@@ -14,7 +14,19 @@ var ErrNotFound = errors.New("not found")
 func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO courses (code, designator, number, level, weight, campus, title, prerequisites, corequisites, exclusions, breadth_req, distribution_req)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(code) DO UPDATE SET
+			designator = excluded.designator,
+			number = excluded.number,
+			level = excluded.level,
+			weight = excluded.weight,
+			campus = excluded.campus,
+			title = excluded.title,
+			prerequisites = excluded.prerequisites,
+			corequisites = excluded.corequisites,
+			exclusions = excluded.exclusions,
+			breadth_req = excluded.breadth_req,
+			distribution_req = excluded.distribution_req`,
 		c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title,
 		c.Prerequisites, c.Corequisites, c.Exclusions, c.BreadthReq, c.DistributionReq,
 	)

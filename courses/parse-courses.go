@@ -11,9 +11,12 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+var parseFailures atomic.Int64
 
 type pageResult struct {
 	pagePath      string
@@ -58,35 +61,35 @@ func getEntryFromPage(s *goquery.Selection) *types.Course {
 		c.Campus = string(types.UTM)
 	}
 
-	c.Title = header[11:]
+	c.Title = strings.SplitN(header, " ", 3)[2]
 
-	if t := strings.TrimSpace(s.Find(".views-field-field-prerequisite").Text()); t != "" {
+	if t := strings.TrimSpace(s.Find(".views-field-field-prerequisite").Find(".field-content").Text()); t != "" {
 		c.Prerequisites = &t
 	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-corequisite").Text()); t != "" {
+	if t := strings.TrimSpace(s.Find(".views-field-field-corequisite").Find(".field-content").Text()); t != "" {
 		c.Corequisites = &t
 	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-exclusion").Text()); t != "" {
+	if t := strings.TrimSpace(s.Find(".views-field-field-exclusion").Find(".field-content").Text()); t != "" {
 		c.Exclusions = &t
 	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Text()); t != "" {
+	if t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text()); t != "" {
 		c.BreadthReq = &t
 	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-distribution-requirements").Text()); t != "" {
+	if t := strings.TrimSpace(s.Find(".views-field-field-distribution-requirements").Find(".field-content").Text()); t != "" {
 		c.DistributionReq = &t
 	}
 
 	return c
 }
 
-func processPage(pagePath string, pageResults chan<- *pageResult, failures chan<- error, wg *sync.WaitGroup) {
+func processPage(pagePath string, pageResults chan<- *pageResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 	var cl []*types.Course
 
 	page, err := os.Open(pagePath)
 	if err != nil {
 		log.Printf("failed to read file %s: %v", pagePath, err)
-		failures <- err
+		parseFailures.Add(1)
 		return
 	}
 	defer page.Close()
@@ -94,14 +97,14 @@ func processPage(pagePath string, pageResults chan<- *pageResult, failures chan<
 	doc, err := goquery.NewDocumentFromReader(page)
 	if err != nil {
 		log.Printf("failed to initialize goquery document for page %s: %v", pagePath, err)
-		failures <- err
+		parseFailures.Add(1)
 		return
 	}
 
 	entries := doc.Find(".views-row")
 	if entries.Length() == 0 {
 		log.Printf("%s has no courses - skipping", pagePath)
-		failures <- ErrNoCourses
+		parseFailures.Add(1)
 		return
 	}
 
@@ -118,7 +121,7 @@ func processPage(pagePath string, pageResults chan<- *pageResult, failures chan<
 	}
 }
 
-func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageResult, failures chan<- error, wg *sync.WaitGroup) {
+func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for pageResult := range pageResults {
 		log.Printf("sending %s to db...", pageResult.pagePath)
@@ -126,7 +129,7 @@ func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageR
 			err := db.CreateCourse(ctx, c)
 			if err != nil {
 				log.Printf("\tfailed to send %s to db: %v", c.Code, err)
-				failures <- err
+				parseFailures.Add(1)
 			} else {
 				log.Printf("\tsuccessfully sent %s to db", c.Code)
 			}
@@ -136,53 +139,42 @@ func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageR
 
 func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) {
 	pageResults := make(chan *pageResult)
-	failuresChan := make(chan error)
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(2)
 
 	var pageWG sync.WaitGroup
 
-	go func() {
-		defer wg.Done()
-		for _, campus := range cfg.Campuses {
-			log.Printf("processing pages for %s...", campus)
-			pages, err := os.ReadDir(path.Join(cfg.DataDir, campus))
-			if err != nil {
-				log.Fatal(err)
-			}
-			for _, page := range pages {
-				pagePath := path.Join(cfg.DataDir, campus, page.Name())
-				log.Printf("\tdispatching goroutine to process %s...", pagePath)
-				pageWG.Add(1)
-				go processPage(pagePath, pageResults, failuresChan, &pageWG)
-			}
+	for _, campus := range cfg.Campuses {
+		log.Printf("processing pages for %s...", campus)
+		pages, err := os.ReadDir(path.Join(cfg.DataDir, campus))
+		if err != nil {
+			log.Fatal(err)
 		}
-		log.Printf("all page processing goroutines dispatched successfully!")
-	}()
+		for _, page := range pages {
+			pagePath := path.Join(cfg.DataDir, campus, page.Name())
+			log.Printf("\tdispatching goroutine to process %s...", pagePath)
+			pageWG.Add(1)
+			go processPage(pagePath, pageResults, &pageWG)
+		}
+	}
+	log.Printf("all page processing goroutines dispatched successfully!")
 
 	go func() {
+		defer wg.Done()
 		pageWG.Wait()
 		close(pageResults)
 	}()
 
-	go saveCourses(ctx, db, pageResults, failuresChan, &wg)
+	go saveCourses(ctx, db, pageResults, &wg)
 
 	wg.Wait()
-	close(failuresChan)
-	var failures []error
-	for f := range failuresChan {
-		failures = append(failures, f)
-	}
 	fmt.Println()
 
-	if len(failures) == 0 {
+	if n := parseFailures.Load(); n == 0 {
 		fmt.Println("all jobs finished successfully!")
 	} else {
-		fmt.Printf("all jobs finished with %d failures\n", len(failures))
-		for _, f := range failures {
-			fmt.Printf("%v\n", f)
-		}
+		fmt.Printf("all jobs finished with %d failures\n", n)
 	}
 
 }

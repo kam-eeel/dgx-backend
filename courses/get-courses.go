@@ -30,7 +30,7 @@ var campusUrls = map[string]string{
 	"utsc": "https://utsc.calendar.utoronto.ca/search-courses?page=",
 }
 
-var failures atomic.Int64
+var getFailures atomic.Int64
 
 func checkPageHasCourses(url string) ([]byte, error) {
 	page, err := utils.GetPage(url)
@@ -72,10 +72,10 @@ func getPages(campuses []string, ch chan<- *PageData, wg *sync.WaitGroup) {
 					log.Printf("skipping %s page %d after %d attempts", campus, i, retries)
 					retries = 0
 					skipped++
-					failures.Add(1)
+					getFailures.Add(1)
 					if skipped >= 3 {
 						log.Printf("giving up on %s after %d consecutive skipped pages", campus, skipped)
-						failures.Add(1)
+						getFailures.Add(1)
 						break
 					}
 					i++
@@ -99,7 +99,7 @@ func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 		log.Printf("\t\tsaving to %s...", filePath)
 		if err := os.WriteFile(filePath, page.data, 0644); err != nil {
 			log.Printf("\t\tfailed to write file %s: %v", filePath, err)
-			failures.Add(1)
+			getFailures.Add(1)
 			continue
 		}
 		log.Printf("\t\tdone!")
@@ -123,7 +123,7 @@ func GetCoursePages(cfg *utils.Config) {
 
 	wg.Wait()
 
-	if n := failures.Load(); n > 0 {
+	if n := getFailures.Load(); n > 0 {
 		log.Printf("finished with %d failures; see log above", n)
 	} else {
 		log.Printf("all pages for all campuses processed successfully!")
