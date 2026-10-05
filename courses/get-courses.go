@@ -55,13 +55,11 @@ func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
 		filePath := filepath.Join(cfg.CoursesDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
-		log.Printf("\t\tsaving to %s...", filePath)
 		if err := os.WriteFile(filePath, page.data, 0644); err != nil {
 			log.Printf("\t\tfailed to write file %s: %v", filePath, err)
 			getFailures.Add(1)
 			continue
 		}
-		log.Printf("\t\tdone!")
 	}
 }
 
