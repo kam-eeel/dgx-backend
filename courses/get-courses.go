@@ -51,51 +51,10 @@ func checkPageHasCourses(url string) ([]byte, error) {
 	return page, nil
 }
 
-func getPages(campuses []string, ch chan<- *PageData, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(ch)
-	for _, campus := range campuses {
-		log.Printf("beginning processing pages for %s...", campus)
-		i := 0
-		retries := 0
-		skipped := 0
-		for {
-			pageUrl := campusUrls[campus] + strconv.Itoa(i)
-			page, err := checkPageHasCourses(pageUrl)
-			if errors.Is(err, ErrNoCourses) {
-				log.Printf("finished processing all pages for %s", campus)
-				break
-			} else if err != nil {
-				retries++
-				log.Printf("error processing pages for %s at page %d (attempt %d): %v", campus, i, retries, err)
-				if retries >= 3 {
-					log.Printf("skipping %s page %d after %d attempts", campus, i, retries)
-					retries = 0
-					skipped++
-					getFailures.Add(1)
-					if skipped >= 3 {
-						log.Printf("giving up on %s after %d consecutive skipped pages", campus, skipped)
-						getFailures.Add(1)
-						break
-					}
-					i++
-				}
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			retries = 0
-			skipped = 0
-			ch <- &PageData{n: i, campus: campus, data: page}
-			time.Sleep(1500 * time.Millisecond)
-			i++
-		}
-	}
-}
-
 func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
-		filePath := filepath.Join(cfg.DataDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
+		filePath := filepath.Join(cfg.CoursesDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
 		log.Printf("\t\tsaving to %s...", filePath)
 		if err := os.WriteFile(filePath, page.data, 0644); err != nil {
 			log.Printf("\t\tfailed to write file %s: %v", filePath, err)
@@ -111,21 +70,66 @@ func GetCoursePages(cfg *utils.Config) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var pageWG sync.WaitGroup
+
 	for _, campus := range cfg.Campuses {
-		path := filepath.Join(cfg.DataDir, campus)
+		path := filepath.Join(cfg.CoursesDir, campus)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			log.Fatalf("failed to create directory %s: %v", path, err)
 		}
 	}
 
-	go getPages(cfg.Campuses, ch, &wg)
+	for _, campus := range cfg.Campuses {
+		pageWG.Go(func() {
+			i := 0
+			retries := 0
+			skipped := 0
+			for {
+				pageUrl := campusUrls[campus] + strconv.Itoa(i)
+				page, err := checkPageHasCourses(pageUrl)
+				if errors.Is(err, ErrNoCourses) {
+					log.Printf("finished collecting all pages for %s", campus)
+					break
+				} else if err != nil {
+					retries++
+					log.Printf("error processing pages for %s at page %d (attempt %d): %v", campus, i, retries, err)
+					if retries >= 3 {
+						log.Printf("skipping %s page %d after %d attempts", campus, i, retries)
+						retries = 0
+						skipped++
+						getFailures.Add(1)
+						if skipped >= 3 {
+							log.Printf("giving up on %s after %d consecutive skipped pages", campus, skipped)
+							getFailures.Add(1)
+							break
+						}
+						i++
+					}
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				retries = 0
+				skipped = 0
+				ch <- &PageData{n: i, campus: campus, data: page}
+				time.Sleep(1500 * time.Millisecond)
+				i++
+			}
+		})
+	}
+
+	go func() {
+		defer wg.Done()
+		pageWG.Wait()
+		close(ch)
+	}()
+
 	go savePages(cfg, ch, &wg)
 
 	wg.Wait()
 
 	if n := getFailures.Load(); n > 0 {
-		log.Printf("finished with %d failures; see log above", n)
+		log.Printf("finished collecting course pages for all campuses with %d failures", n)
 	} else {
-		log.Printf("all pages for all campuses processed successfully!")
+		log.Printf("all course pages for all campuses collected successfully!")
 	}
 }

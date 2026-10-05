@@ -139,12 +139,12 @@ func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) t
 	var pageWG sync.WaitGroup
 
 	for _, campus := range cfg.Campuses {
-		pages, err := os.ReadDir(path.Join(cfg.DataDir, campus))
+		pages, err := os.ReadDir(path.Join(cfg.CoursesDir, campus))
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, page := range pages {
-			pagePath := path.Join(cfg.DataDir, campus, page.Name())
+			pagePath := path.Join(cfg.CoursesDir, campus, page.Name())
 			pageWG.Add(1)
 			go processPage(pagePath, pageResults, &pageWG)
 		}
