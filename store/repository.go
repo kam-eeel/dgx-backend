@@ -11,9 +11,7 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO courses (code, designator, number, level, weight, campus, title, prerequisites, corequisites, exclusions, breadth_req, distribution_req)
+const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, prerequisites, corequisites, exclusions, breadth_req, distribution_req)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			designator = excluded.designator,
@@ -26,12 +24,43 @@ func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
 			corequisites = excluded.corequisites,
 			exclusions = excluded.exclusions,
 			breadth_req = excluded.breadth_req,
-			distribution_req = excluded.distribution_req`,
+			distribution_req = excluded.distribution_req`
+
+func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
+	_, err := s.db.ExecContext(ctx, upsertCourseSQL,
 		c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title,
 		c.Prerequisites, c.Corequisites, c.Exclusions, c.BreadthReq, c.DistributionReq,
 	)
 	if err != nil {
 		return fmt.Errorf("insert course: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CreateCourses(ctx context.Context, cl []*types.Course) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, upsertCourseSQL)
+	if err != nil {
+		return fmt.Errorf("prepare insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, c := range cl {
+		if _, err := stmt.ExecContext(ctx,
+			c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title,
+			c.Prerequisites, c.Corequisites, c.Exclusions, c.BreadthReq, c.DistributionReq,
+		); err != nil {
+			return fmt.Errorf("insert course %s: %w", c.Code, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"degree-explorer/store"
 	"degree-explorer/types"
 	"degree-explorer/utils"
-	"fmt"
 	"log"
 	"os"
 	"path"
@@ -124,15 +123,9 @@ func processPage(pagePath string, pageResults chan<- *pageResult, wg *sync.WaitG
 func saveCourses(ctx context.Context, db *store.Store, pageResults <-chan *pageResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for pageResult := range pageResults {
-		log.Printf("sending %s to db...", pageResult.pagePath)
-		for _, c := range *pageResult.courseEntries {
-			err := db.CreateCourse(ctx, c)
-			if err != nil {
-				log.Printf("\tfailed to send %s to db: %v", c.Code, err)
-				parseFailures.Add(1)
-			} else {
-				log.Printf("\tsuccessfully sent %s to db", c.Code)
-			}
+		if err := db.CreateCourses(ctx, *pageResult.courseEntries); err != nil {
+			log.Printf("failed to send %s to db: %v", pageResult.pagePath, err)
+			parseFailures.Add(1)
 		}
 	}
 }
@@ -146,19 +139,16 @@ func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) {
 	var pageWG sync.WaitGroup
 
 	for _, campus := range cfg.Campuses {
-		log.Printf("processing pages for %s...", campus)
 		pages, err := os.ReadDir(path.Join(cfg.DataDir, campus))
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, page := range pages {
 			pagePath := path.Join(cfg.DataDir, campus, page.Name())
-			log.Printf("\tdispatching goroutine to process %s...", pagePath)
 			pageWG.Add(1)
 			go processPage(pagePath, pageResults, &pageWG)
 		}
 	}
-	log.Printf("all page processing goroutines dispatched successfully!")
 
 	go func() {
 		defer wg.Done()
@@ -169,12 +159,11 @@ func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) {
 	go saveCourses(ctx, db, pageResults, &wg)
 
 	wg.Wait()
-	fmt.Println()
 
 	if n := parseFailures.Load(); n == 0 {
-		fmt.Println("all jobs finished successfully!")
+		log.Println("all course pages parsed and sent to db successfully!")
 	} else {
-		fmt.Printf("all jobs finished with %d failures\n", n)
+		log.Printf("all course pages parsed and sent to db with %d failures\n", n)
 	}
 
 }
