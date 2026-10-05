@@ -1,5 +1,11 @@
 package types
 
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+)
+
 type Campus string
 type ParseResult bool
 
@@ -34,17 +40,40 @@ var UTMDistributionReqs = []string{
 	"Social Science",
 }
 
+type StringList []string
+
+func (l StringList) Value() (driver.Value, error) {
+	if l == nil {
+		return nil, nil // SQL NULL
+	}
+	b, err := json.Marshal(l)
+	return string(b), err
+}
+
+func (l *StringList) Scan(src any) error {
+	switch v := src.(type) {
+	case nil:
+		*l = nil
+		return nil
+	case []byte:
+		return json.Unmarshal(v, l)
+	case string:
+		return json.Unmarshal([]byte(v), l)
+	}
+	return fmt.Errorf("StringList: unsupported type %T", src)
+}
+
 type Course struct {
-	Code            string  `json:"code"`       // ex. CSC148H1
-	Designator      string  `json:"designator"` // ex. CSC
-	Number          string  `json:"number"`     // ex. 148
-	Level           int64   `json:"level"`      // 100-400
-	Weight          float64 `json:"weight"`     // 0.5 or 1.0
-	Campus          string  `json:"campus"`     // online (0), utsg (1), utsc (3), utm (5)
-	Title           string  `json:"title"`
-	Prerequisites   *string `json:"prerequisites"`
-	Corequisites    *string `json:"corequisites"`
-	Exclusions      *string `json:"exclusions"`
-	BreadthReq      *string `json:"breadth_req"`
-	DistributionReq *string `json:"distribution_req"`
+	Code            string     `json:"code"`       // ex. CSC148H1
+	Designator      string     `json:"designator"` // ex. CSC
+	Number          string     `json:"number"`     // ex. 148
+	Level           int64      `json:"level"`      // 100-400
+	Weight          float64    `json:"weight"`     // 0.5 or 1.0
+	Campus          string     `json:"campus"`     // online (0), utsg (1), utsc (3), utm (5)
+	Title           string     `json:"title"`
+	Prerequisites   *string    `json:"prerequisites"`
+	Corequisites    *string    `json:"corequisites"`
+	Exclusions      *string    `json:"exclusions"`
+	BreadthReq      StringList `json:"breadth_req"`
+	DistributionReq StringList `json:"distribution_req"`
 }

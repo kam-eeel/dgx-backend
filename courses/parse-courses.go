@@ -5,7 +5,6 @@ import (
 	"degree-explorer/store"
 	"degree-explorer/types"
 	"degree-explorer/utils"
-	"encoding/json"
 	"log"
 	"os"
 	"path"
@@ -76,42 +75,30 @@ func getEntryFromPage(campus string, s *goquery.Selection) *types.Course {
 	switch campus {
 	case string(types.UTSG):
 		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
-		brs := []string{}
 		if t != "" {
 			for _, br := range types.UTSGBreadthReqs {
 				if strings.Contains(t, br) {
-					brs = append(brs, br)
+					c.BreadthReq = append(c.BreadthReq, br)
 				}
 			}
-			jsonBRS, _ := json.Marshal(brs)
-			jArr := string(jsonBRS)
-			c.BreadthReq = &jArr
 		}
 	case string(types.UTSC):
 		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
-		brs := []string{}
 		if t != "" {
 			for _, br := range types.UTSCBreadthReqs {
 				if strings.Contains(t, br) {
-					brs = append(brs, br)
+					c.BreadthReq = append(c.BreadthReq, br)
 				}
 			}
-			jsonBRS, _ := json.Marshal(brs)
-			jArr := string(jsonBRS)
-			c.BreadthReq = &jArr
 		}
 	case string(types.UTM):
 		t := strings.TrimSpace(s.Find(".views-field-field-distribution-requirements").Find(".field-content").Text())
-		drs := []string{}
 		if t != "" {
 			for _, dr := range types.UTMDistributionReqs {
 				if strings.Contains(t, dr) {
-					drs = append(drs, dr)
+					c.DistributionReq = append(c.DistributionReq, dr)
 				}
 			}
-			jsonDRS, _ := json.Marshal(drs)
-			jArr := string(jsonDRS)
-			c.DistributionReq = &jArr
 		}
 	}
 
