@@ -62,6 +62,12 @@ func getEntryFromPage(campus string, s *goquery.Selection) *types.Course {
 
 	c.Title = strings.SplitN(header, " ", 3)[2]
 
+	if campus == string(types.UTM) {
+		c.Description = strings.TrimSpace(s.Find(".views-field-field-desc").Find(".field-content").Text())
+	} else {
+		c.Description = strings.TrimSpace(s.Find(".views-field-body").Find(".field-content").Text())
+	}
+
 	if t := strings.TrimSpace(s.Find(".views-field-field-prerequisite").Find(".field-content").Text()); t != "" {
 		c.Prerequisites = &t
 	}

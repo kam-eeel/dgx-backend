@@ -71,6 +71,7 @@ type Course struct {
 	Weight          float64    `json:"weight"`     // 0.5 or 1.0
 	Campus          string     `json:"campus"`     // online (0), utsg (1), utsc (3), utm (5)
 	Title           string     `json:"title"`
+	Description     string     `json:"description"`
 	Prerequisites   *string    `json:"prerequisites"`
 	Corequisites    *string    `json:"corequisites"`
 	Exclusions      *string    `json:"exclusions"`

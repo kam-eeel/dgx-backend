@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS courses (
     weight FLOAT NOT NULL,
     campus TEXT NOT NULL,
     title TEXT NOT NULL,
+    description TEXT NOT NULL,
     prerequisites TEXT, -- json string array
     corequisites TEXT, -- json string array
     exclusions TEXT, -- json string array
