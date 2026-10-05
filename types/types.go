@@ -12,6 +12,28 @@ const (
 	ParseFailure    ParseResult = false
 )
 
+var UTSGBreadthReqs = []string{
+	"Creative and Cultural Representations (1)",
+	"Thought, Belief and Behaviour (2)",
+	"Society and its Institutions (3)",
+	"Living Things and Their Environment (4)",
+	"The Physical and Mathematical Universes (5)",
+}
+
+var UTSCBreadthReqs = []string{
+	"Arts, Literature and Language",
+	"Natural Sciences",
+	"History, Philosophy and Cultural Studies",
+	"Quantitative Reasoning",
+	"Social and Behavioural Sciences",
+}
+
+var UTMDistributionReqs = []string{
+	"Humanities",
+	"Science",
+	"Social Science",
+}
+
 type Course struct {
 	Code            string  `json:"code"`       // ex. CSC148H1
 	Designator      string  `json:"designator"` // ex. CSC

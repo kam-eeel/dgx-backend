@@ -5,6 +5,7 @@ import (
 	"degree-explorer/store"
 	"degree-explorer/types"
 	"degree-explorer/utils"
+	"encoding/json"
 	"log"
 	"os"
 	"path"
@@ -22,7 +23,7 @@ type pageResult struct {
 	courseEntries *[]*types.Course
 }
 
-func getEntryFromPage(s *goquery.Selection) *types.Course {
+func getEntryFromPage(campus string, s *goquery.Selection) *types.Course {
 	c := &types.Course{}
 
 	header := strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text())
@@ -71,17 +72,53 @@ func getEntryFromPage(s *goquery.Selection) *types.Course {
 	if t := strings.TrimSpace(s.Find(".views-field-field-exclusion").Find(".field-content").Text()); t != "" {
 		c.Exclusions = &t
 	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text()); t != "" {
-		c.BreadthReq = &t
-	}
-	if t := strings.TrimSpace(s.Find(".views-field-field-distribution-requirements").Find(".field-content").Text()); t != "" {
-		c.DistributionReq = &t
+
+	switch campus {
+	case string(types.UTSG):
+		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
+		brs := []string{}
+		if t != "" {
+			for _, br := range types.UTSGBreadthReqs {
+				if strings.Contains(t, br) {
+					brs = append(brs, br)
+				}
+			}
+			jsonBRS, _ := json.Marshal(brs)
+			jArr := string(jsonBRS)
+			c.BreadthReq = &jArr
+		}
+	case string(types.UTSC):
+		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
+		brs := []string{}
+		if t != "" {
+			for _, br := range types.UTSCBreadthReqs {
+				if strings.Contains(t, br) {
+					brs = append(brs, br)
+				}
+			}
+			jsonBRS, _ := json.Marshal(brs)
+			jArr := string(jsonBRS)
+			c.BreadthReq = &jArr
+		}
+	case string(types.UTM):
+		t := strings.TrimSpace(s.Find(".views-field-field-distribution-requirements").Find(".field-content").Text())
+		drs := []string{}
+		if t != "" {
+			for _, dr := range types.UTMDistributionReqs {
+				if strings.Contains(t, dr) {
+					drs = append(drs, dr)
+				}
+			}
+			jsonDRS, _ := json.Marshal(drs)
+			jArr := string(jsonDRS)
+			c.DistributionReq = &jArr
+		}
 	}
 
 	return c
 }
 
-func processPage(pagePath string, pageResults chan<- *pageResult, wg *sync.WaitGroup) {
+func processPage(campus string, pagePath string, pageResults chan<- *pageResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 	var cl []*types.Course
 
@@ -109,7 +146,7 @@ func processPage(pagePath string, pageResults chan<- *pageResult, wg *sync.WaitG
 
 	entries.Each(func(_ int, s *goquery.Selection) {
 		if strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text()) != "" {
-			new := getEntryFromPage(s)
+			new := getEntryFromPage(campus, s)
 			cl = append(cl, new)
 		}
 	})
@@ -146,7 +183,7 @@ func ParseCoursePages(cfg *utils.Config, ctx context.Context, db *store.Store) t
 		for _, page := range pages {
 			pagePath := path.Join(cfg.CoursesDir, campus, page.Name())
 			pageWG.Add(1)
-			go processPage(pagePath, pageResults, &pageWG)
+			go processPage(campus, pagePath, pageResults, &pageWG)
 		}
 	}
 

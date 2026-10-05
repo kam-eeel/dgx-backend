@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	GetNewCoursePages bool = true
+	GetNewCoursePages bool = false
 	ParseCoursePages  bool = true
 )
 
