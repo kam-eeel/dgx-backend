@@ -2,27 +2,38 @@ package main
 
 import (
 	"context"
+	"degree-explorer/courses"
 	"degree-explorer/store"
+	"degree-explorer/utils"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 const (
 	GetNewCoursePages bool = false
+	ParseCoursePages  bool = true
 )
 
 func main() {
-	cfg := LoadConfig()
+	cfg := utils.LoadConfig()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// initialize db connection
-	db, err := store.Open(context.Background(), cfg.DBPath)
+	db, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
 	if GetNewCoursePages {
-		GetCoursePages(cfg)
+		courses.GetCoursePages(cfg)
 	}
 
-	// ParseCoursePages(cfg)
+	if ParseCoursePages {
+		courses.ParseCoursePages(cfg, ctx, db)
+	}
 }

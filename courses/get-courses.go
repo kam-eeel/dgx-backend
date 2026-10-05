@@ -1,4 +1,4 @@
-package main
+package courses
 
 import (
 	"bytes"
@@ -23,8 +23,6 @@ type PageData struct {
 }
 
 var ErrNoCourses = errors.New("no course entries found on the page")
-
-var campuses = []string{"utsg", "utm", "utsc"}
 
 var campusUrls = map[string]string{
 	"utsg": "https://artsci.calendar.utoronto.ca/search-courses?page=",
@@ -53,7 +51,7 @@ func checkPageHasCourses(url string) ([]byte, error) {
 	return page, nil
 }
 
-func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
+func getPages(campuses []string, ch chan<- *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer close(ch)
 	for _, campus := range campuses {
@@ -94,7 +92,7 @@ func getPages(ch chan<- *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func savePages(cfg *Config, ch <-chan *PageData, wg *sync.WaitGroup) {
+func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
 		filePath := filepath.Join(cfg.DataDir, page.campus, fmt.Sprintf("page-%d.html", page.n))
@@ -108,19 +106,19 @@ func savePages(cfg *Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func GetCoursePages(cfg *Config) {
+func GetCoursePages(cfg *utils.Config) {
 	ch := make(chan *PageData)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	for _, campus := range campuses {
+	for _, campus := range cfg.Campuses {
 		path := filepath.Join(cfg.DataDir, campus)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			log.Fatalf("failed to create directory %s: %v", path, err)
 		}
 	}
 
-	go getPages(ch, &wg)
+	go getPages(cfg.Campuses, ch, &wg)
 	go savePages(cfg, ch, &wg)
 
 	wg.Wait()
