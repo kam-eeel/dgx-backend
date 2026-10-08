@@ -7,9 +7,11 @@ import (
 )
 
 type Config struct {
-	DBPath     string
-	CoursesDir string
-	Campuses   []string
+	DBPath      string
+	DataDir     string
+	CoursesDir  string
+	ProgramsDir string
+	Campuses    []string
 }
 
 func dirExists(p string) bool {
@@ -25,8 +27,10 @@ func dirExists(p string) bool {
 
 func LoadConfig() *Config {
 	cfg := &Config{
-		DBPath:     "app.db",
-		CoursesDir: "data/courses",
+		DBPath:      "app.db",
+		DataDir:     "data",
+		CoursesDir:  "data/courses",
+		ProgramsDir: "data/programs",
 		Campuses: []string{
 			string(types.UTSG),
 			string(types.UTM),
@@ -36,6 +40,9 @@ func LoadConfig() *Config {
 
 	if !dirExists(cfg.CoursesDir) {
 		os.MkdirAll(cfg.CoursesDir, 0755)
+	}
+	if !dirExists(cfg.ProgramsDir) {
+		os.MkdirAll(cfg.ProgramsDir, 0755)
 	}
 
 	return cfg
