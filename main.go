@@ -1,34 +1,29 @@
 package main
 
 import (
+	"context"
 	"degree-explorer/scraper"
+	"degree-explorer/store"
 	"degree-explorer/utils"
-)
-
-const (
-	GetNewCoursePages bool = false
-	ParseCoursePages  bool = true
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
 	cfg := utils.LoadConfig()
 
-	// ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// defer stop()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// // initialize db connection
-	// db, err := store.Open(ctx, cfg.DBPath)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer db.Close()
+	// initialize db connection
+	db, err := store.Open(ctx, cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
 
-	// if GetNewCoursePages {
-	// 	courses.GetCoursePages(cfg)
-	// }
-
-	// if ParseCoursePages {
-	// 	courses.ParseCoursePages(cfg, ctx, db)
-	// }
-	scraper.DownloadPages(cfg)
+	// scraper.DownloadPages(cfg)
+	scraper.ParsePages(ctx, cfg, db)
 }
