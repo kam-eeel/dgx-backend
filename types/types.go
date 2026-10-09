@@ -65,10 +65,11 @@ type Course struct {
 }
 
 type Program struct {
-	Code           string  `json:"code"`
-	Type           string  `json:"type"`
-	Number         string  `json:"number"`
-	Title          string  `json:"title"`
-	EnrolmentReqs  *string `json:"enrolment_reqs"`
-	CompletionReqs *string `json:"completion_reqs"`
+	Code           string     `json:"code"`
+	Type           string     `json:"type"`
+	Number         string     `json:"number"`
+	Title          string     `json:"title"`
+	EnrolmentReqs  *string    `json:"enrolment_reqs"`
+	CompletionReqs *string    `json:"completion_reqs"`
+	ProgramArea    StringList `json:"program_area"`
 }

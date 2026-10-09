@@ -26,14 +26,15 @@ const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, w
 			exclusions = excluded.exclusions,
 			breadth_req = excluded.breadth_req`
 
-const upsertProgramSQL = `INSERT INTO programs (code, type, number, title, enrolment_reqs, completion_reqs)
-		VALUES (?, ?, ?, ?, ?, ?)
+const upsertProgramSQL = `INSERT INTO programs (code, type, number, title, enrolment_reqs, completion_reqs, program_area)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			type = excluded.type,
 			number = excluded.number,
 			title = excluded.title,
 			enrolment_reqs = excluded.enrolment_reqs,
-			completion_reqs = excluded.completion_reqs`
+			completion_reqs = excluded.completion_reqs,
+			program_area = excluded.program_area`
 
 // ----------------------------------------------------------------------------
 // Courses
@@ -160,7 +161,7 @@ func (s *Store) DeleteCourse(ctx context.Context, courseCode string) error {
 
 func (s *Store) CreateProgram(ctx context.Context, p *types.Program) error {
 	_, err := s.db.ExecContext(ctx, upsertProgramSQL,
-		p.Code, p.Type, p.Number, p.Title, p.EnrolmentReqs, p.CompletionReqs,
+		p.Code, p.Type, p.Number, p.Title, p.EnrolmentReqs, p.CompletionReqs, p.ProgramArea,
 	)
 	if err != nil {
 		return fmt.Errorf("insert program: %w", err)
@@ -183,7 +184,7 @@ func (s *Store) CreatePrograms(ctx context.Context, pl []*types.Program) error {
 
 	for _, p := range pl {
 		if _, err := stmt.ExecContext(ctx,
-			p.Code, p.Type, p.Number, p.Title, p.EnrolmentReqs, p.CompletionReqs,
+			p.Code, p.Type, p.Number, p.Title, p.EnrolmentReqs, p.CompletionReqs, p.ProgramArea,
 		); err != nil {
 			return fmt.Errorf("insert program %s: %w", p.Code, err)
 		}
@@ -198,9 +199,9 @@ func (s *Store) CreatePrograms(ctx context.Context, pl []*types.Program) error {
 func (s *Store) GetProgram(ctx context.Context, programCode string) (types.Program, error) {
 	var p types.Program
 	err := s.db.QueryRowContext(ctx,
-		`SELECT code, type, number, title, enrolment_reqs, completion_reqs
+		`SELECT code, type, number, title, enrolment_reqs, completion_reqs, program_area
 		FROM programs WHERE code = ?`, programCode,
-	).Scan(&p.Code, &p.Type, &p.Number, &p.Title, &p.EnrolmentReqs, &p.CompletionReqs)
+	).Scan(&p.Code, &p.Type, &p.Number, &p.Title, &p.EnrolmentReqs, &p.CompletionReqs, &p.ProgramArea)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return types.Program{}, ErrNotFound
@@ -213,7 +214,7 @@ func (s *Store) GetProgram(ctx context.Context, programCode string) (types.Progr
 
 func (s *Store) SearchPrograms(ctx context.Context, q string, limit int) ([]types.Program, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, type, number, title, enrolment_reqs, completion_reqs
+		`SELECT code, type, number, title, enrolment_reqs, completion_reqs, program_area
 		FROM programs
 		WHERE code LIKE ?
 		ORDER BY code
@@ -228,7 +229,9 @@ func (s *Store) SearchPrograms(ctx context.Context, q string, limit int) ([]type
 	var results []types.Program
 	for rows.Next() {
 		var p types.Program
-		if err := rows.Scan(&p.Code, &p.Type, &p.Number, &p.Title, &p.EnrolmentReqs, &p.CompletionReqs); err != nil {
+		if err := rows.Scan(
+			&p.Code, &p.Type, &p.Number, &p.Title, &p.EnrolmentReqs, &p.CompletionReqs, &p.ProgramArea,
+		); err != nil {
 			return nil, fmt.Errorf("scan program: %w", err)
 		}
 		results = append(results, p)
@@ -239,9 +242,9 @@ func (s *Store) SearchPrograms(ctx context.Context, q string, limit int) ([]type
 func (s *Store) UpdateProgram(ctx context.Context, p types.Program) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE programs
-		SET title = ?, enrolment_reqs = ?, completion_reqs = ?
+		SET title = ?, enrolment_reqs = ?, completion_reqs = ?, program_area = ?
 		WHERE code = ?`,
-		p.Title, p.EnrolmentReqs, p.CompletionReqs, p.Code,
+		p.Title, p.EnrolmentReqs, p.CompletionReqs, p.ProgramArea, p.Code,
 	)
 	if err != nil {
 		return fmt.Errorf("update program %s: %w", p.Code, err)
