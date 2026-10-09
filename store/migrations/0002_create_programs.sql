@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS programs (
     number TEXT NOT NULL,
     title TEXT NOT NULL,
     enrolment_reqs TEXT,
-    completion_reqs TEXT,
+    completion_reqs TEXT
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_program_type ON programs(type);

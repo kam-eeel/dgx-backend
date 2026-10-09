@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS courses (
     prerequisites TEXT, -- json string array
     corequisites TEXT, -- json string array
     exclusions TEXT, -- json string array
-    breadth_req TEXT, -- json string array
+    breadth_req TEXT -- json string array
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_course_designator ON courses(designator);

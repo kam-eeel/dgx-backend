@@ -12,7 +12,7 @@ import (
 var ErrNotFound = errors.New("not found")
 
 const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, description, prerequisites, corequisites, exclusions, breadth_req)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			designator = excluded.designator,
 			number = excluded.number,
@@ -29,7 +29,6 @@ const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, w
 const upsertProgramSQL = `INSERT INTO programs (code, type, number, title, enrolment_reqs, completion_reqs)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
-			code = excluded.code,
 			type = excluded.type,
 			number = excluded.number,
 			title = excluded.title,
@@ -242,7 +241,7 @@ func (s *Store) UpdateProgram(ctx context.Context, p types.Program) error {
 		`UPDATE programs
 		SET title = ?, enrolment_reqs = ?, completion_reqs = ?
 		WHERE code = ?`,
-		p.Title, p.EnrolmentReqs, p.CompletionReqs,
+		p.Title, p.EnrolmentReqs, p.CompletionReqs, p.Code,
 	)
 	if err != nil {
 		return fmt.Errorf("update program %s: %w", p.Code, err)
