@@ -8,12 +8,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+var programCodeRe = regexp.MustCompile(`^AS[A-Z]{3}\d{4}[A-Z]?$`)
 
 func loadDoc(fp string) (*goquery.Document, error) {
 	f, err := os.Open(fp)
@@ -33,12 +36,11 @@ func loadDoc(fp string) (*goquery.Document, error) {
 func parseCourses(doc *goquery.Document) []*types.Course {
 	courses := []*types.Course{}
 	doc.Find(".views-row").Each(func(_ int, s *goquery.Selection) {
-		if strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text()) == "" {
+		header := strings.Join(strings.Fields(s.Find(".js-views-accordion-group-header").Text()), " ")
+		if header == "" {
 			return
 		}
 		c := &types.Course{}
-
-		header := strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text())
 
 		c.Code = header[:8]
 		c.Designator = header[:3]
@@ -105,16 +107,21 @@ func parseCourses(doc *goquery.Document) []*types.Course {
 func parsePrograms(doc *goquery.Document) []*types.Program {
 	programs := []*types.Program{}
 	doc.Find(".views-row").Each(func(_ int, s *goquery.Selection) {
-		if strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text()) == "" {
+		header := strings.Join(strings.Fields(s.Find(".js-views-accordion-group-header").Text()), " ")
+		if header == "" {
 			return
 		}
 		p := &types.Program{}
 
-		header := strings.TrimSpace(s.Find(".js-views-accordion-group-header").Text())
+		i := strings.LastIndex(header, " - ")
+		if i < 0 || !programCodeRe.MatchString(header[i+3:]) {
+			log.Printf("skipping program with unexpected header: %q", header)
+			return
+		}
 
-		p.Code = header[len(header)-10 : len(header)-1]
+		p.Code = header[i+3:]
 		p.Number = p.Code[5:]
-		p.Title = header[:len(header)-13]
+		p.Title = header[:i]
 
 		switch p.Code[2:5] {
 		case "SPE":

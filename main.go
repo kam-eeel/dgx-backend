@@ -25,5 +25,7 @@ func main() {
 	defer db.Close()
 
 	// scraper.DownloadPages(cfg)
-	scraper.ParsePages(ctx, cfg, db)
+	if err := scraper.ParsePages(ctx, cfg, db); err != nil {
+		log.Fatal(err)
+	}
 }
