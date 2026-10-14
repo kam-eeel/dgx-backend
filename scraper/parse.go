@@ -137,10 +137,10 @@ func parsePrograms(doc *goquery.Document) []*types.Program {
 			p.Type = "Certificate"
 		}
 
-		if t := strings.TrimSpace(s.Find(".views-field-field-enrolment-requirements").Find(".field-content").Text()); t != "" {
+		if t := blockText(s.Find(".views-field-field-enrolment-requirements").Find(".field-content")); t != "" {
 			p.EnrolmentReqs = &t
 		}
-		if t := strings.TrimSpace(s.Find(".views-field-field-completion-requirements").Find(".field-content").Text()); t != "" {
+		if t := blockText(s.Find(".views-field-field-completion-requirements").Find(".field-content")); t != "" {
 			p.CompletionReqs = &t
 		}
 
