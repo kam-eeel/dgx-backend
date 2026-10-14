@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"degree-explorer/reqs"
 	"degree-explorer/store"
 	"degree-explorer/types"
 	"degree-explorer/utils"
@@ -80,13 +81,13 @@ func parseCourses(doc *goquery.Document) []*types.Course {
 		c.Description = strings.TrimSpace(s.Find(".views-field-body").Find(".field-content").Text())
 
 		if t := strings.TrimSpace(s.Find(".views-field-field-prerequisite").Find(".field-content").Text()); t != "" {
-			c.Prerequisites = &t
+			c.Prerequisites = reqs.ParseRequisite(t)
 		}
 		if t := strings.TrimSpace(s.Find(".views-field-field-corequisite").Find(".field-content").Text()); t != "" {
-			c.Corequisites = &t
+			c.Corequisites = reqs.ParseRequisite(t)
 		}
 		if t := strings.TrimSpace(s.Find(".views-field-field-exclusion").Find(".field-content").Text()); t != "" {
-			c.Exclusions = &t
+			c.Exclusions = reqs.ParseExclusions(t)
 		}
 
 		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
