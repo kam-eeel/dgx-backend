@@ -1,0 +1,104 @@
+package types
+
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+)
+
+type NodeType string
+
+const (
+	NodeAnd     NodeType = "and"
+	NodeOr      NodeType = "or"
+	NodeCourse  NodeType = "course"
+	NodeCredits NodeType = "credits"
+	NodeGPA     NodeType = "gpa"
+	NodeText    NodeType = "text"
+)
+
+type TextKind string
+
+const (
+	KindPermission  TextKind = "permission"
+	KindProgram     TextKind = "program"
+	KindPlacement   TextKind = "placement"
+	KindPreparation TextKind = "preparation"
+	KindOther       TextKind = "other"
+)
+
+// ReqNode is one node of a requirement tree.
+type ReqNode struct {
+	Type NodeType `json:"type"`
+
+	Items []*ReqNode `json:"items,omitempty"` // and, or
+
+	Code     string `json:"code,omitempty"`      // course
+	MinGrade int    `json:"min_grade,omitempty"` // course, credits (0 = none)
+
+	Amount      float64  `json:"amount,omitempty"` // credits
+	Designators []string `json:"designators,omitempty"`
+	Levels      []int    `json:"levels,omitempty"`
+	Breadth     []int    `json:"breadth,omitempty"`
+	Courses     []string `json:"courses,omitempty"`
+	Exclude     []string `json:"exclude,omitempty"`
+
+	Min   float64 `json:"min,omitempty"`   // gpa
+	Scope string  `json:"scope,omitempty"` // gpa
+
+	Kind TextKind `json:"kind,omitempty"` // text
+	Text string   `json:"text,omitempty"`
+}
+
+// Requisite is the stored form of a prerequisites or corequisites field.
+type Requisite struct {
+	Raw   string   `json:"raw"`
+	Req   *ReqNode `json:"req"`
+	Notes []string `json:"notes,omitempty"`
+}
+
+func (r Requisite) Value() (driver.Value, error) {
+	b, err := json.Marshal(r)
+	return string(b), err
+}
+
+func (r *Requisite) Scan(src any) error {
+	switch v := src.(type) {
+	case []byte:
+		return json.Unmarshal(v, r)
+	case string:
+		return json.Unmarshal([]byte(v), r)
+	}
+	return fmt.Errorf("Requisite: unsupported type %T", src)
+}
+
+// ExclusionItem is either a set of codes that must all have been taken, or a
+// text item that can't be checked automatically.
+type ExclusionItem struct {
+	Codes []string `json:"codes,omitempty"`
+	Note  string   `json:"note,omitempty"`
+	Kind  TextKind `json:"kind,omitempty"`
+	Text  string   `json:"text,omitempty"`
+}
+
+// Exclusions is the stored form of an exclusions field.
+type Exclusions struct {
+	Raw   string          `json:"raw"`
+	Items []ExclusionItem `json:"items"`
+	Notes []string        `json:"notes,omitempty"`
+}
+
+func (e Exclusions) Value() (driver.Value, error) {
+	b, err := json.Marshal(e)
+	return string(b), err
+}
+
+func (e *Exclusions) Scan(src any) error {
+	switch v := src.(type) {
+	case []byte:
+		return json.Unmarshal(v, e)
+	case string:
+		return json.Unmarshal([]byte(v), e)
+	}
+	return fmt.Errorf("Exclusions: unsupported type %T", src)
+}

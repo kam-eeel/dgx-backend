@@ -1,0 +1,45 @@
+package reqs
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// assertJSON compares got (marshalled) with want structurally, ignoring key order.
+func assertJSON(t *testing.T, got any, want string) {
+	t.Helper()
+	gb, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var g, w any
+	if err := json.Unmarshal(gb, &g); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(want), &w); err != nil {
+		t.Fatalf("bad want JSON %s: %v", want, err)
+	}
+	if !reflect.DeepEqual(g, w) {
+		t.Errorf("\n got: %s\nwant: %s", gb, want)
+	}
+}
+
+func jsonString(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+func jC(code string) string { return fmt.Sprintf(`{"type":"course","code":%q}`, code) }
+func jCG(code string, grade int) string {
+	return fmt.Sprintf(`{"type":"course","code":%q,"min_grade":%d}`, code, grade)
+}
+func jAnd(items ...string) string { return `{"type":"and","items":[` + strings.Join(items, ",") + `]}` }
+func jOr(items ...string) string  { return `{"type":"or","items":[` + strings.Join(items, ",") + `]}` }
+
+// jT builds a text node; kind "" means "not classified yet".
+func jT(kind, text string) string {
+	if kind == "" {
+		return fmt.Sprintf(`{"type":"text","text":%q}`, text)
+	}
+	return fmt.Sprintf(`{"type":"text","kind":%q,"text":%q}`, kind, text)
+}

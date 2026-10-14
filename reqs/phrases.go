@@ -1,0 +1,303 @@
+package reqs
+
+import (
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+
+	"degree-explorer/types"
+)
+
+// A phrase matcher looks at the start of s. If it recognizes its phrase it
+// returns a token whose end is the number of bytes consumed (start is 0; the
+// lexer shifts both to absolute positions).
+type phraseMatcher func(s string) (token, bool)
+
+var (
+	courseRe = regexp.MustCompile(`^(` + codePat + `)(?:\s*\(\s*(\d{2})%(?:\s+(?i:or\s+(?:higher|above|greater)))?\s*\)|\s+(?i:with\s+a\s+minimum(?:\s+(?:final\s+)?grade)?\s+of)\s+(\d{2})%(?:\s+(?i:in\s+each(?:\s+course)?))?)?`)
+
+	gradePrefixRe = regexp.MustCompile(`^(?i:(?:a\s+)?(?:(?:minimum|final)\s+)*(?:(?:grade|mark)\s+)?of\s+)?(\d{2})%\s+(?i:(?:or\s+(?:higher|above|better|greater)|is\s+required)\s+)?(?i:in)\b(\s+(?i:each\s+of))?`)
+
+	condRe      = regexp.MustCompile(`^(?:For\s+[^:;.()]{1,60}|[A-Z][a-z]+\s+students|[A-Z][a-z]+\s+[A-Z][a-z]+):`)
+	condLabelRe = regexp.MustCompile(`^(?:Note|Notes|Recommended|Prerequisites?|Corequisites?|Exclusions?)\b`)
+	condNextRe  = regexp.MustCompile(`^\s*` + codePat)
+
+	poolOneOfRe   = regexp.MustCompile(`^(?i:(?:completion\s+of\s+)?(?:at\s+least\s+)?(?:one|any|1)(?:\s+course)?\s+(?:of|from)(?:\s+either)?(?:\s+the\s+following)?(?:\s+is\s+required)?)\b(?:\s*:)?`)
+	poolFromRe    = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s+(?i:credits?\s+(?:from|among)(?:\s+the\s+following)?)(?:\s*:)?`)
+	poolOfWhichRe = regexp.MustCompile(`^(?i:of\s+which\s+(?:at\s+least\s+)?)(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?(?:(?:must|should)\s+be\s+)?(?:in|from))(?:\s*:)?`)
+	poolNextRe    = regexp.MustCompile(`^\s*(?:` + codePat + `|\()`)
+
+	breadthRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?of\s+which\s+(?:should|must)\s+be\s+in\s+(?:the\s+)?)(?:[A-Z]{3}\s*/\s*)?BR\s*=\s*([1-5](?:\s*/\s*[1-5])*)`)
+
+	scopePat = `(?:[A-Z]{2,}|[A-Z][a-z]+)(?:\s+(?:and\s+)?(?:[A-Z]{2,}|[A-Z][a-z]+|program|courses?))*`
+	gpaRe    = regexp.MustCompile(`^(?i:(?:a\s+)?minimum\s+(?:of\s+)?)?(?i:c?gpa)\s+(?i:of\s+)?(\d\.\d+|[A-D][+-]?)(?:\s+(?i:in|for)\s+(` + scopePat + `))?`)
+
+	yearNumRe = regexp.MustCompile(`^(?i:(?:in\s+|enrolled\s+as\s+a\s+)?year\s+([1-4])(?:\s+(?:students?|standing|or\s+higher|or\s+above))*)\b`)
+	yearOrdRe = regexp.MustCompile(`^(?i:(first|second|third|fourth|1st|2nd|3rd|4th)(?:\s*(?:and|or|/|,)\s*(?:first|second|third|fourth|1st|2nd|3rd|4th))*[- ]year\s+(?:students?|standing|status)(?:\s+only)?)\b`)
+	ordinalRe = regexp.MustCompile(`(?i)first|second|third|fourth|1st|2nd|3rd|4th`)
+
+	// Prefixes may repeat: "Completion of at least 4.0 credits".
+	creditHeadRe = regexp.MustCompile(
+		`^(?i:(?:completion\s+of|completed|at\s+least|a\s+minimum(?:\s+of)?|minimum|any|an\s+additional|additional|another|a\s+further|a\s+total\s+of)\s+)*` +
+			`(\d+(?:\.\d+)?)\s+` +
+			`(?i:(?:additional|more|full|half)\s+)?` +
+			`((?:[A-Z]{3}\b\s*(?:(?:/|or)\s*)?)*)` + // "HIS or POL ", "ENG "
+			`(?i:credits?|courses?|FCEs?)\b`)
+
+	anyCourseHeadRe = regexp.MustCompile(`^(?i:a|an|any|one)\s+`)
+	courseWordRe    = regexp.MustCompile(`(?i)\bcourses?\b`)
+
+	// A connector (, / or and ", or" ", and") is only allowed when immediately
+	// followed by a designator or level — this is what stops the span from
+	// eating "2.0 ENG credits and any 4.0 credits".
+	qualSpanRe = regexp.MustCompile(
+		`^(?:\s*(?:(?i:in|at|the|from|of|any)\b|(?i:-?\s*levels?)\b|(?i:courses?)\b|(?i:or\s+(?:higher|above))\b|` +
+			`[A-Z]{3}\b|\d00\s*\+?|-|` +
+			`(?:,\s*(?i:or|and)?|/|(?i:or)|(?i:and))\s*(?:[A-Z]{3}\b|\d00)))*`)
+
+	// Qualifier words with nothing after them belong to whatever follows:
+	// "any 300-level course in Society" must leave "in Society" as text.
+	trailingQualRe = regexp.MustCompile(`(?i)(?:\s*-|\s+(?:in|at|the|from|of|any))+\s*$`)
+
+	minGradeRe   = regexp.MustCompile(`^\s*,?\s*(?i:with\s+(?:a\s+)?minimum(?:\s+grade)?\s+of)\s+(\d{2})%(?:\s+(?i:in\s+each(?:\s+course)?))?`)
+	excludingRe  = regexp.MustCompile(`^\s*\(\s*(?i:excluding)\s+([^)]*)\)|^\s*,?\s*(?i:excluding)\s+(` + codePat + `(?:\s*(?:,|/|and|or)\s*` + codePat + `)*)`)
+	anyFieldRe   = regexp.MustCompile(`^\s*\((?i:in\s+any\s+field)\)`)
+	desigRe      = regexp.MustCompile(`\b[A-Z]{3}\b`)
+	levelRe      = regexp.MustCompile(`([1-4])00\s*(\+)?`)
+	orUpRe       = regexp.MustCompile(`(?i)or\s+(?:higher|above)`)
+	breadthNumRe = regexp.MustCompile(`[1-5]`)
+)
+
+// yearCredits maps a year of study to the credits needed to be in it
+// (Faculty of Arts & Science thresholds).
+var yearCredits = map[int]float64{1: 0, 2: 4.0, 3: 9.0, 4: 14.0}
+
+// letterGPA maps letter grades to the UofT 4.0 scale.
+var letterGPA = map[string]float64{
+	"A+": 4.0, "A": 4.0, "A-": 3.7, "B+": 3.3, "B": 3.0, "B-": 2.7,
+	"C+": 2.3, "C": 2.0, "C-": 1.7, "D+": 1.3, "D": 1.0, "D-": 0.7,
+}
+
+// phraseMatchers in the order the lexer tries them (design §4.3). Order
+// matters: earlier phrases protect "or"/"and" words from the operator
+// matchers, and pools must be tried before plain credit phrases.
+var phraseMatchers = []phraseMatcher{
+	matchCond,
+	matchGradePrefix,
+	matchCourse,
+	matchPool,
+	matchBreadth,
+	matchGPA,
+	matchYear,
+	matchCredits,
+	matchAnyCourse,
+}
+
+func matchCourse(s string) (token, bool) {
+	m := courseRe.FindStringSubmatch(s)
+	if m == nil {
+		return token{}, false
+	}
+	n := &types.ReqNode{Type: types.NodeCourse, Code: m[1]}
+	for _, g := range m[2:] {
+		if g != "" {
+			n.MinGrade, _ = strconv.Atoi(g)
+		}
+	}
+	return token{kind: tCourse, end: len(m[0]), node: n}, true
+}
+
+func matchGradePrefix(s string) (token, bool) {
+	m := gradePrefixRe.FindStringSubmatch(s)
+	if m == nil {
+		return token{}, false
+	}
+	g, _ := strconv.Atoi(m[1])
+	return token{kind: tGradePrefix, end: len(m[0]), grade: g, each: m[2] != ""}, true
+}
+
+func matchCond(s string) (token, bool) {
+	loc := condRe.FindStringIndex(s)
+	if loc == nil || condLabelRe.MatchString(s) {
+		return token{}, false
+	}
+	// "Rotman Commerce:" only counts as a label when a course follows it.
+	if !strings.HasPrefix(s, "For") && !condNextRe.MatchString(s[loc[1]:]) {
+		return token{}, false
+	}
+	return token{kind: tCond, end: loc[1]}, true
+}
+
+func matchPool(s string) (token, bool) {
+	if loc := poolOneOfRe.FindStringIndex(s); loc != nil {
+		return token{kind: tPool, end: loc[1]}, true
+	}
+	for _, re := range []*regexp.Regexp{poolFromRe, poolOfWhichRe} {
+		m := re.FindStringSubmatchIndex(s)
+		if m == nil || !poolNextRe.MatchString(s[m[1]:]) {
+			continue // "1.0 credit from 200-level courses" is a credit phrase, not a pool
+		}
+		amount, _ := strconv.ParseFloat(s[m[2]:m[3]], 64)
+		return token{kind: tPool, end: m[1], amount: amount}, true
+	}
+	return token{}, false
+}
+
+func matchBreadth(s string) (token, bool) {
+	m := breadthRe.FindStringSubmatch(s)
+	if m == nil {
+		return token{}, false
+	}
+	amount, _ := strconv.ParseFloat(m[1], 64)
+	n := &types.ReqNode{Type: types.NodeCredits, Amount: amount}
+	for _, b := range breadthNumRe.FindAllString(m[2], -1) {
+		v, _ := strconv.Atoi(b)
+		n.Breadth = append(n.Breadth, v)
+	}
+	return token{kind: tCredits, end: len(m[0]), node: n}, true
+}
+
+func matchGPA(s string) (token, bool) {
+	m := gpaRe.FindStringSubmatch(s)
+	if m == nil {
+		return token{}, false
+	}
+	gpa, ok := letterGPA[m[1]]
+	if !ok {
+		gpa, _ = strconv.ParseFloat(m[1], 64)
+	}
+	n := &types.ReqNode{Type: types.NodeGPA, Min: gpa, Scope: m[2]}
+	return token{kind: tGPA, end: len(m[0]), node: n}, true
+}
+
+func matchYear(s string) (token, bool) {
+	year, end := 0, 0
+	if m := yearNumRe.FindStringSubmatch(s); m != nil {
+		year, _ = strconv.Atoi(m[1])
+		end = len(m[0])
+	} else if m := yearOrdRe.FindString(s); m != "" {
+		year = 4
+		for _, o := range ordinalRe.FindAllString(m, -1) {
+			year = min(year, ordinalYear(o))
+		}
+		end = len(m)
+	} else {
+		return token{}, false
+	}
+	n := &types.ReqNode{Type: types.NodeCredits, Amount: yearCredits[year]}
+	return token{kind: tCredits, end: end, node: n}, true
+}
+
+func ordinalYear(o string) int {
+	switch strings.ToLower(o) {
+	case "first", "1st":
+		return 1
+	case "second", "2nd":
+		return 2
+	case "third", "3rd":
+		return 3
+	}
+	return 4
+}
+
+func matchCredits(s string) (token, bool) {
+	m := creditHeadRe.FindStringSubmatchIndex(s)
+	if m == nil {
+		return token{}, false
+	}
+	amount, _ := strconv.ParseFloat(s[m[2]:m[3]], 64)
+	n := &types.ReqNode{Type: types.NodeCredits, Amount: amount}
+	n.Designators = desigRe.FindAllString(s[m[4]:m[5]], -1)
+	end := m[1]
+
+	span := qualSpan(s[end:])
+	n.Designators = append(n.Designators, desigRe.FindAllString(span, -1)...)
+	n.Levels = parseLevels(span)
+	end += len(span)
+
+	end += creditSuffixes(s[end:], n)
+	n.Designators = dedupe(n.Designators)
+	return token{kind: tCredits, end: end, node: n}, true
+}
+
+// matchAnyCourse handles "A 300-level CDN course", "Any AST 100-level or AST
+// 200-level course": half a credit matching the designators and levels.
+func matchAnyCourse(s string) (token, bool) {
+	loc := anyCourseHeadRe.FindStringIndex(s)
+	if loc == nil {
+		return token{}, false
+	}
+	span := qualSpan(s[loc[1]:])
+	if !courseWordRe.MatchString(span) {
+		return token{}, false
+	}
+	n := &types.ReqNode{Type: types.NodeCredits, Amount: 0.5}
+	n.Designators = dedupe(desigRe.FindAllString(span, -1))
+	n.Levels = parseLevels(span)
+	if len(n.Designators) == 0 && len(n.Levels) == 0 {
+		return token{}, false // a bare "a course" in prose
+	}
+	end := loc[1] + len(span)
+	end += creditSuffixes(s[end:], n)
+	return token{kind: tCredits, end: end, node: n}, true
+}
+
+// qualSpan returns the run of qualifier vocabulary at the start of s, minus
+// any dangling qualifier words at its end.
+func qualSpan(s string) string {
+	span := qualSpanRe.FindString(s)
+	return trailingQualRe.ReplaceAllString(span, "")
+}
+
+// creditSuffixes consumes value-carrying qualifiers (in any order) after a
+// credit phrase, sets them on n, and returns how many bytes it consumed.
+func creditSuffixes(s string, n *types.ReqNode) int {
+	end := 0
+	for {
+		rest := s[end:]
+		if m := minGradeRe.FindStringSubmatch(rest); m != nil {
+			n.MinGrade, _ = strconv.Atoi(m[1])
+			end += len(m[0])
+		} else if m := excludingRe.FindStringSubmatch(rest); m != nil {
+			n.Exclude = append(n.Exclude, codeRe.FindAllString(m[1]+m[2], -1)...)
+			end += len(m[0])
+		} else if m := anyFieldRe.FindString(rest); m != "" {
+			end += len(m)
+		} else {
+			return end
+		}
+	}
+}
+
+// parseLevels reads course levels from a qualifier span.
+// "300-level" → [300]; "300+ level" / "300-level or higher" → [300 400];
+// "300-/400-level", "300 or 400 level", "200-level or 300-level" → listed levels.
+func parseLevels(span string) []int {
+	var out []int
+	up := orUpRe.MatchString(span)
+	for _, m := range levelRe.FindAllStringSubmatch(span, -1) {
+		lvl, _ := strconv.Atoi(m[1])
+		out = append(out, lvl*100)
+		up = up || m[2] == "+"
+	}
+	if up && len(out) > 0 {
+		for l := slices.Max(out) + 100; l <= 400; l += 100 {
+			out = append(out, l)
+		}
+	}
+	return dedupe(out)
+}
+
+// dedupe removes repeated values, keeping first-seen order.
+func dedupe[T comparable](xs []T) []T {
+	var out []T
+	seen := map[T]bool{}
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
