@@ -8,6 +8,7 @@ func ParseRequisite(raw string) *types.Requisite {
 	r := &types.Requisite{Raw: raw}
 	text, urls := normalize(raw)
 	reqText, notes := extractNotes(text)
+	reqText = rewriteExamples(reqText)
 	r.Notes = append(notes, urls...)
 	if reqText == "" {
 		return r

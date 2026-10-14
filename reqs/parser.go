@@ -1,6 +1,7 @@
 package reqs
 
 import (
+	"regexp"
 	"slices"
 
 	"degree-explorer/types"
@@ -9,12 +10,12 @@ import (
 // Grammar, lowest precedence first:
 //
 //	field := segment { (';' | COND) segment }             AND; COND segments are OR'd together
-//	seq   := alt { (',' | ', and' | 'and' | ', or') alt } AND (', or' → OR), left to right
+//	seq   := alt { (',' | ', and' | 'and' | ', or') alt } AND (', or' -> OR), left to right
 //	alt   := unit { ('/' | 'or') unit }                   OR
-//	unit  := atom { atom }                                adjacency → AND
+//	unit  := atom { atom }                                adjacency -> AND
 //	atom  := COURSE | CREDITS | GPA | TEXT | COND
 //	       | '(' field ')' | GRADE_PREFIX atom | POOL pool
-//	pool  := atom { (',' | ', or' | '/' | 'or') atom }    every separator is OR
+//	pool  := item { sep item }                            see parsePool
 
 type span struct{ start, end int }
 
@@ -54,6 +55,10 @@ func (p *parser) parseField() *types.ReqNode {
 		switch {
 		case p.at(tSemi):
 			p.next()
+			if p.at(tOr) { // "A; or B": an alternative to everything before it
+				p.next()
+				plain = []*types.ReqNode{p.or(p.and(plain...), p.parseSeq())}
+			}
 		case p.at(tCond):
 			body := []*types.ReqNode{p.text(types.KindProgram, p.next())}
 			for !p.done() && !p.at(tCond, tRParen) {
@@ -138,9 +143,13 @@ func (p *parser) parseAtom() *types.ReqNode {
 	case tGradePrefix:
 		var n *types.ReqNode
 		if t.each {
-			n = p.parseSeq()
+			n = p.parseSeq() // "Minimum 70% in required courses: A, B"
 		} else {
-			n = p.parseAtom()
+			n = p.parseAlt() // "minimum of 77% in A/ B"
+		}
+		if n != nil && n.Type == types.NodeCredits && n.MinGrade == 0 {
+			n.MinGrade = t.grade // "at least 68% in 0.5 credit in IRE …"
+			return n
 		}
 		if applyMinGrade(n, t.grade) == 0 {
 			// "70% or higher in introductory statistics": nothing to attach
@@ -155,48 +164,155 @@ func (p *parser) parseAtom() *types.ReqNode {
 	}
 }
 
+// parsePool parses the list after a pool phrase ("one of", "two of",
+// "1.0 credit from:"). If the list uses commas, commas separate items and "/"
+// joins alternatives within an item ("two of A/ B, C, D"); otherwise "/" and
+// "or" separate items ("two of A/ B/ C"). As in English, a plain "," after an
+// ", or" item ends the list ("A, B, or CIN courses, (C/ D)"). "CIN courses" is
+// accepted as an item meaning any course with that designator, and a trailing
+// ", or <text>" ("…, or another ethics course with prior approval") becomes an
+// alternative to the whole pool.
 func (p *parser) parsePool(t token) *types.ReqNode {
-	items := []*types.ReqNode{p.parseAtom()}
-	for p.at(tComma, tCommaOr, tSlash, tOr) && (p.peek(1).kind == tCourse || p.peek(1).kind == tLParen) {
+	n := p.parsePoolList(t)
+	if p.at(tOr, tCommaOr) && p.peek(1).kind == tText && !p.poolItemAt(p.pos+1) {
 		p.next()
-		items = append(items, p.parseAtom())
+		return p.or(n, p.parseAtom())
 	}
-	items = slices.DeleteFunc(items, func(n *types.ReqNode) bool { return n == nil })
+	return n
+}
+
+func (p *parser) parsePoolList(t token) *types.ReqNode {
+	itemSeps := []tokKind{tSlash, tOr}
+	if p.poolUsesCommas() {
+		itemSeps = []tokKind{tComma, tCommaOr}
+	}
+	var items []*types.ReqNode
+	var desigs []string
+	afterCommaOr := false
+	for {
+		item := p.parseAtom()
+		for !slices.Contains(itemSeps, tSlash) && p.at(tSlash, tOr) && p.poolItemAt(p.pos+1) {
+			p.next()
+			item = p.or(item, p.parseAtom())
+		}
+		if d := designatorItem(item); d != nil {
+			desigs = append(desigs, d...)
+		} else if item != nil {
+			items = append(items, item)
+		}
+		if !p.at(itemSeps...) || !p.poolItemAt(p.pos+1) || afterCommaOr && p.at(tComma) {
+			break
+		}
+		afterCommaOr = p.next().kind == tCommaOr
+	}
 
 	switch {
-	case !slices.ContainsFunc(items, hasCourse):
+	case !slices.ContainsFunc(items, hasCourse) && desigs == nil:
 		return p.textSpan("", t.start, p.lastEnd)
-	case t.amount == 0: // "one of"
-		return p.or(items...)
-	case allCourses(items): // "1.0 credit from: A, B, C"
-		n := &types.ReqNode{Type: types.NodeCredits, Amount: t.amount}
+	case t.amount > 0 && allCourses(items): // "1.0 credit from: A, B, C"
+		n := &types.ReqNode{Type: types.NodeCredits, Amount: t.amount, Designators: desigs}
 		for _, it := range items {
 			n.Courses = append(n.Courses, courseCodes(it)...)
 		}
 		p.spans[n] = span{t.start, p.lastEnd}
 		return n
-	case t.amount <= 0.5: // a single half-course from a mixed pool = pick one
+	case t.amount > 0 && t.amount <= 0.5 && desigs == nil: // a single half-course from a mixed pool = pick one
 		return p.or(items...)
-	default: // a bigger amount from a mixed pool isn't expressible
+	case t.amount > 0: // a bigger amount from a mixed pool isn't expressible
 		return p.textSpan("", t.start, p.lastEnd)
 	}
+
+	if desigs != nil {
+		n := &types.ReqNode{Type: types.NodeCredits, Amount: 0.5, Designators: desigs}
+		p.spans[n] = span{t.start, p.lastEnd}
+		items = append(items, n)
+	}
+	if t.count <= 1 {
+		return p.or(items...)
+	}
+	if t.count >= len(items) { // "two of A, B" means both
+		return p.and(items...)
+	}
+	n := &types.ReqNode{Type: types.NodeChoose, Count: t.count, Items: items}
+	p.spans[n] = span{t.start, p.lastEnd}
+	return n
 }
 
-// applyMinGrade sets MinGrade on every course and credits node under n that
-// doesn't have one, and returns how many nodes it touched.
+// poolUsesCommas looks ahead through the pool list and reports whether
+// commas separate its items.
+func (p *parser) poolUsesCommas() bool {
+	depth := 0
+	for i := p.pos; i < len(p.toks); i++ {
+		switch k := p.toks[i].kind; {
+		case k == tLParen:
+			depth++
+		case k == tRParen:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case depth > 0 || k == tCourse || k == tSlash || k == tOr:
+		case k == tComma || k == tCommaOr:
+			return p.poolItemAt(i + 1)
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// poolItemAt reports whether the token at i can start a pool item.
+func (p *parser) poolItemAt(i int) bool {
+	if i >= len(p.toks) {
+		return false
+	}
+	t := p.toks[i]
+	return t.kind == tCourse || t.kind == tLParen ||
+		t.kind == tText && desigItemRe.MatchString(p.src[t.start:t.end])
+}
+
+// desigItemRe matches a pool item naming a designator: "CIN courses".
+var desigItemRe = regexp.MustCompile(`^(?i:any\s+)?([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\s+(?i:courses?)$`)
+
+// designatorItem returns the designators of a "CIN courses" item, else nil.
+func designatorItem(n *types.ReqNode) []string {
+	if n == nil || n.Type != types.NodeText {
+		return nil
+	}
+	m := desigItemRe.FindStringSubmatch(n.Text)
+	if m == nil {
+		return nil
+	}
+	return desigRe.FindAllString(m[1], -1)
+}
+
+// applyMinGrade sets MinGrade on every course under n that doesn't have one,
+// and returns how many courses it touched. It skips credit pools ("Minimum 70%
+// in required courses: A, B, 0.5 credit from …") and groups that carry grades
+// of their own ("minimum of 70% in A/ (minimum of 85% in B, C)").
 func applyMinGrade(n *types.ReqNode, grade int) int {
 	if n == nil {
 		return 0
 	}
-	count := 0
-	if (n.Type == types.NodeCourse || n.Type == types.NodeCredits) && n.MinGrade == 0 {
-		n.MinGrade = grade
-		count++
+	if n.Type == types.NodeCourse {
+		if n.MinGrade == 0 {
+			n.MinGrade = grade
+			return 1
+		}
+		return 0
 	}
+	count := 0
 	for _, it := range n.Items {
+		if it.Type != types.NodeCourse && hasGrade(it) {
+			continue
+		}
 		count += applyMinGrade(it, grade)
 	}
 	return count
+}
+
+func hasGrade(n *types.ReqNode) bool {
+	return n.MinGrade > 0 || slices.ContainsFunc(n.Items, hasGrade)
 }
 
 func hasCourse(n *types.ReqNode) bool {

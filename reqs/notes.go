@@ -10,9 +10,14 @@ var (
 	parenNoteRe   = regexp.MustCompile(`(?i)\(\s*note\b[^()]*\)`)
 	recommendedRe = regexp.MustCompile(`(?i)\brecommended\b`)
 
-	contactRe   = regexp.MustCompile(`(?i)encouraged|\bcontact\b|\bconsult\b|\bvisit\b|\bemail\b|may be required|strongly recommended`)
+	// noteBreakRe finds a "NOTE:"/"Notes:" that starts mid-sentence, so it can
+	// become a sentence of its own.
+	noteBreakRe = regexp.MustCompile(`[\s,;]*\s(NOTES?|Notes?):`)
+
+	contactRe   = regexp.MustCompile(`(?i)encouraged|\bcontact\b|\bconsult\b|\bvisit\b|\bemail\b|may be required|strongly recommended|can be combined|not accepted|do(?:es)? not provide|not be taken concurrently|\bwaiver\b`)
 	mandatoryRe = regexp.MustCompile(`(?i)\b(must|only|required)\b`)
-	advStartRe  = regexp.MustCompile(`(?i)^(students\b|note\b|please\b|this course\b|it is\b|priority\b|further prerequisites\b)`)
+	noteStartRe = regexp.MustCompile(`(?i)^notes?\s*:`)
+	advStartRe  = regexp.MustCompile(`(?i)^(students\b|notes?\b|please\b|this course\b|it is\b|priority\b|further prerequisites\b)`)
 )
 
 // abbreviations whose trailing "." does not end a sentence.
@@ -27,6 +32,7 @@ func extractNotes(s string) (req string, notes []string) {
 		notes = append(notes, cleanNote(m[1:len(m)-1]))
 	}
 	s = parenNoteRe.ReplaceAllString(s, "")
+	s = noteBreakRe.ReplaceAllString(s, ". $1:")
 
 	var reqs []string
 	for _, sentence := range splitSentences(s) {
@@ -54,8 +60,8 @@ func extractNotes(s string) (req string, notes []string) {
 
 // isAdvisory reports whether a sentence is advice rather than a requirement.
 func isAdvisory(sentence string) bool {
-	if contactRe.MatchString(sentence) {
-		return true // "Students who do not meet … are encouraged to contact …"
+	if contactRe.MatchString(sentence) || noteStartRe.MatchString(sentence) {
+		return true // "Students who do not meet … are encouraged to contact …", "Notes: …"
 	}
 	if mandatoryRe.MatchString(sentence) {
 		return false // "Open only to students enrolled in …"

@@ -35,6 +35,9 @@ func jCG(code string, grade int) string {
 }
 func jAnd(items ...string) string { return `{"type":"and","items":[` + strings.Join(items, ",") + `]}` }
 func jOr(items ...string) string  { return `{"type":"or","items":[` + strings.Join(items, ",") + `]}` }
+func jChoose(count int, items ...string) string {
+	return fmt.Sprintf(`{"type":"choose","count":%d,"items":[%s]}`, count, strings.Join(items, ","))
+}
 
 // jT builds a text node; kind "" means "not classified yet".
 func jT(kind, text string) string {

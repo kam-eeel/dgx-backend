@@ -30,5 +30,6 @@ type token struct {
 	node       *types.ReqNode // prebuilt leaf for course / credits / gpa
 	grade      int            // tGradePrefix
 	each       bool           // tGradePrefix: "in each of"
-	amount     float64        // tPool: 0 for "one of"
+	amount     float64        // tPool: credit amount ("1.0 credit from:"), else 0
+	count      int            // tPool: how many items ("one of" = 1, "two of" = 2)
 }

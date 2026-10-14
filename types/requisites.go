@@ -11,6 +11,7 @@ type NodeType string
 const (
 	NodeAnd     NodeType = "and"
 	NodeOr      NodeType = "or"
+	NodeChoose  NodeType = "choose" // at least Count of Items
 	NodeCourse  NodeType = "course"
 	NodeCredits NodeType = "credits"
 	NodeGPA     NodeType = "gpa"
@@ -31,12 +32,16 @@ const (
 type ReqNode struct {
 	Type NodeType `json:"type"`
 
-	Items []*ReqNode `json:"items,omitempty"` // and, or
+	Items []*ReqNode `json:"items,omitempty"` // and, or, choose
+	Count int        `json:"count,omitempty"` // choose
 
 	Code     string `json:"code,omitempty"`      // course
 	MinGrade int    `json:"min_grade,omitempty"` // course, credits (0 = none)
 
-	Amount      float64  `json:"amount,omitempty"` // credits
+	// credits: a course counts if it is in Courses or has one of the
+	// Designators (when both are set, either is enough), and also passes
+	// Levels, Breadth, Exclude and MinGrade.
+	Amount      float64  `json:"amount,omitempty"`
 	Designators []string `json:"designators,omitempty"`
 	Levels      []int    `json:"levels,omitempty"`
 	Breadth     []int    `json:"breadth,omitempty"`

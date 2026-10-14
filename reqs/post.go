@@ -9,13 +9,14 @@ import (
 )
 
 var (
-	noiseRe = regexp.MustCompile(`(?i)^\W*(and|or|the|of|courses?)?\W*$`)
+	noiseRe = regexp.MustCompile(`(?i)^\W*(a|an|and|or|the|of|courses?)?\W*$`)
 
 	// kindRules: the first rule that matches decides a text node's kind.
 	kindRules = []struct {
 		kind types.TextKind
 		re   *regexp.Regexp
 	}{
+		{types.KindPlacement, regexp.MustCompile(`(?i)^placement\s+in\b`)}, // "Placement in FSL420H1 ... or by Department permission"
 		{types.KindPermission, regexp.MustCompile(`(?i)permission|approval|approved by|consent|ballot|application|interview|audition|portfolio|selection|supervis|discretion|by arrangement`)},
 		{types.KindProgram, regexp.MustCompile(`(?i)admission|admitted|enrol|registered|accepted into|\b(specialist|major|minor|program|programme)\b|\bAS(MAJ|SPE|MIN|FOC|CER)\d{4}|[A-Z]\w+ One\b`)},
 		{types.KindPlacement, regexp.MustCompile(`(?i)placement|\btest\b|assessment|proficien|fluen|native|knowledge of|formal education`)},
@@ -39,6 +40,11 @@ func (p *parser) post(n *types.ReqNode) *types.ReqNode {
 			items[i] = p.post(items[i])
 		}
 		return p.combine(n.Type, dedupeNodes(items))
+	case types.NodeChoose:
+		for i := range n.Items {
+			n.Items[i] = p.post(n.Items[i])
+		}
+		n.Items = dedupeNodes(n.Items)
 	}
 	return n
 }
