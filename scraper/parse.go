@@ -181,11 +181,7 @@ func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	}
 
 	courses := parseDir(cfg.CoursesDir, parseCourses)
-	idx := reqs.NewProgramIndex(programs)
-	for _, c := range courses {
-		idx.Resolve(c.Prerequisites)
-		idx.Resolve(c.Corequisites)
-	}
+	reqs.Link(courses, programs)
 	if err := db.CreateCourses(ctx, courses); err != nil {
 		return err
 	}

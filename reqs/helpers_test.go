@@ -46,3 +46,12 @@ func jT(kind, text string) string {
 	}
 	return fmt.Sprintf(`{"type":"text","kind":%q,"text":%q}`, kind, text)
 }
+
+// jP builds a program node: unresolved without codes, resolved with them.
+func jP(text string, codes ...string) string {
+	if len(codes) == 0 {
+		return fmt.Sprintf(`{"type":"program","text":%q}`, text)
+	}
+	b, _ := json.Marshal(codes)
+	return fmt.Sprintf(`{"type":"program","programs":%s,"text":%q}`, b, text)
+}

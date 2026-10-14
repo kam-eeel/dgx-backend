@@ -94,7 +94,8 @@ var (
 		`recommended|encouraged|years?|status|only|if|invitation|admission|admitted|accepted|guaranteed|requirements?|` +
 		`streams?|faculty|college|school|campus|rotman|commerce|engineering|utm|utsc|courses?|credits?|completion|` +
 		`completed|students?|who|have|permission|approval)\b`)
-	progOneRe = regexp.MustCompile(`\b[A-Z]\w+\s+One\b`) // "Vic One"
+	progOnlyIfRe = regexp.MustCompile(`^(.+?)\s+(only\s+if\s+.+)$`)
+	progOneRe    = regexp.MustCompile(`\b[A-Z]\w+\s+One\b`) // "Vic One"
 
 	// A bare "in the X program" is enrolment only right after "student" or
 	// "status": "enrolled as a Year 4 student in the Pharmaceutical Chemistry
@@ -385,6 +386,15 @@ func (p *parser) programNodes(n *types.ReqNode) *types.ReqNode {
 	}
 	if ref, ok := parseProgramRef(n.Text); ok && ref.accepts(ctx) {
 		*n = types.ReqNode{Type: types.NodeProgram, Text: n.Text, Programs: ref.codes}
+	} else if m := progOnlyIfRe.FindStringSubmatch(n.Text); m != nil {
+		// "Active in ASMAJ1618 only if enrolling in the Fall/Winter
+		// session": the program, or else the condition may not apply.
+		if ref, ok := parseProgramRef(m[1]); ok && ref.accepts(ctx) {
+			*n = types.ReqNode{Type: types.NodeOr, Items: []*types.ReqNode{
+				{Type: types.NodeProgram, Text: m[1], Programs: ref.codes},
+				{Type: types.NodeText, Kind: types.KindOther, Text: m[2]},
+			}}
+		}
 	}
 	return n
 }

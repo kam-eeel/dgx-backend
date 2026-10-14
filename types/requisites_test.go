@@ -13,7 +13,10 @@ func TestRequisiteRoundTrip(t *testing.T) {
 			{Type: NodeCourse, Code: "CSC108H1", MinGrade: 70},
 			{Type: NodeText, Kind: KindPermission, Text: "permission of instructor"},
 			{Type: NodeProgram, Programs: []string{"ASMAJ1618", "ASMIN1254"}, Text: "Enrolment in ASMAJ1618/ASMIN1254"},
+			{Type: NodeCourse, Code: "MAT257Y1", Concurrent: true},
 			{Type: NodeCredits, Max: 14, Designators: []string{"CSC"}},
+			{Type: NodeAverage, MinGrade: 77, Amount: 3, Designators: []string{"HIS"}, Levels: []int{200, 300, 400}, Exclude: []string{"HIS262H1"}},
+			{Type: NodeAverage, MinGrade: 80, Courses: []string{"MAT235H1", "MAT236H1"}},
 		}},
 		Notes: []string{"Students are encouraged to contact the department"},
 	}
@@ -41,6 +44,7 @@ func TestExclusionsRoundTrip(t *testing.T) {
 			{Codes: []string{"MAT137Y1"}},
 			{Codes: []string{"MAT137H5", "MAT139H5"}},
 			{Codes: []string{"RSM410H1"}, Note: "offered in Winter 2010"},
+			{Codes: []string{"FSL312H1"}, Concurrent: true},
 			{Designators: []string{"FSL"}, Levels: []int{200, 300, 400}},
 			{Designators: []string{"CSC"}, Exclude: []string{"CSC196H1"}, Note: "except AP Transfer Credits"},
 			{Kind: KindPlacement, Text: "native speakers"},

@@ -77,11 +77,11 @@ var reqGoldens2 = []struct{ name, raw, want string }{
 	{"a CGPA of at least, then permission", "a CGPA of at least 3.0 and permission of the Undergraduate Coordinator",
 		jAnd(`{"type":"gpa","min":3}`, jT("permission", "permission of the Undergraduate Coordinator"))},
 	{"letter average", "at least 3.0 BMS credits with at least a B+ average",
-		jAnd(`{"type":"credits","amount":3,"designators":["BMS"]}`, `{"type":"gpa","min":3.3,"scope":"BMS courses"}`)},
+		`{"type":"average","amount":3,"designators":["BMS"],"min_grade":77}`},
 	{"letter average without designators stays text", "2.0 credits with a B+ average",
 		jAnd(`{"type":"credits","amount":2}`, jT("other", "with a B+ average"))},
-	{"percent average stays text", "a 77% average in 3.0 HIS credits",
-		jAnd(jT("other", "a 77% average in"), `{"type":"credits","amount":3,"designators":["HIS"]}`)},
+	{"percent average", "a 77% average in 3.0 HIS credits",
+		`{"type":"average","amount":3,"designators":["HIS"],"min_grade":77}`},
 
 	// year standing
 	{"must be in ordinal year", "A student must be in third or fourth year.", `{"type":"credits","amount":9}`},

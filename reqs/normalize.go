@@ -54,6 +54,7 @@ func normalize(s string) (out string, notes []string) {
 	s = spacedCode.ReplaceAllString(s, "$1$2")
 	s = footnoteRe.ReplaceAllString(s, "$1")
 	s = garbledRe.ReplaceAllString(s, "$1")
+	s = repairCodes(s)
 	for _, m := range annotationRe.FindAllString(s, -1) {
 		notes = append(notes, cleanNote(m[1:len(m)-1]))
 	}
@@ -76,6 +77,45 @@ func normalize(s string) (out string, notes []string) {
 
 	s = strings.TrimSpace(wsRe.ReplaceAllString(s, " "))
 	return rewriteEnumerations(s), notes
+}
+
+var (
+	doubledRe     = regexp.MustCompile(`\b([A-Z]{3}[A-Z0-9]\d{2}[HY])(\d)(\d)\b`)                                       // HIS322H11 (source typo)
+	sessionCodeRe = regexp.MustCompile(`\b(` + codePat + `)[FSY]\b`)                                                    // BMS301H1S, WGS160Y1Y: ACORN session letter
+	noCampusRe    = regexp.MustCompile(`\b([A-Z]{3}\d{3}[HY])\b`)                                                       // MAT148H, LAS200Y (source typo)
+	seriesRe      = regexp.MustCompile(`(?:\b(?i:an?|any|one)\s+)?\b([A-Z]{3})([1-4]00)-series\b(\s+(?i:courses?)\b)?`) // MAT100-series
+)
+
+// repairCodes fixes course codes the catalogue misprints, but only where the
+// repair can't be anything else:
+//   - a doubled campus digit ("HIS322H11" -> "HIS322H1");
+//   - an ACORN session letter glued on ("BMS301H1S", "WGS160Y1Y" -> drop it);
+//   - a missing campus digit on a St. George-style code ("MAT148H" ->
+//     "MAT148H1"): this is the Arts & Science catalogue, which always writes
+//     the campus out for UTM (H5) and UTSC (letter codes, H3) courses;
+//   - "MAT100-series" -> "a 100-level MAT course" (half a credit; with "/"
+//     it stays an alternative). The plural "MAT100-series courses" doesn't
+//     say how many, so it is left alone.
+//
+// A code missing its H/Y ("MAT1581") isn't repaired: it has the same shape as
+// a section code ("LEC0101") and can't tell H from Y. Graduate codes
+// ("CSC2527H") are left as they are and become course tokens later.
+func repairCodes(s string) string {
+	s = doubledRe.ReplaceAllStringFunc(s, func(m string) string {
+		if g := doubledRe.FindStringSubmatch(m); g[2] == g[3] {
+			return g[1] + g[2]
+		}
+		return m
+	})
+	s = sessionCodeRe.ReplaceAllString(s, "$1")
+	s = noCampusRe.ReplaceAllString(s, "${1}1")
+	return seriesRe.ReplaceAllStringFunc(s, func(m string) string {
+		g := seriesRe.FindStringSubmatch(m)
+		if strings.HasSuffix(strings.ToLower(g[3]), "s") {
+			return m
+		}
+		return "a " + g[2] + "-level " + g[1] + " course"
+	})
 }
 
 // rewriteExamples turns "A statistics course (e.g. PSY201H1, SOC202H1)" into

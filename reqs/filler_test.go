@@ -85,7 +85,7 @@ func TestFillerEnvelope(t *testing.T) {
 		{"CSC108H1/  CSC110Y1/  CSC148H1 *Note: the corequisite may be completed either concurrently or in advance.",
 			`{"req":` + jOr(jC("CSC108H1"), jC("CSC110Y1"), jC("CSC148H1")) + `,"notes":["Note: the corequisite may be completed either concurrently or in advance"]}`},
 		{"MAT237Y1/  MAT257Y1 ( MAT257Y1 can be taken concurrently)",
-			`{"req":` + jOr(jC("MAT237Y1"), jC("MAT257Y1")) + `,"notes":["MAT257Y1 can be taken concurrently"]}`},
+			`{"req":` + jOr(jC("MAT237Y1"), `{"type":"course","code":"MAT257Y1","concurrent":true}`) + `,"notes":["MAT257Y1 can be taken concurrently"]}`},
 		{"BCH210H1/ BCH242Y1. This is a problem-solving course and will require use of skills from introductory physics.",
 			`{"req":` + jOr(jC("BCH210H1"), jC("BCH242Y1")) + `,"notes":["This is a problem-solving course and will require use of skills from introductory physics"]}`},
 		{"URB235H1,  URB236H1. However, consideration may be given to students with suitable course background.",

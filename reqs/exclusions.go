@@ -68,8 +68,11 @@ func ParseExclusions(raw string) *types.Exclusions {
 	text = noteBreakRe.ReplaceAllString(text, ". $1:") // "CSCD27H3 NOTE: ..."
 
 	var parts []string
+	var timing []types.ExclusionItem
 	for _, s := range splitSentences(text) {
-		if isAdvisory(s) {
+		if items := timingItems(s); items != nil {
+			timing = append(timing, items...) // "May not be taken concurrently with …"
+		} else if isAdvisory(s) {
 			e.Notes = append(e.Notes, s)
 		} else if s = rewriteExclusion(s); s != "" {
 			parts = append(parts, s)
@@ -124,6 +127,9 @@ func ParseExclusions(raw string) *types.Exclusions {
 		}
 	}
 	flush()
+	for _, it := range timing {
+		add(it)
+	}
 	return e
 }
 
@@ -146,7 +152,7 @@ func rewriteExclusion(s string) string {
 // itemKey identifies an item for deduping; the note doesn't count.
 func itemKey(it types.ExclusionItem) string {
 	return fmt.Sprint(slices.Sorted(slices.Values(it.Codes)), it.Designators, it.Levels,
-		slices.Sorted(slices.Values(it.Exclude)), it.Text)
+		slices.Sorted(slices.Values(it.Exclude)), it.Concurrent, it.Text)
 }
 
 // gradCodes turns text tokens that are a whole graduate course code into

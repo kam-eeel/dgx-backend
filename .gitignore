@@ -2,3 +2,7 @@ data
 data-backup
 *.html
 *.db*
+docs
+**/testdata
+reqs/corpus_test.go
+reqs/programs_test.go

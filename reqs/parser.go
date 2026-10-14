@@ -135,8 +135,12 @@ func (p *parser) parseAlt() *types.ReqNode {
 
 func (p *parser) parseUnit() *types.ReqNode {
 	nodes := []*types.ReqNode{p.parseAtom()}
-	for p.atAtomStart() || p.at(tGradeSuffix) && !p.peek(0).each {
+	for p.atAtomStart() || p.at(tGradeSuffix) && !p.peek(0).each || p.at(tAvgSuffix) {
 		last := nodes[len(nodes)-1]
+		if p.at(tAvgSuffix) { // "( A, B) (average of both must be 80%)"
+			nodes = append(nodes, p.applyAvgSuffix(last, p.next()))
+			continue
+		}
 		if p.at(tGradeSuffix) {
 			// A grade after something other than a course or a group
 			// ("MAT (55%)"): it belongs to that item only.
@@ -183,6 +187,8 @@ func (p *parser) parseAtom() *types.ReqNode {
 		return n
 	case tGradeSuffix:
 		return p.text("", t) // nothing before it to attach to
+	case tAvgSuffix:
+		return p.avgText(t)
 	case tGradePrefix:
 		var n *types.ReqNode
 		if t.each {

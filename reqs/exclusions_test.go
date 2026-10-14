@@ -56,7 +56,7 @@ func TestParseExclusions(t *testing.T) {
 			`[{"codes":["CSC347H5"]},{"codes":["CSCD27H3"]}]`, `["NOTE: Students not enrolled in the Computer Science Major are limited to 1.5 credits"]`},
 		{"graduate codes", "PHM320H1, PHM1124H", `[{"codes":["PHM320H1"]},{"codes":["PHM1124H"]}]`, `null`},
 		{"graduate code with bracketed qualifier", "CRI3256H (when offered as a joint course)", `[{"codes":["CRI3256H"],"note":"(when offered as a joint course)"}]`, `null`},
-		{"section and session codes", "BMS301H1S LEC0201 20261.", `[{"codes":["BMS301H1"],"note":"S LEC0201 20261"}]`, `null`},
+		{"section and session codes", "BMS301H1S LEC0201 20261.", `[{"codes":["BMS301H1"],"note":"LEC0201 20261"}]`, `null`},
 		{"if clause", "LIN479H5 or  LINC61H3 if the same language was analyzed.",
 			`[{"codes":["LIN479H5"]},{"codes":["LINC61H3"],"note":"if the same language was analyzed"}]`, `null`},
 		{"unbracketed title", "WGS335H1 Women and Revolution in the Middle East", `[{"codes":["WGS335H1"],"note":"Women and Revolution in the Middle East"}]`, `null`},

@@ -4,14 +4,13 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 
 	"degree-explorer/types"
 )
 
 // Value-carrying qualifier wordings: minimum grades ("(minimum 70%)", "with a
 // minimum mark of 73", "(B or higher)"), breadth categories ("in BR=1/ 2",
-// "(SOC SCI/BR=3)"), letter-grade averages and year-of-study phrases.
+// "(SOC SCI/BR=3)") and year-of-study phrases.
 
 var (
 	// The body of a minimum-grade qualifier. Which words are present decides
@@ -30,9 +29,6 @@ var (
 	averageRe    = regexp.MustCompile(`^\s+(?i:average)\b`)
 	inWordRe     = regexp.MustCompile(`^\s*(?i:in)\b`)
 	decimalRe    = regexp.MustCompile(`^\.\d`)
-
-	// "with at least a B+ average" after a credit phrase.
-	letterAverageRe = regexp.MustCompile(`^\s*,?\s*(?i:with\s+(?:at\s+least\s+)?(?:an?\s+)?)([A-D][+-]?)\s+(?i:average)\b`)
 
 	// A list of breadth categories: "BR=1/ 2/ 3", "BR 1 or BR 2", "Breadth
 	// Requirement 1 or 2", "breadth requirement (BR) category of 4 or 5",
@@ -176,18 +172,6 @@ func breadthNums(s string) []int {
 		out = append(out, v)
 	}
 	return dedupe(out)
-}
-
-// averageSuffix turns "<credits> with at least a B+ average" into the credit
-// requirement plus a GPA over courses with the same designators. It returns
-// nil when the credits name no designators (the average would have no scope).
-func averageSuffix(s string, n *types.ReqNode) (*types.ReqNode, int) {
-	m := letterAverageRe.FindStringSubmatch(s)
-	if m == nil || len(n.Designators) == 0 || wordCharRe.MatchString(s[len(m[0]):]) {
-		return nil, 0
-	}
-	gpa := &types.ReqNode{Type: types.NodeGPA, Min: letterGPA[m[1]], Scope: strings.Join(n.Designators, " and ") + " courses"}
-	return &types.ReqNode{Type: types.NodeAnd, Items: []*types.ReqNode{n, gpa}}, len(m[0])
 }
 
 // matchYearIn handles year standing said as "in <ordinal> year".

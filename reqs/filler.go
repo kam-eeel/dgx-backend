@@ -39,13 +39,9 @@ var (
 	// Campus tags after a code repeat what its suffix already says:
 	// "BIOC12H3(UTSC)", "BIOC13H3 [UTSC]".
 	campusTagRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*(?:UTSC|UTM|UTSG)\s*\)`)
-	// A session letter glued to a code: "WGS160Y1Y", "EEB488H1Y".
-	sessionRe = regexp.MustCompile(`\b(` + codePat + `)[FSY]\b`)
 	// "... to be eligible for 300-level Independent Research" states the
 	// purpose of the requirement, not a further condition.
 	eligibleRe = regexp.MustCompile(`(?i)[\s,]*\b(?:in\s+order\s+)?to\s+be\s+eligible\s+for\b[^.;]*`)
-	// "(MAT257Y1 can be taken concurrently)" is advice about timing.
-	concurrentRe = regexp.MustCompile(`(?i)\(([^()]*\b(?:can|may)\s+be\s+taken\s+concurrently)\s*\)`)
 	// "(must) have taken 10.0 credits" -> "completed 10.0 credits", which the
 	// credit phrase understands. "who have completed ..." is left alone.
 	haveTakenRe = regexp.MustCompile(`(?i)(\bwho\s+)?\b(?:students\s+)?(?:must\s+)?have\s+(?:completed|taken)\s+((?:at\s+least\s+)?\d)`)
@@ -55,20 +51,14 @@ var (
 	creditCopulaRe = regexp.MustCompile(`\b(\d+\.\d+(?:\s+[A-Z]{3})?(?:\s+(?i:credits?))?)(\s+(?i:of\s+which))?\s+(?i:is|are|(?:must|should|needs?\s+to)\s+be)\s+(?i:an?\s+)?`)
 )
 
-// stripFiller removes campus tags and session letters from codes, drops
-// filler verbs around credit phrases, and moves eligibility clauses and
-// "(X can be taken concurrently)" to notes.
+// stripFiller removes campus tags from codes, drops filler verbs around
+// credit phrases, and moves eligibility clauses to notes.
 func stripFiller(s string, notes *[]string) string {
 	s = campusTagRe.ReplaceAllString(s, "$1")
-	s = sessionRe.ReplaceAllString(s, "$1")
 	for _, m := range eligibleRe.FindAllString(s, -1) {
 		*notes = append(*notes, cleanNote(strings.TrimLeft(m, " ,")))
 	}
 	s = eligibleRe.ReplaceAllString(s, "")
-	for _, m := range concurrentRe.FindAllStringSubmatch(s, -1) {
-		*notes = append(*notes, cleanNote(m[1]))
-	}
-	s = concurrentRe.ReplaceAllString(s, "")
 	s = haveTakenRe.ReplaceAllStringFunc(s, func(m string) string {
 		p := haveTakenRe.FindStringSubmatch(m)
 		if p[1] != "" {
