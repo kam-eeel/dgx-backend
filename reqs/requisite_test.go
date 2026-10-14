@@ -65,9 +65,9 @@ var reqGoldens = []struct{ name, raw, want string }{
 	{"ANT456H1", "ANT207H1 and any 300-level course in Society",
 		jAnd(jC("ANT207H1"), `{"type":"credits","amount":0.5,"levels":[300]}`, jT("other", "in Society"))},
 	{"EUR495H1", "Open only to students enrolled in the European Studies Major Program. Third and Fourth year students only.",
-		jAnd(jT("program", "Open only to students enrolled in the European Studies Major Program"), `{"type":"credits","amount":9}`)},
+		jAnd(jP("Open only to students enrolled in the European Studies Major Program"), `{"type":"credits","amount":9}`)}, // names resolved later by ResolvePrograms
 	{"NMC499Y1", "4th year status in NMC Specialist program",
-		jAnd(`{"type":"credits","amount":14}`, jT("program", "in NMC Specialist program"))},
+		jAnd(`{"type":"credits","amount":14}`, jP("in NMC Specialist program"))},
 
 	// GPA
 	{"APM396H1", "Minimum GPA 3.5 for APM and MAT courses, permission of the Associate Chair for Undergraduate Studies and of the prospective supervisor.",
@@ -110,7 +110,7 @@ var reqGoldens = []struct{ name, raw, want string }{
 
 	// wording variants found by the corpus report
 	{"CHM338H1 plus sign", "CHM236H1 +  CHM237H1 with a minimum grade of 68% in each course.",
-		jAnd(jC("CHM236H1"), jCG("CHM237H1", 68))},
+		jAnd(jCG("CHM236H1", 68), jCG("CHM237H1", 68))},
 	{"or greater", "75% or greater in  CSC336H1/ 75% or greater in  CSC338H5/ equivalent mathematical background",
 		jOr(jCG("CSC336H1", 75), jCG("CSC338H5", 75), jT("preparation", "equivalent mathematical background"))},
 	{"minimum of N% in", "(minimum of 77% in  MAT130H1/  MAT135H1 and  MAT136H1)",
@@ -227,7 +227,7 @@ var reqGoldens = []struct{ name, raw, want string }{
 			jAnd(jT("program", "For KPE students"), jC("ANA124H1"), jC("ANA125H1"), jC("ANA126Y1")),
 			jAnd(jT("program", "For Arts & Science students"), jOr(jCG("ANA300Y1", 78), jT("preparation", "equivalent"))))},
 	{"RSM433H1 capitalized labels", "Rotman Commerce:  RSM333H1; Actuarial Science:  ACT349H1",
-		jOr(jAnd(jT("program", "Rotman Commerce"), jC("RSM333H1")), jAnd(jT("program", "Actuarial Science"), jC("ACT349H1")))},
+		jOr(jAnd(jT("program", "Rotman Commerce"), jC("RSM333H1")), jAnd(jP("Actuarial Science"), jC("ACT349H1")))},
 	{"CSC311H1-style engineering branch", "CSC207H1/  CSCB07H3;  MAT223H1/  MAT240H1 Prerequisite for Faculty of Applied Science and Engineering students: APS105H1/ ESC180H1; MAT185H1",
 		jOr(
 			jAnd(jOr(jC("CSC207H1"), jC("CSCB07H3")), jOr(jC("MAT223H1"), jC("MAT240H1"))),
@@ -291,6 +291,7 @@ func TestClassify(t *testing.T) {
 		"High school math":                                      types.KindPreparation,
 		"equivalent programming experience":                     types.KindPreparation,
 		"in Society":                                            types.KindOther,
+		"Any one of the following":                              types.KindOther,
 		"Placement in FSL420H1 or higher through the French Placement Test or by Department permission": types.KindPlacement,
 		"Placement audition and permission of the Department required":                                  types.KindPermission,
 	} {

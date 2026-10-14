@@ -83,18 +83,45 @@ func (p *parser) parseField() *types.ReqNode {
 
 func (p *parser) parseSeq() *types.ReqNode {
 	left := p.parseAlt()
+	last := left
 	for {
 		switch {
 		case p.at(tComma, tCommaAnd, tAnd):
 			p.next()
-			left = p.and(left, p.parseAlt())
+			last = p.parseAlt()
+			left = p.and(left, last)
 		case p.at(tCommaOr):
 			p.next()
-			left = p.or(left, p.parseAlt())
+			last = p.parseAlt()
+			left = p.or(left, last)
+		case p.at(tGradeSuffix):
+			// "A + B with a minimum grade of 68% in each course" covers the
+			// whole list; without "each" only the item just before it.
+			t := p.next()
+			target := last
+			if t.each {
+				target = left
+			}
+			left = p.and(left, p.applyGradeSuffix(target, t))
 		default:
 			return left
 		}
 	}
+}
+
+// applyGradeSuffix sets a trailing grade qualifier on n with the
+// applyMinGrade rules. If there is nothing to attach it to, the qualifier is
+// returned as text.
+func (p *parser) applyGradeSuffix(n *types.ReqNode, t token) *types.ReqNode {
+	if n != nil && n.Type == types.NodeCredits {
+		if n.MinGrade == 0 {
+			n.MinGrade = t.grade
+			return nil
+		}
+	} else if applyMinGrade(n, t.grade) > 0 {
+		return nil
+	}
+	return p.text("", t)
 }
 
 func (p *parser) parseAlt() *types.ReqNode {
@@ -108,10 +135,21 @@ func (p *parser) parseAlt() *types.ReqNode {
 
 func (p *parser) parseUnit() *types.ReqNode {
 	nodes := []*types.ReqNode{p.parseAtom()}
-	for p.atAtomStart() {
+	for p.atAtomStart() || p.at(tGradeSuffix) && !p.peek(0).each {
 		last := nodes[len(nodes)-1]
+		if p.at(tGradeSuffix) {
+			// A grade after something other than a course or a group
+			// ("MAT (55%)"): it belongs to that item only.
+			t := p.next()
+			if last != nil && last.Type == types.NodeText && last.Kind == "" {
+				p.extendText(last, t)
+			} else {
+				nodes = append(nodes, p.applyGradeSuffix(last, t))
+			}
+			continue
+		}
 		// Unclassified TEXT followed directly by COURSE/TEXT: the course is
-		// mentioned, not required ("placement in FSL220H1 based on …"), so
+		// mentioned, not required ("placement in FSL220H1 based on ..."), so
 		// grow the text node instead.
 		if last != nil && last.Type == types.NodeText && last.Kind == "" && p.at(tCourse, tText) {
 			p.extendText(last, p.next())
@@ -138,8 +176,13 @@ func (p *parser) parseAtom() *types.ReqNode {
 		n := p.parseField()
 		if p.at(tRParen) { // tolerate a missing ")"
 			p.next()
+			if p.at(tGradeSuffix) { // "( A, B) with a minimum grade of 68% in each"
+				return p.and(n, p.applyGradeSuffix(n, p.next()))
+			}
 		}
 		return n
+	case tGradeSuffix:
+		return p.text("", t) // nothing before it to attach to
 	case tGradePrefix:
 		var n *types.ReqNode
 		if t.each {
@@ -148,7 +191,7 @@ func (p *parser) parseAtom() *types.ReqNode {
 			n = p.parseAlt() // "minimum of 77% in A/ B"
 		}
 		if n != nil && n.Type == types.NodeCredits && n.MinGrade == 0 {
-			n.MinGrade = t.grade // "at least 68% in 0.5 credit in IRE …"
+			n.MinGrade = t.grade // "at least 68% in 0.5 credit in IRE ..."
 			return n
 		}
 		if applyMinGrade(n, t.grade) == 0 {
@@ -160,7 +203,7 @@ func (p *parser) parseAtom() *types.ReqNode {
 	case tPool:
 		return p.parsePool(t)
 	default:
-		return nil // stray operator ("…, and including …"); constructors drop nils
+		return nil // stray operator ("..., and including ..."); constructors drop nils
 	}
 }
 
@@ -170,7 +213,7 @@ func (p *parser) parseAtom() *types.ReqNode {
 // "or" separate items ("two of A/ B/ C"). As in English, a plain "," after an
 // ", or" item ends the list ("A, B, or CIN courses, (C/ D)"). "CIN courses" is
 // accepted as an item meaning any course with that designator, and a trailing
-// ", or <text>" ("…, or another ethics course with prior approval") becomes an
+// ", or <text>" ("..., or another ethics course with prior approval") becomes an
 // alternative to the whole pool.
 func (p *parser) parsePool(t token) *types.ReqNode {
 	n := p.parsePoolList(t)
@@ -288,7 +331,7 @@ func designatorItem(n *types.ReqNode) []string {
 
 // applyMinGrade sets MinGrade on every course under n that doesn't have one,
 // and returns how many courses it touched. It skips credit pools ("Minimum 70%
-// in required courses: A, B, 0.5 credit from …") and groups that carry grades
+// in required courses: A, B, 0.5 credit from ...") and groups that carry grades
 // of their own ("minimum of 70% in A/ (minimum of 85% in B, C)").
 func applyMinGrade(n *types.ReqNode, grade int) int {
 	if n == nil {
@@ -372,6 +415,9 @@ func (p *parser) atAtomStart() bool {
 
 func (p *parser) leaf(t token) *types.ReqNode {
 	p.spans[t.node] = span{t.start, t.end}
+	for _, it := range t.node.Items { // prebuilt "credits with a B+ average"
+		p.spans[it] = span{t.start, t.end}
+	}
 	return t.node
 }
 

@@ -7,6 +7,7 @@ import "degree-explorer/types"
 func ParseRequisite(raw string) *types.Requisite {
 	r := &types.Requisite{Raw: raw}
 	text, urls := normalize(raw)
+	text = stripFiller(text, &urls) // eligibility clauses join the URLs at the end of notes
 	reqText, notes := extractNotes(text)
 	reqText = rewriteExamples(reqText)
 	r.Notes = append(notes, urls...)
@@ -14,7 +15,7 @@ func ParseRequisite(raw string) *types.Requisite {
 		return r
 	}
 	p := newParser(reqText, lex(reqText))
-	r.Req = p.post(p.parseAll())
+	r.Req = p.programNodes(p.post(p.parseAll()))
 	if r.Req == nil && len(r.Notes) == 0 {
 		// Only noise was left; keep the text rather than silently dropping it.
 		r.Req = &types.ReqNode{Type: types.NodeText, Kind: types.KindOther, Text: reqText}

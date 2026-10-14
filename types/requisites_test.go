@@ -12,6 +12,8 @@ func TestRequisiteRoundTrip(t *testing.T) {
 		Req: &ReqNode{Type: NodeOr, Items: []*ReqNode{
 			{Type: NodeCourse, Code: "CSC108H1", MinGrade: 70},
 			{Type: NodeText, Kind: KindPermission, Text: "permission of instructor"},
+			{Type: NodeProgram, Programs: []string{"ASMAJ1618", "ASMIN1254"}, Text: "Enrolment in ASMAJ1618/ASMIN1254"},
+			{Type: NodeCredits, Max: 14, Designators: []string{"CSC"}},
 		}},
 		Notes: []string{"Students are encouraged to contact the department"},
 	}
@@ -34,12 +36,14 @@ func TestRequisiteRoundTrip(t *testing.T) {
 
 func TestExclusionsRoundTrip(t *testing.T) {
 	in := Exclusions{
-		Raw: "MAT137Y1/ ( MAT137H5, MAT139H5)",
+		Raw: "MAT137Y1/ ( MAT137H5, MAT139H5), FSL 200+ level courses",
 		Items: []ExclusionItem{
 			{Codes: []string{"MAT137Y1"}},
 			{Codes: []string{"MAT137H5", "MAT139H5"}},
 			{Codes: []string{"RSM410H1"}, Note: "offered in Winter 2010"},
-			{Kind: KindOther, Text: "FSL 200+ level courses"},
+			{Designators: []string{"FSL"}, Levels: []int{200, 300, 400}},
+			{Designators: []string{"CSC"}, Exclude: []string{"CSC196H1"}, Note: "except AP Transfer Credits"},
+			{Kind: KindPlacement, Text: "native speakers"},
 		},
 	}
 	v, err := in.Value()

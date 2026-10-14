@@ -18,9 +18,10 @@ var (
 	}{
 		{types.KindPlacement, regexp.MustCompile(`(?i)^placement\s+in\b`)}, // "Placement in FSL420H1 ... or by Department permission"
 		{types.KindPermission, regexp.MustCompile(`(?i)permission|approval|approved by|consent|ballot|application|interview|audition|portfolio|selection|supervis|discretion|by arrangement`)},
-		{types.KindProgram, regexp.MustCompile(`(?i)admission|admitted|enrol|registered|accepted into|\b(specialist|major|minor|program|programme)\b|\bAS(MAJ|SPE|MIN|FOC|CER)\d{4}|[A-Z]\w+ One\b`)},
+		{types.KindProgram, regexp.MustCompile(`(?i)admission|admitted|enrol|registered|accepted into|\b(specialist|major|minor|program|programme)\b|\bAS(MAJ|SPE|MIN|FOC|CER)\d{4}|(?-i:\b[A-Z]\w+ One\b)`)}, // "Vic One", not "Any one"
 		{types.KindPlacement, regexp.MustCompile(`(?i)placement|\btest\b|assessment|proficien|fluen|native|knowledge of|formal education`)},
 		{types.KindPreparation, regexp.MustCompile(`(?i)high school|grade 1[0-2]|\b4U\b|secondary|equivalent|background|experience|familiar|exposure|readings`)},
+		{types.KindPreparation, regexp.MustCompile(`\b[A-Z]{3}[1-4][UMCEO]\b|\b[UM](?: or [UM])? level\b|\bRCM\b|(?i:conservatory)`)}, // Ontario high-school codes (SPH4U), RCM levels
 	}
 )
 
@@ -74,7 +75,7 @@ func (p *parser) mergeTexts(items []*types.ReqNode) []*types.ReqNode {
 
 func postText(n *types.ReqNode) *types.ReqNode {
 	n.Text = strings.Trim(n.Text, " ,;:.")
-	if noiseRe.MatchString(n.Text) {
+	if noiseRe.MatchString(n.Text) || isFiller(n.Text) {
 		return nil
 	}
 	if n.Kind == "" {

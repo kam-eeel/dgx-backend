@@ -15,6 +15,7 @@ const (
 	NodeCourse  NodeType = "course"
 	NodeCredits NodeType = "credits"
 	NodeGPA     NodeType = "gpa"
+	NodeProgram NodeType = "program" // enrolled in any of Programs
 	NodeText    NodeType = "text"
 )
 
@@ -47,12 +48,17 @@ type ReqNode struct {
 	Breadth     []int    `json:"breadth,omitempty"`
 	Courses     []string `json:"courses,omitempty"`
 	Exclude     []string `json:"exclude,omitempty"`
+	// Max (credits, 0 = no limit): at most Max credits may match the filters
+	// ("no more than 14.0 credits"). With both set, Amount <= sum <= Max.
+	Max float64 `json:"max,omitempty"`
 
 	Min   float64 `json:"min,omitempty"`   // gpa
 	Scope string  `json:"scope,omitempty"` // gpa
 
+	Programs []string `json:"programs,omitempty"` // program: catalogue codes, e.g. ASMAJ1618
+
 	Kind TextKind `json:"kind,omitempty"` // text
-	Text string   `json:"text,omitempty"`
+	Text string   `json:"text,omitempty"` // text, program (the phrase as written)
 }
 
 // Requisite is the stored form of a prerequisites or corequisites field.
@@ -77,13 +83,22 @@ func (r *Requisite) Scan(src any) error {
 	return fmt.Errorf("Requisite: unsupported type %T", src)
 }
 
-// ExclusionItem is either a set of codes that must all have been taken, or a
-// text item that can't be checked automatically.
+// ExclusionItem is one of:
+//   - a codes set: the student is excluded if they took all of Codes;
+//   - a filter (Designators set, no Codes): the student is excluded if they
+//     took any course with one of the Designators that is at one of the
+//     Levels (any level when empty) and is not in Exclude;
+//   - a text item that can't be checked automatically.
+//
+// A codes set or filter with a Note only gives Review when it matches.
 type ExclusionItem struct {
-	Codes []string `json:"codes,omitempty"`
-	Note  string   `json:"note,omitempty"`
-	Kind  TextKind `json:"kind,omitempty"`
-	Text  string   `json:"text,omitempty"`
+	Codes       []string `json:"codes,omitempty"`
+	Designators []string `json:"designators,omitempty"`
+	Levels      []int    `json:"levels,omitempty"`
+	Exclude     []string `json:"exclude,omitempty"`
+	Note        string   `json:"note,omitempty"`
+	Kind        TextKind `json:"kind,omitempty"`
+	Text        string   `json:"text,omitempty"`
 }
 
 // Exclusions is the stored form of an exclusions field.

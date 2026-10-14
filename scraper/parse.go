@@ -175,13 +175,18 @@ func parseDir[T any](dir string, parse func(*goquery.Document) []*T) []*T {
 }
 
 func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
-	courses := parseDir(cfg.CoursesDir, parseCourses)
-	if err := db.CreateCourses(ctx, courses); err != nil {
+	programs := parseDir(cfg.ProgramsDir, parsePrograms)
+	if err := db.CreatePrograms(ctx, programs); err != nil {
 		return err
 	}
 
-	programs := parseDir(cfg.ProgramsDir, parsePrograms)
-	if err := db.CreatePrograms(ctx, programs); err != nil {
+	courses := parseDir(cfg.CoursesDir, parseCourses)
+	idx := reqs.NewProgramIndex(programs)
+	for _, c := range courses {
+		idx.Resolve(c.Prerequisites)
+		idx.Resolve(c.Corequisites)
+	}
+	if err := db.CreateCourses(ctx, courses); err != nil {
 		return err
 	}
 
