@@ -141,7 +141,7 @@ func parsePrograms(doc *goquery.Document) []*types.Program {
 			p.Enrolment = reqs.ParseEnrolment(t)
 		}
 		if t := blockText(s.Find(".views-field-field-completion-requirements").Find(".field-content")); t != "" {
-			p.Completion = &t
+			p.Completion = reqs.ParseCompletion(t)
 		}
 
 		s.Find(".views-field-field-section-link").Find("a").Each(func(_ int, ss *goquery.Selection) {

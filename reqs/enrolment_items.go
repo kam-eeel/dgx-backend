@@ -488,7 +488,7 @@ func averageOver(nodes []*types.ReqNode, grade int) *types.ReqNode {
 				}
 			}
 		case types.NodeCredits:
-			if n.Amount == 0 && n.MaxAmount > 0 {
+			if n.Amount == 0 && n.MaxAmount != nil {
 				return true
 			}
 			items = append(items, &types.ReqNode{Type: types.NodeCredits, Amount: n.Amount, Courses: n.Courses,

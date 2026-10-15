@@ -31,7 +31,7 @@ func newEnrolCatalog(courses []*types.Course, programs []*types.Program) *enrolC
 			continue
 		}
 		area := p.Areas[0]
-		for _, code := range jointCodeRe.FindAllString(*p.Completion, -1) {
+		for _, code := range jointCodeRe.FindAllString(p.Completion.Raw, -1) {
 			cat.joint[area] = append(cat.joint[area], code[:3])
 		}
 	}

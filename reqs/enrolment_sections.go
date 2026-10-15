@@ -121,7 +121,7 @@ func creditBand(s string) *types.ReqNode {
 	if m := bandRangeRe.FindStringSubmatch(s); m != nil {
 		lo, _ := strconv.ParseFloat(m[1], 64)
 		hi, _ := strconv.ParseFloat(m[2], 64)
-		return &types.ReqNode{Type: types.NodeCredits, Amount: lo, MaxAmount: hi}
+		return &types.ReqNode{Type: types.NodeCredits, Amount: lo, MaxAmount: maxAmount(hi)}
 	}
 	if m := bandMinRe.FindStringSubmatch(s); m != nil {
 		lo, _ := strconv.ParseFloat(m[1], 64)

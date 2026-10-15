@@ -91,11 +91,11 @@ type Course struct {
 }
 
 type Program struct {
-	Code       string     `json:"code"`
-	Type       string     `json:"type"`
-	Number     string     `json:"number"`
-	Title      string     `json:"title"`
-	Enrolment  *Enrolment `json:"enrolment"`
-	Completion *string    `json:"completion"`
-	Areas      StringList `json:"areas"`
+	Code       string      `json:"code"`
+	Type       string      `json:"type"`
+	Number     string      `json:"number"`
+	Title      string      `json:"title"`
+	Enrolment  *Enrolment  `json:"enrolment"`
+	Completion *Completion `json:"completion"`
+	Areas      StringList  `json:"areas"`
 }

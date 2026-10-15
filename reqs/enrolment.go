@@ -276,7 +276,7 @@ func (p *enrolParser) finish() *types.Enrolment {
 			}
 		}
 		if listed != nil {
-			low := &audience{cond: []*types.ReqNode{{Type: types.NodeCredits, Amount: threshold, MaxAmount: minBand - 0.5}}, parts: listed}
+			low := &audience{cond: []*types.ReqNode{{Type: types.NodeCredits, Amount: threshold, MaxAmount: maxAmount(minBand - 0.5)}}, parts: listed}
 			branches = append([]*types.ReqNode{low.node()}, branches...)
 			common.parts = rest
 		}
@@ -436,7 +436,7 @@ func sharedCourses(n *types.ReqNode) {
 	var pools []*types.ReqNode
 	for _, it := range n.Items {
 		switch {
-		case it.Type == types.NodeCredits && it.Amount > 0 && it.MaxAmount == 0 && len(it.Levels) == 0 && len(it.Breadth) == 0 && len(it.Exclude) == 0:
+		case it.Type == types.NodeCredits && it.Amount > 0 && it.MaxAmount == nil && len(it.Levels) == 0 && len(it.Breadth) == 0 && len(it.Exclude) == 0:
 			pools = append(pools, it)
 		case it.Type == types.NodeOr && !slices.ContainsFunc(it.Items, func(c *types.ReqNode) bool { return c.Type != types.NodeCourse }):
 			// "ECO101H1 (67%)/ IRW230H1 (67%)/ ECO105Y1 (80%)": one of them.
@@ -488,18 +488,18 @@ func capsWithinPools(n *types.ReqNode) {
 		return
 	}
 	for i, c := range n.Items {
-		if c.Type != types.NodeCredits || c.Amount > 0 || c.MaxAmount == 0 || len(c.Designators) == 0 || len(c.Courses) > 0 {
+		if c.Type != types.NodeCredits || c.Amount > 0 || c.MaxAmount == nil || len(c.Designators) == 0 || len(c.Courses) > 0 {
 			continue
 		}
 		for _, pool := range n.Items {
-			if pool.Type != types.NodeCredits || pool.Amount <= c.MaxAmount || !isSubset(c.Designators, pool.Designators) {
+			if pool.Type != types.NodeCredits || pool.Amount <= *c.MaxAmount || !isSubset(c.Designators, pool.Designators) {
 				continue
 			}
 			rest := slices.DeleteFunc(slices.Clone(pool.Designators), func(d string) bool { return slices.Contains(c.Designators, d) })
 			if len(rest) == 0 {
 				continue
 			}
-			share := &types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount - c.MaxAmount, Designators: rest,
+			share := &types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount - *c.MaxAmount, Designators: rest,
 				Levels: pool.Levels, Breadth: pool.Breadth, Exclude: pool.Exclude, MinGrade: pool.MinGrade}
 			n.Items[i] = share
 			// An average over the pool averages what counts toward it: the
@@ -508,7 +508,7 @@ func capsWithinPools(n *types.ReqNode) {
 				if avg.Type == types.NodeAverage && avg.Items == nil && slices.Equal(avg.Designators, pool.Designators) && len(avg.Courses) == 0 {
 					avg.Items = []*types.ReqNode{
 						{Type: types.NodeCredits, Amount: share.Amount, Designators: rest, Levels: pool.Levels},
-						{Type: types.NodeCredits, Amount: c.MaxAmount, Designators: pool.Designators, Levels: pool.Levels},
+						{Type: types.NodeCredits, Amount: *c.MaxAmount, Designators: pool.Designators, Levels: pool.Levels},
 					}
 					avg.Designators, avg.Levels = nil, nil
 				}

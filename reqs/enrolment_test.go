@@ -393,7 +393,7 @@ func TestLinkEnrolmentAreas(t *testing.T) {
 func TestLinkEnrolmentCatalog(t *testing.T) {
 	completion := "1. JEG100H1, JGU216H1; JAV120H1\n2. 0.5 credit from GGR201H1, JIG322H1"
 	ggrMajor := &types.Program{Code: "ASMAJ1667", Type: "Major", Title: "Human Geography Major (Arts Program)",
-		Areas: types.StringList{"Geography and Planning"}, Completion: &completion,
+		Areas: types.StringList{"Geography and Planning"}, Completion: ParseCompletion(completion),
 		Enrolment: ParseEnrolment(limitedLead + "_Variable Minimum Grade_\n" + vmgLead +
 			"- 0.5 credit in GGR courses at the 100- or 200-level, with a minimum grade of 67%\n" +
 			"Jointly-offered GGR courses will also be considered (e.g. JEG, JGI, JGE).")}

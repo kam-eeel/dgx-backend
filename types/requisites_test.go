@@ -14,7 +14,7 @@ func TestRequisiteRoundTrip(t *testing.T) {
 			{Type: NodeText, Kind: TextPermission, Text: "permission of instructor"},
 			{Type: NodeProgram, Programs: []string{"ASMAJ1618", "ASMIN1254"}, Text: "Enrolment in ASMAJ1618/ASMIN1254"},
 			{Type: NodeCourse, Code: "MAT257Y1", Concurrent: true},
-			{Type: NodeCredits, MaxAmount: 14, Designators: []string{"CSC"}},
+			{Type: NodeCredits, MaxAmount: maxAmount(14), Designators: []string{"CSC"}},
 			{Type: NodeAverage, MinGrade: 77, Amount: 3, Designators: []string{"HIS"}, Levels: []int{200, 300, 400}, Exclude: []string{"HIS262H1"}},
 			{Type: NodeAverage, MinGrade: 80, Courses: []string{"MAT235H1", "MAT236H1"}},
 		}},
@@ -73,3 +73,6 @@ func TestNilPointersBecomeNULL(t *testing.T) {
 		}
 	}
 }
+
+// maxAmount is a MaxAmount value.
+func maxAmount(v float64) *float64 { return &v }

@@ -9,17 +9,18 @@ import (
 type NodeType string
 
 const (
-	NodeAnd     NodeType = "and"
-	NodeOr      NodeType = "or"
-	NodeChoose  NodeType = "choose" // at least Count of Items
-	NodeCourse  NodeType = "course"
-	NodeCredits NodeType = "credits"
-	NodeGPA     NodeType = "gpa"
-	NodeAverage NodeType = "average" // average grade over the courses matching credit filters
-	NodeProgram NodeType = "program" // enrolled in any of Programs
-	NodeProfile NodeType = "profile" // a fact about the student other than their courses (Attr, Value)
-	NodeNot     NodeType = "not"     // the one item in Items must not be met
-	NodeText    NodeType = "text"
+	NodeAnd         NodeType = "and"
+	NodeOr          NodeType = "or"
+	NodeChoose      NodeType = "choose" // at least Count of Items
+	NodeCourse      NodeType = "course"
+	NodeCredits     NodeType = "credits"
+	NodeGPA         NodeType = "gpa"
+	NodeAverage     NodeType = "average"     // average grade over the courses matching credit filters
+	NodeProgram     NodeType = "program"     // enrolled in any of Programs
+	NodeRequirement NodeType = "requirement" // completion: any of Requirements is Met
+	NodeProfile     NodeType = "profile"     // a fact about the student other than their courses (Attr, Value)
+	NodeNot         NodeType = "not"         // the one item in Items must not be met
+	NodeText        NodeType = "text"
 )
 
 type TextKind string
@@ -45,32 +46,53 @@ type ReqNode struct {
 	MinGrade int    `json:"min_grade,omitempty"` // course, credits (0 = none); average: the minimum average
 
 	// credits: a course counts if it is in Courses or has one of the
-	// Designators (when both are set, either is enough), and also passes
-	// Levels, Breadth, Exclude and MinGrade.
+	// Designators (the sources: when both are set, either is enough), and
+	// also passes every filter that is set: Levels, Breadth, Lists,
+	// Requirements, Exclude, MinGrade, Transfer and CrNcr.
 	//
 	// average: uses the same filters (Courses, Designators, Levels, Breadth,
-	// Exclude). The credit-weighted average percentage over the matching
-	// courses must be at least MinGrade. With Amount set, the student also
-	// needs Amount matching credits, and the text doesn't say which of them
-	// are averaged: the average over all matching courses meeting MinGrade is
-	// Met, and only the best Amount credits meeting it is Review. With Items
-	// (credits nodes used only as filters), a course matching any item is
-	// averaged: "2.0 credits in CRI courses at the 300+-level" and "1.0
-	// credit from CRI205H1, ..." averaged together.
+	// Lists, Requirements, Exclude). The credit-weighted average percentage
+	// over the matching courses must be at least MinGrade. With Amount set,
+	// the student also needs Amount matching credits, and the text doesn't
+	// say which of them are averaged: the average over all matching courses
+	// meeting MinGrade is Met, and only the best Amount credits meeting it is
+	// Review. With Items (credits nodes used only as filters), a course
+	// matching any item is averaged: "2.0 credits in CRI courses at the
+	// 300+-level" and "1.0 credit from CRI205H1, ..." averaged together.
 	Amount      float64  `json:"amount,omitempty"`
 	Designators []string `json:"designators,omitempty"`
 	Levels      []int    `json:"levels,omitempty"`
 	Breadth     []int    `json:"breadth,omitempty"`
 	Courses     []string `json:"courses,omitempty"`
 	Exclude     []string `json:"exclude,omitempty"`
+	// Lists (credits, average): the course must be on one of these named
+	// lists (Completion.Lists); several names are a union. A union of pools
+	// that need different filters ("POL101H1/... or first-year seminars") is
+	// a list whose items carry those filters.
+	Lists []string `json:"lists,omitempty"`
+	// Requirements: in credits and average, the course must be in the pool
+	// of one of these requirements ("from Requirements 1, 3, 4"): it matches
+	// the filters of that requirement's body, whether or not the requirement
+	// claimed it. In a requirement node, one of these requirements must be
+	// Met.
+	Requirements []int `json:"requirements,omitempty"`
+	// Transfer, CrNcr (credits): match only transfer credits, or only
+	// courses taken CR/NCR ("CR/NCR courses cannot count" is a cap of 0).
+	Transfer bool `json:"transfer,omitempty"`
+	CrNcr    bool `json:"cr_ncr,omitempty"`
 	// Best (average with Amount): the student's best grades are the ones
 	// averaged ("the grade average will be based on the higher course
 	// grades"), so the best choice of Amount credits decides.
 	Best bool `json:"best,omitempty"`
-	// MaxAmount (credits, 0 = no limit): at most MaxAmount credits may match
-	// the filters ("no more than 14.0 credits"). With both set,
-	// Amount <= sum <= MaxAmount.
-	MaxAmount float64 `json:"max_amount,omitempty"`
+	// MaxAmount (credits, nil = no limit): at most MaxAmount credits may
+	// match the filters ("no more than 14.0 credits"). With both set,
+	// Amount <= sum <= MaxAmount. A pointer, so that a cap of 0 is stored;
+	// replace the pointer, never write through it.
+	MaxAmount *float64 `json:"max_amount,omitempty"`
+	// Weight (credits, list items): the credit a matched course contributes,
+	// at most its own weight ("HIS208Y1 counts 0.5 toward each area"). The
+	// rest of a split course can count elsewhere.
+	Weight float64 `json:"weight,omitempty"`
 
 	MinGPA float64 `json:"min_gpa,omitempty"` // gpa
 	Scope  string  `json:"scope,omitempty"`   // gpa

@@ -110,7 +110,7 @@ func matchAverage(s string) (token, bool) {
 // no filters (an average of what?), a per-course grade of its own, an upper
 // bound, or a narrower part ("of which ...").
 func toAverage(c *types.ReqNode, grade int) *types.ReqNode {
-	if c == nil || c.Type != types.NodeCredits || grade == 0 || c.MinGrade > 0 || c.MaxAmount > 0 ||
+	if c == nil || c.Type != types.NodeCredits || grade == 0 || c.MinGrade > 0 || c.MaxAmount != nil ||
 		len(c.Designators) == 0 && len(c.Levels) == 0 && len(c.Breadth) == 0 && len(c.Courses) == 0 {
 		return nil
 	}

@@ -306,7 +306,7 @@ func (p *enrolParser) raiseGrades(n *types.ReqNode, codes []string, grade int) {
 			n.MinGrade = max(n.MinGrade, grade)
 		}
 	case types.NodeCredits:
-		if codes == nil && n.MaxAmount == 0 {
+		if codes == nil && n.MaxAmount == nil {
 			n.MinGrade = max(n.MinGrade, grade)
 		}
 	}

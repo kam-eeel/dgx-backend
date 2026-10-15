@@ -224,6 +224,10 @@ func cloneNode(n *types.ReqNode) *types.ReqNode {
 		return nil
 	}
 	c := *n
+	if n.MaxAmount != nil {
+		v := *n.MaxAmount
+		c.MaxAmount = &v
+	}
 	c.Items = nil
 	for _, it := range n.Items {
 		c.Items = append(c.Items, cloneNode(it))

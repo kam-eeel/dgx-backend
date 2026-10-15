@@ -310,7 +310,7 @@ func matchCredits(s string) (token, bool) {
 	amount, _ := strconv.ParseFloat(s[m[2]:m[3]], 64)
 	n := &types.ReqNode{Type: types.NodeCredits, Amount: amount * float64(count)}
 	if isMax {
-		n.MaxAmount, n.Amount = n.Amount, 0
+		n.MaxAmount, n.Amount = maxAmount(n.Amount), 0
 	}
 	prefix, headQual := s[m[0]:m[2]], s[m[4]:m[5]]
 	if d := headPrefixDesigRe.FindStringSubmatch(prefix); d != nil {
@@ -513,6 +513,9 @@ func parseLevels(span string) []int {
 	}
 	return dedupe(out)
 }
+
+// maxAmount returns a pointer to v, for ReqNode.MaxAmount (nil = no cap).
+func maxAmount(v float64) *float64 { return &v }
 
 // dedupe removes repeated values, keeping first-seen order.
 func dedupe[T comparable](xs []T) []T {
