@@ -6,3 +6,4 @@ docs
 **/testdata
 reqs/corpus_test.go
 reqs/programs_test.go
+reqs/programs_corpus_test.go

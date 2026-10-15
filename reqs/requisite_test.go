@@ -32,13 +32,13 @@ var reqGoldens = []struct{ name, raw, want string }{
 	{"slash inside text merges", "EST200Y1 or permission of the instructor/program administrator",
 		jOr(jC("EST200Y1"), jT("permission", "permission of the instructor/program administrator"))},
 	{"comma keeps texts apart", "Admission to Munk One, permission of the instructor",
-		jAnd(jT("program", "Admission to Munk One"), jT("permission", "permission of the instructor"))},
+		jAnd(jT("membership", "Admission to Munk One"), jT("permission", "permission of the instructor"))},
 	{"FSL220H1 text swallows mentioned course",
 		"FSL121Y1/ FSL122H1 or placement in  FSL220H1 based on the results of the French Placement Test.",
 		jOr(jC("FSL121Y1"), jC("FSL122H1"),
 			jT("placement", "placement in FSL220H1 based on the results of the French Placement Test"))},
 	{"Vic One trailing colon", "Admission to Vic One: https://vic.utoronto.ca/future-students/vic-one/",
-		jT("program", "Admission to Vic One")},
+		jT("membership", "Admission to Vic One")},
 	{"high school", "High school math", jT("preparation", "High school math")},
 
 	// credits
@@ -71,12 +71,12 @@ var reqGoldens = []struct{ name, raw, want string }{
 
 	// GPA
 	{"APM396H1", "Minimum GPA 3.5 for APM and MAT courses, permission of the Associate Chair for Undergraduate Studies and of the prospective supervisor.",
-		jAnd(`{"type":"gpa","min":3.5,"scope":"APM and MAT courses"}`,
+		jAnd(`{"type":"gpa","min_gpa":3.5,"scope":"APM and MAT courses"}`,
 			jT("permission", "permission of the Associate Chair for Undergraduate Studies and of the prospective supervisor"))},
 	{"AST431H1", "Minimum GPA of 4.0 in Astronomy program courses or with special permission from the Undergraduate Chair",
-		jOr(`{"type":"gpa","min":4,"scope":"Astronomy program courses"}`,
+		jOr(`{"type":"gpa","min_gpa":4,"scope":"Astronomy program courses"}`,
 			jT("permission", "with special permission from the Undergraduate Chair"))},
-	{"cGPA no scope", "BIO130H1, cGPA 3.0", jAnd(jC("BIO130H1"), `{"type":"gpa","min":3}`)},
+	{"cGPA no scope", "BIO130H1, cGPA 3.0", jAnd(jC("BIO130H1"), `{"type":"gpa","min_gpa":3}`)},
 
 	// grade prefixes
 	{"BCH372Y1", "A final grade of 75% or higher in  BCH242Y1", jCG("BCH242Y1", 75)},
@@ -194,10 +194,10 @@ var reqGoldens = []struct{ name, raw, want string }{
 
 	// one-off phrasings handled by general rules
 	{"BCH210H1 alternative paths", "Successful completion of ( CHM135H1,  CHM136H1)/ CHM151Y1 NOTE: CHM1** with COURSE EXCLUSION TO  CHM135H1 meet the Prerequisite requirement. UTM students who have completed  CHM110H5 (exclusion to  CHM135H1) &  CHM242H5 (exclusion to  CHM136H1) will be permitted to enrol in  BCH210H1.",
-		jOr(jAnd(jC("CHM135H1"), jC("CHM136H1")), jC("CHM151Y1"), jAnd(jT("program", "UTM students"), jC("CHM110H5"), jC("CHM242H5")))},
+		jOr(jAnd(jC("CHM135H1"), jC("CHM136H1")), jC("CHM151Y1"), jAnd(jT("membership", "UTM students"), jC("CHM110H5"), jC("CHM242H5")))},
 	{"CSC343H1 label followed by a group", "CSC207H1/  CSCB07H3 Prerequisite for Faculty of Applied Science and Engineering students: (ESC194H1, ESC195H1)/ (MAT186H1, MAT187H1)",
 		jOr(jC("CSC207H1"), jC("CSCB07H3"),
-			jAnd(jT("program", "Engineering students"), jOr(jAnd(jC("ESC194H1"), jC("ESC195H1")), jAnd(jC("MAT186H1"), jC("MAT187H1")))))},
+			jAnd(jT("membership", "Engineering students"), jOr(jAnd(jC("ESC194H1"), jC("ESC195H1")), jAnd(jC("MAT186H1"), jC("MAT187H1")))))},
 	{"BMS422H1 students are required to complete", "Completion of 10.0 credits including  BMS100H1. Students are also required to complete  BMS110Y1,  BMS310Y1 or  BMS421H1.",
 		jAnd(`{"type":"credits","amount":10}`, jC("BMS100H1"), jC("BMS110Y1"), jOr(jC("BMS310Y1"), jC("BMS421H1")))},
 	{"GGR340H1 the combination of", "GGR270H1, or the combination of  STA220H1 and  HST250H1",
@@ -220,18 +220,18 @@ var reqGoldens = []struct{ name, raw, want string }{
 	// audience conditionals
 	{"BCH374Y1", "For Specialist:  BCH242Y1 (75% or higher);  BIO230H1;  CHM247H1/ CHM249H1. For Major:  BCH210H1 (80% or higher);  BIO230H1;  CHM247H1/ CHM249H1.",
 		jOr(
-			jAnd(jT("program", "For Specialist"), jCG("BCH242Y1", 75), jC("BIO230H1"), jOr(jC("CHM247H1"), jC("CHM249H1"))),
-			jAnd(jT("program", "For Major"), jCG("BCH210H1", 80), jC("BIO230H1"), jOr(jC("CHM247H1"), jC("CHM249H1"))))},
+			jAnd(jT("membership", "For Specialist"), jCG("BCH242Y1", 75), jC("BIO230H1"), jOr(jC("CHM247H1"), jC("CHM249H1"))),
+			jAnd(jT("membership", "For Major"), jCG("BCH210H1", 80), jC("BIO230H1"), jOr(jC("CHM247H1"), jC("CHM249H1"))))},
 	{"ANA411H1", "For KPE students:  ANA124H1,  ANA125H1, and  ANA126Y1 For Arts & Science students:  ANA300Y1 (78%) or equivalent",
 		jOr(
-			jAnd(jT("program", "For KPE students"), jC("ANA124H1"), jC("ANA125H1"), jC("ANA126Y1")),
-			jAnd(jT("program", "For Arts & Science students"), jOr(jCG("ANA300Y1", 78), jT("preparation", "equivalent"))))},
+			jAnd(jT("membership", "For KPE students"), jC("ANA124H1"), jC("ANA125H1"), jC("ANA126Y1")),
+			jAnd(jT("membership", "For Arts & Science students"), jOr(jCG("ANA300Y1", 78), jT("preparation", "equivalent"))))},
 	{"RSM433H1 capitalized labels", "Rotman Commerce:  RSM333H1; Actuarial Science:  ACT349H1",
-		jOr(jAnd(jT("program", "Rotman Commerce"), jC("RSM333H1")), jAnd(jP("Actuarial Science"), jC("ACT349H1")))},
+		jOr(jAnd(jT("membership", "Rotman Commerce"), jC("RSM333H1")), jAnd(jP("Actuarial Science"), jC("ACT349H1")))},
 	{"CSC311H1-style engineering branch", "CSC207H1/  CSCB07H3;  MAT223H1/  MAT240H1 Prerequisite for Faculty of Applied Science and Engineering students: APS105H1/ ESC180H1; MAT185H1",
 		jOr(
 			jAnd(jOr(jC("CSC207H1"), jC("CSCB07H3")), jOr(jC("MAT223H1"), jC("MAT240H1"))),
-			jAnd(jT("program", "Engineering students"), jOr(jC("APS105H1"), jC("ESC180H1")), jC("MAT185H1")))},
+			jAnd(jT("membership", "Engineering students"), jOr(jC("APS105H1"), jC("ESC180H1")), jC("MAT185H1")))},
 }
 
 func TestParseRequisiteGolden(t *testing.T) {
@@ -281,19 +281,19 @@ func TestParseRequisiteEnvelope(t *testing.T) {
 
 func TestClassify(t *testing.T) {
 	for text, want := range map[string]types.TextKind{
-		"permission of the instructor": types.KindPermission,
-		"by ballot":                    types.KindPermission,
-		"Enrolment in the Actuarial Science Specialist program": types.KindProgram,
-		"Admission to Munk One":                                 types.KindProgram,
-		"Active in ASMAJ1618":                                   types.KindProgram,
-		"French Placement Test":                                 types.KindPlacement,
-		"No previous knowledge of French":                       types.KindPlacement,
-		"High school math":                                      types.KindPreparation,
-		"equivalent programming experience":                     types.KindPreparation,
-		"in Society":                                            types.KindOther,
-		"Any one of the following":                              types.KindOther,
-		"Placement in FSL420H1 or higher through the French Placement Test or by Department permission": types.KindPlacement,
-		"Placement audition and permission of the Department required":                                  types.KindPermission,
+		"permission of the instructor": types.TextPermission,
+		"by ballot":                    types.TextPermission,
+		"Enrolment in the Actuarial Science Specialist program": types.TextMembership,
+		"Admission to Munk One":                                 types.TextMembership,
+		"Active in ASMAJ1618":                                   types.TextMembership,
+		"French Placement Test":                                 types.TextPlacement,
+		"No previous knowledge of French":                       types.TextPlacement,
+		"High school math":                                      types.TextPreparation,
+		"equivalent programming experience":                     types.TextPreparation,
+		"in Society":                                            types.TextOther,
+		"Any one of the following":                              types.TextOther,
+		"Placement in FSL420H1 or higher through the French Placement Test or by Department permission": types.TextPlacement,
+		"Placement audition and permission of the Department required":                                  types.TextPermission,
 	} {
 		if got := classify(text); got != want {
 			t.Errorf("classify(%q) = %q, want %q", text, got, want)

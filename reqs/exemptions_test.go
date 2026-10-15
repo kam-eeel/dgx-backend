@@ -18,30 +18,30 @@ func TestExemptionInField(t *testing.T) {
 	}{
 		// Names both fields, so it covers the field it is in, whatever that is.
 		{"names both fields", "( ECO101H1,  ECO102H1)/  ECO105Y1. " + bothNote + ".",
-			jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"), jT("program", faseGroup)),
+			jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"), jT("membership", faseGroup)),
 			[]string{bothNote}},
 		// Names no field: the field it is in.
 		{"names no field", "CSC209H1; STA247H1. These requirements do not apply to Engineering students.",
-			jOr(jAnd(jC("CSC209H1"), jC("STA247H1")), jT("program", "Engineering students")),
+			jOr(jAnd(jC("CSC209H1"), jC("STA247H1")), jT("membership", "Engineering students")),
 			[]string{"These requirements do not apply to Engineering students"}},
 		{"does not apply", "MAT137Y1. This requirement does not apply to FASE students.",
-			jOr(jC("MAT137Y1"), jT("program", "FASE students")),
+			jOr(jC("MAT137Y1"), jT("membership", "FASE students")),
 			[]string{"This requirement does not apply to FASE students"}},
 		// The clause is glued to the last code with its "." missing; a
 		// label branch for the same group already says what it needs.
 		{"glued to a code, group has a label",
 			"For students in the Faculty of Arts and Science:  MUN221H1/  ECO200Y1 For students in the Faculty of Applied Science and Engineering:  CHE249H1/  MIE358H1 " + bothNote + ".",
 			jOr(
-				jAnd(jT("program", "For students in the Faculty of Arts and Science"), jOr(jC("MUN221H1"), jC("ECO200Y1"))),
-				jAnd(jT("program", "For students in the Faculty of Applied Science and Engineering"), jOr(jC("CHE249H1"), jC("MIE358H1")))),
+				jAnd(jT("membership", "For students in the Faculty of Arts and Science"), jOr(jC("MUN221H1"), jC("ECO200Y1"))),
+				jAnd(jT("membership", "For students in the Faculty of Applied Science and Engineering"), jOr(jC("CHE249H1"), jC("MIE358H1")))),
 			[]string{bothNote}},
 		{"engineering label covers FASE", "CSC209H1 Engineering students: ESC180H1. These requirements do not apply to FASE students.",
-			jOr(jC("CSC209H1"), jAnd(jT("program", "Engineering students"), jC("ESC180H1"))),
+			jOr(jC("CSC209H1"), jAnd(jT("membership", "Engineering students"), jC("ESC180H1"))),
 			[]string{"These requirements do not apply to FASE students"}},
 		// Names one field: ParseRequisite can't tell which field it is in,
 		// so it only moves the sentence to notes (see ApplyExemptions).
 		{"names one field", "For students in the Faculty of Applied Science and Engineering:  MUN302H1.  " + preNote + ".",
-			jAnd(jT("program", "For students in the Faculty of Applied Science and Engineering"), jC("MUN302H1")),
+			jAnd(jT("membership", "For students in the Faculty of Applied Science and Engineering"), jC("MUN302H1")),
 			[]string{preNote}},
 	}
 	for _, tt := range tests {
@@ -77,8 +77,8 @@ func TestExemptionNotMatched(t *testing.T) {
 func TestApplyExemptions(t *testing.T) {
 	pre := ParseRequisite("( ECO101H1,  ECO102H1)/  ECO105Y1")
 	co := ParseRequisite("For students in the Faculty of Applied Science and Engineering:  CHE249H1/  MIE358H1 " + preNote + ".")
-	wantPre := jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"), jT("program", faseGroup))
-	wantCo := jAnd(jT("program", "For students in the Faculty of Applied Science and Engineering"), jOr(jC("CHE249H1"), jC("MIE358H1")))
+	wantPre := jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"), jT("membership", faseGroup))
+	wantCo := jAnd(jT("membership", "For students in the Faculty of Applied Science and Engineering"), jOr(jC("CHE249H1"), jC("MIE358H1")))
 	for range 2 { // applying twice changes nothing
 		ApplyExemptions(pre, co)
 		assertJSON(t, pre.Req, wantPre)
@@ -92,14 +92,14 @@ func TestApplyExemptions(t *testing.T) {
 	pre = ParseRequisite("PPG301H1/  MUN320H1")
 	co = ParseRequisite("For students in the Faculty of Applied Science and Engineering:  MUN302H1. " + bothNote)
 	ApplyExemptions(pre, co)
-	assertJSON(t, pre.Req, jOr(jC("PPG301H1"), jC("MUN320H1"), jT("program", faseGroup)))
-	assertJSON(t, co.Req, jAnd(jT("program", "For students in the Faculty of Applied Science and Engineering"), jC("MUN302H1")))
+	assertJSON(t, pre.Req, jOr(jC("PPG301H1"), jC("MUN320H1"), jT("membership", faseGroup)))
+	assertJSON(t, co.Req, jAnd(jT("membership", "For students in the Faculty of Applied Science and Engineering"), jC("MUN302H1")))
 
 	// An exemption in the field it names.
 	pre = ParseRequisite("MAT137Y1. Faculty of Arts and Science pre-requisite requirements do not apply to FASE students.")
 	assertJSON(t, pre.Req, jC("MAT137Y1"))
 	ApplyExemptions(pre, nil)
-	assertJSON(t, pre.Req, jOr(jC("MAT137Y1"), jT("program", "FASE students")))
+	assertJSON(t, pre.Req, jOr(jC("MAT137Y1"), jT("membership", "FASE students")))
 
 	// A field with no requirement has nothing to be exempt from.
 	co = ParseRequisite(preNote)
@@ -111,9 +111,9 @@ func TestApplyExemptions(t *testing.T) {
 // text alternative to the general requirement.
 func TestAudienceLabelShapes(t *testing.T) {
 	assertJSON(t, ParseRequisite("MAT224H1. For FASE students, MAT185H1,  AER210H1.").Req,
-		jOr(jC("MAT224H1"), jAnd(jT("program", "For FASE students"), jC("MAT185H1"), jC("AER210H1"))))
+		jOr(jC("MAT224H1"), jAnd(jT("membership", "For FASE students"), jC("MAT185H1"), jC("AER210H1"))))
 	assertJSON(t, ParseRequisite("MAT224H1 Prerequisite for Faculty of Applied Science and Engineering students: MAT185H1, AER210H1").Req,
-		jOr(jC("MAT224H1"), jAnd(jT("program", "Engineering students"), jC("MAT185H1"), jC("AER210H1"))))
+		jOr(jC("MAT224H1"), jAnd(jT("membership", "Engineering students"), jC("MAT185H1"), jC("AER210H1"))))
 
 	// A comma label needs a course or group after it.
 	for _, tok := range lex("For FASE students, permission of the instructor") {

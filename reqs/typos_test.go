@@ -65,8 +65,8 @@ func TestRepairedCodesParse(t *testing.T) {
 
 func TestRepairedExclusionCodes(t *testing.T) {
 	tests := []struct{ raw, items string }{
-		{"SOC386H1F (2016/2017),  SOC323H1", `[{"codes":["SOC386H1"],"note":"(2016/2017)"},{"codes":["SOC323H1"]}]`},
-		{"PSL301H, MAT148H", `[{"codes":["PSL301H1"]},{"codes":["MAT148H1"]}]`},
+		{"SOC386H1F (2016/2017),  SOC323H1", `[{"courses":["SOC386H1"],"note":"(2016/2017)"},{"courses":["SOC323H1"]}]`},
+		{"PSL301H, MAT148H", `[{"courses":["PSL301H1"]},{"courses":["MAT148H1"]}]`},
 		{"VPMB76", `[{"kind":"other","text":"VPMB76"}]`},
 	}
 	for _, tt := range tests {

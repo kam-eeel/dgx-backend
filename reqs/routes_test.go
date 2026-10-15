@@ -62,7 +62,7 @@ func TestRouteNotesKept(t *testing.T) {
 
 func TestTimingExclusions(t *testing.T) {
 	e := ParseExclusions("FSL321Y1. May not be taken concurrently with FSL312H1, FSL313H1.")
-	assertJSON(t, e.Items, `[{"codes":["FSL321Y1"]},{"codes":["FSL312H1"],"concurrent":true},{"codes":["FSL313H1"],"concurrent":true}]`)
+	assertJSON(t, e.Items, `[{"courses":["FSL321Y1"]},{"courses":["FSL312H1"],"concurrent":true},{"courses":["FSL313H1"],"concurrent":true}]`)
 	if e.Notes != nil {
 		t.Errorf("notes = %q, want none", e.Notes)
 	}
@@ -97,7 +97,7 @@ func TestLink(t *testing.T) {
 		{Code: "MAT158H1"}, {Code: "MAT159H1"}, {Code: "MAT246H1"}, {Code: "AST320H1"}, {Code: "AST425Y1"}}
 	Link(courses, nil)
 
-	assertJSON(t, ast.Exclusions, `{"raw":"","items":[{"codes":["AST425Y1"],"concurrent":true}],"notes":["Course should not be taken concurrently with AST425Y1"]}`)
+	assertJSON(t, ast.Exclusions, `{"raw":"","items":[{"courses":["AST425Y1"],"concurrent":true}],"notes":["Course should not be taken concurrently with AST425Y1"]}`)
 	assertJSON(t, mat.Prerequisites.Req, jOr(jC("MAT246H1"), jAnd(jC("MAT158H1"), jC("MAT159H1"))))
 	if mat.Prerequisites.Raw != "MAT246H1/ (MAT1581, MAT159H1)" {
 		t.Errorf("raw changed: %q", mat.Prerequisites.Raw)

@@ -17,24 +17,28 @@ const (
 	NodeGPA     NodeType = "gpa"
 	NodeAverage NodeType = "average" // average grade over the courses matching credit filters
 	NodeProgram NodeType = "program" // enrolled in any of Programs
+	NodeProfile NodeType = "profile" // a fact about the student other than their courses (Attr, Value)
+	NodeNot     NodeType = "not"     // the one item in Items must not be met
 	NodeText    NodeType = "text"
 )
 
 type TextKind string
 
 const (
-	KindPermission  TextKind = "permission"
-	KindProgram     TextKind = "program"
-	KindPlacement   TextKind = "placement"
-	KindPreparation TextKind = "preparation"
-	KindOther       TextKind = "other"
+	TextPermission  TextKind = "permission"
+	TextMembership  TextKind = "membership"
+	TextPlacement   TextKind = "placement"
+	TextPreparation TextKind = "preparation"
+	TextOther       TextKind = "other"
+	TextAdmission   TextKind = "admission" // decided by the department: a variable cutoff, an application, interview, audition, portfolio or test
+	TextAmbiguity   TextKind = "ambiguity" // the calendar supports two readings; this node marks the branch only the lenient one accepts
 )
 
 // ReqNode is one node of a requirement tree.
 type ReqNode struct {
 	Type NodeType `json:"type"`
 
-	Items []*ReqNode `json:"items,omitempty"` // and, or, choose
+	Items []*ReqNode `json:"items,omitempty"` // and, or, choose, not (one item); average (filters, below)
 	Count int        `json:"count,omitempty"` // choose
 
 	Code     string `json:"code,omitempty"`      // course
@@ -49,24 +53,43 @@ type ReqNode struct {
 	// courses must be at least MinGrade. With Amount set, the student also
 	// needs Amount matching credits, and the text doesn't say which of them
 	// are averaged: the average over all matching courses meeting MinGrade is
-	// Met, and only the best Amount credits meeting it is Review.
+	// Met, and only the best Amount credits meeting it is Review. With Items
+	// (credits nodes used only as filters), a course matching any item is
+	// averaged: "2.0 credits in CRI courses at the 300+-level" and "1.0
+	// credit from CRI205H1, ..." averaged together.
 	Amount      float64  `json:"amount,omitempty"`
 	Designators []string `json:"designators,omitempty"`
 	Levels      []int    `json:"levels,omitempty"`
 	Breadth     []int    `json:"breadth,omitempty"`
 	Courses     []string `json:"courses,omitempty"`
 	Exclude     []string `json:"exclude,omitempty"`
-	// Max (credits, 0 = no limit): at most Max credits may match the filters
-	// ("no more than 14.0 credits"). With both set, Amount <= sum <= Max.
-	Max float64 `json:"max,omitempty"`
+	// Best (average with Amount): the student's best grades are the ones
+	// averaged ("the grade average will be based on the higher course
+	// grades"), so the best choice of Amount credits decides.
+	Best bool `json:"best,omitempty"`
+	// MaxAmount (credits, 0 = no limit): at most MaxAmount credits may match
+	// the filters ("no more than 14.0 credits"). With both set,
+	// Amount <= sum <= MaxAmount.
+	MaxAmount float64 `json:"max_amount,omitempty"`
 
-	Min   float64 `json:"min,omitempty"`   // gpa
-	Scope string  `json:"scope,omitempty"` // gpa
+	MinGPA float64 `json:"min_gpa,omitempty"` // gpa
+	Scope  string  `json:"scope,omitempty"`   // gpa
 
 	Programs []string `json:"programs,omitempty"` // program: catalogue codes, e.g. ASMAJ1618
 
+	// profile: what the checker must know about the student, beyond their
+	// courses and programs, to evaluate it. Attr names the fact and Value is
+	// what it must be; Text is the phrase as written. The attributes in use
+	// are listed in docs/schema.md ("admission_category": "Computer Science",
+	// "high_school_course": "Grade 12 Calculus", ...). The name says how
+	// Value is compared: a noun must equal it, has_* is a boolean ("true"),
+	// min_*/max_* is a numeric limit, *_by is a date. Review until the
+	// checker knows the fact.
+	Attr  string `json:"attr,omitempty"`
+	Value string `json:"value,omitempty"`
+
 	Kind TextKind `json:"kind,omitempty"` // text
-	Text string   `json:"text,omitempty"` // text, program (the phrase as written)
+	Text string   `json:"text,omitempty"` // text, program, profile (the phrase as written)
 
 	// Concurrent (any node): within this subtree a course in progress counts
 	// as taken, as it does in a corequisite. "MAT257Y1 can be taken
@@ -76,9 +99,9 @@ type ReqNode struct {
 
 // Requisite is the stored form of a prerequisites or corequisites field.
 type Requisite struct {
-	Raw   string   `json:"raw"`
 	Req   *ReqNode `json:"req"`
 	Notes []string `json:"notes,omitempty"`
+	Raw   string   `json:"raw"`
 }
 
 func (r Requisite) Value() (driver.Value, error) {
@@ -97,17 +120,17 @@ func (r *Requisite) Scan(src any) error {
 }
 
 // ExclusionItem is one of:
-//   - a codes set: the student is excluded if they took all of Codes;
-//   - a filter (Designators set, no Codes): the student is excluded if they
-//     took any course with one of the Designators that is at one of the
+//   - a course set: the student is excluded if they took all of Courses;
+//   - a filter (Designators set, no Courses): the student is excluded if
+//     they took any course with one of the Designators that is at one of the
 //     Levels (any level when empty) and is not in Exclude;
 //   - a text item that can't be checked automatically.
 //
-// A codes set or filter with a Note only gives Review when it matches. A
-// Concurrent codes set ("may not be taken concurrently with FSL312H1")
+// A course set or filter with a Note only gives Review when it matches. A
+// Concurrent course set ("may not be taken concurrently with FSL312H1")
 // matches only while its courses are in progress, not once completed.
 type ExclusionItem struct {
-	Codes       []string `json:"codes,omitempty"`
+	Courses     []string `json:"courses,omitempty"`
 	Designators []string `json:"designators,omitempty"`
 	Levels      []int    `json:"levels,omitempty"`
 	Exclude     []string `json:"exclude,omitempty"`
@@ -121,9 +144,9 @@ type ExclusionItem struct {
 // the field was empty and its items came from a timing restriction in the
 // requisites ("should not be taken concurrently with AST425Y1").
 type Exclusions struct {
-	Raw   string          `json:"raw"`
 	Items []ExclusionItem `json:"items"`
 	Notes []string        `json:"notes,omitempty"`
+	Raw   string          `json:"raw"`
 }
 
 func (e Exclusions) Value() (driver.Value, error) {

@@ -250,7 +250,7 @@ func matchGPA(s string) (token, bool) {
 	if !ok {
 		gpa, _ = strconv.ParseFloat(m[1], 64)
 	}
-	n := &types.ReqNode{Type: types.NodeGPA, Min: gpa, Scope: m[2]}
+	n := &types.ReqNode{Type: types.NodeGPA, MinGPA: gpa, Scope: m[2]}
 	return token{kind: tGPA, end: len(m[0]), node: n}, true
 }
 
@@ -310,7 +310,7 @@ func matchCredits(s string) (token, bool) {
 	amount, _ := strconv.ParseFloat(s[m[2]:m[3]], 64)
 	n := &types.ReqNode{Type: types.NodeCredits, Amount: amount * float64(count)}
 	if isMax {
-		n.Max, n.Amount = n.Amount, 0
+		n.MaxAmount, n.Amount = n.Amount, 0
 	}
 	prefix, headQual := s[m[0]:m[2]], s[m[4]:m[5]]
 	if d := headPrefixDesigRe.FindStringSubmatch(prefix); d != nil {

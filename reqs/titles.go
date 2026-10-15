@@ -213,7 +213,7 @@ func parenItem(s string) bool {
 func subjectItem(s string) bool {
 	words := strings.Fields(s)
 	if len(words) == 0 || len(words) > 4 || titleRejectRe.MatchString(s) ||
-		subjectRejectRe.MatchString(s) || classify(s) != types.KindOther {
+		subjectRejectRe.MatchString(s) || classify(s) != types.TextOther {
 		return false
 	}
 	switch strings.ToLower(words[0]) {

@@ -12,12 +12,12 @@ import (
 // Drama", "Limited to students enrolled in the Bioethics Specialist or
 // Bioethics Major programs") become program nodes in two steps:
 //
-//  1. Parsing stays pure: a program-kind phrase that does nothing but name
+//  1. Parsing stays pure: a membership phrase that does nothing but name
 //     programs becomes a program node that keeps the phrase in Text. Explicit
 //     codes go straight into Programs.
 //  2. ResolvePrograms fills in Programs by matching the subject names and
 //     program types in Text against the scraped catalogue. A node it can't
-//     resolve with confidence goes back to program text (Review), so a
+//     resolve with confidence goes back to membership text (Review), so a
 //     resolved tree never has a program node without Programs.
 //
 // A program node is Met when the student is in any of its Programs and NotMet
@@ -367,7 +367,7 @@ func typeList(s string) []string {
 	return out
 }
 
-// programNodes turns program text that only names programs into program
+// programNodes turns membership text that only names programs into program
 // nodes, in place.
 func (p *parser) programNodes(n *types.ReqNode) *types.ReqNode {
 	if n == nil {
@@ -376,7 +376,7 @@ func (p *parser) programNodes(n *types.ReqNode) *types.ReqNode {
 	for _, it := range n.Items {
 		p.programNodes(it)
 	}
-	if n.Type != types.NodeText || n.Kind != types.KindProgram {
+	if n.Type != types.NodeText || n.Kind != types.TextMembership {
 		return n
 	}
 	var ctx refContext
@@ -392,7 +392,7 @@ func (p *parser) programNodes(n *types.ReqNode) *types.ReqNode {
 		if ref, ok := parseProgramRef(m[1]); ok && ref.accepts(ctx) {
 			*n = types.ReqNode{Type: types.NodeOr, Items: []*types.ReqNode{
 				{Type: types.NodeProgram, Text: m[1], Programs: ref.codes},
-				{Type: types.NodeText, Kind: types.KindOther, Text: m[2]},
+				{Type: types.NodeText, Kind: types.TextOther, Text: m[2]},
 			}}
 		}
 	}
@@ -431,7 +431,7 @@ func NewProgramIndex(programs []*types.Program) *ProgramIndex {
 }
 
 // ResolvePrograms fills in Programs for every program node in r from the
-// catalogue, and turns nodes it can't resolve back into program text.
+// catalogue, and turns nodes it can't resolve back into membership text.
 func ResolvePrograms(r *types.Requisite, programs []*types.Program) {
 	NewProgramIndex(programs).Resolve(r)
 }
@@ -459,7 +459,7 @@ func (idx *ProgramIndex) resolveNode(n *types.ReqNode) {
 			return
 		}
 	}
-	n.Type, n.Kind = types.NodeText, types.KindProgram
+	n.Type, n.Kind = types.NodeText, types.TextMembership
 }
 
 // lookupRef resolves every name in ref; if any name fails, the whole phrase

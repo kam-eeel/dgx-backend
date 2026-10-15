@@ -67,15 +67,15 @@ var reqGoldens2 = []struct{ name, raw, want string }{
 
 	// GPA
 	{"Cumulative GPA of at least", "9.0 credits, Cumulative GPA of at least 2.70",
-		jAnd(`{"type":"credits","amount":9}`, `{"type":"gpa","min":2.7}`)},
-	{"with a CGPA of at least", "5.0 credits with a CGPA of at least 2.5", jAnd(`{"type":"credits","amount":5}`, `{"type":"gpa","min":2.5}`)},
+		jAnd(`{"type":"credits","amount":9}`, `{"type":"gpa","min_gpa":2.7}`)},
+	{"with a CGPA of at least", "5.0 credits with a CGPA of at least 2.5", jAnd(`{"type":"credits","amount":5}`, `{"type":"gpa","min_gpa":2.5}`)},
 	{"GPA scope in all credits", "Completion of at least 2.0 CHM credits with a minimum cGPA of 3.0 in all CHM credits",
-		jAnd(`{"type":"credits","amount":2,"designators":["CHM"]}`, `{"type":"gpa","min":3,"scope":"CHM credits"}`)},
+		jAnd(`{"type":"credits","amount":2,"designators":["CHM"]}`, `{"type":"gpa","min_gpa":3,"scope":"CHM credits"}`)},
 	{"number before GPA", "14.0 credits, 3.0 GPA in Political Science courses",
-		jAnd(`{"type":"credits","amount":14}`, `{"type":"gpa","min":3,"scope":"Political Science courses"}`)},
-	{"CGPA required", "3.0 CGPA required", `{"type":"gpa","min":3}`},
+		jAnd(`{"type":"credits","amount":14}`, `{"type":"gpa","min_gpa":3,"scope":"Political Science courses"}`)},
+	{"CGPA required", "3.0 CGPA required", `{"type":"gpa","min_gpa":3}`},
 	{"a CGPA of at least, then permission", "a CGPA of at least 3.0 and permission of the Undergraduate Coordinator",
-		jAnd(`{"type":"gpa","min":3}`, jT("permission", "permission of the Undergraduate Coordinator"))},
+		jAnd(`{"type":"gpa","min_gpa":3}`, jT("permission", "permission of the Undergraduate Coordinator"))},
 	{"letter average", "at least 3.0 BMS credits with at least a B+ average",
 		`{"type":"average","amount":3,"designators":["BMS"],"min_grade":77}`},
 	{"letter average without designators stays text", "2.0 credits with a B+ average",
@@ -86,7 +86,7 @@ var reqGoldens2 = []struct{ name, raw, want string }{
 	// year standing
 	{"must be in ordinal year", "A student must be in third or fourth year.", `{"type":"credits","amount":9}`},
 	{"must be enrolled in Nth year", "Must be enrolled in 4th year. 3.0 CGPA required.",
-		jAnd(`{"type":"credits","amount":14}`, `{"type":"gpa","min":3}`)},
+		jAnd(`{"type":"credits","amount":14}`, `{"type":"gpa","min_gpa":3}`)},
 	{"students in their year of study", "Available to students in their third year of study (who have completed at least 9.0 credits)",
 		`{"type":"credits","amount":9}`},
 
@@ -106,11 +106,11 @@ var reqGoldens2 = []struct{ name, raw, want string }{
 		jAnd(`{"type":"credits","amount":2}`, jT("other", "in Political Theory"))},
 
 	// maximum credits
-	{"cannot have completed more than", "Students cannot have completed more than 8.5 credits", `{"type":"credits","max":8.5}`},
+	{"cannot have completed more than", "Students cannot have completed more than 8.5 credits", `{"type":"credits","max_amount":8.5}`},
 	{"no more than", "At least 8.5 credits and no more than 14.0 credits",
-		jAnd(`{"type":"credits","amount":8.5}`, `{"type":"credits","max":14}`)},
+		jAnd(`{"type":"credits","amount":8.5}`, `{"type":"credits","max_amount":14}`)},
 	{"no more than ... completed", "A minimum of 8.5 credits and no more than 14.0 credits completed",
-		jAnd(`{"type":"credits","amount":8.5}`, `{"type":"credits","max":14}`)},
+		jAnd(`{"type":"credits","amount":8.5}`, `{"type":"credits","max_amount":14}`)},
 
 	// "of which" parts inherit the filters they don't narrow
 	{"of which N must be", "10.0 credits, of which 2.0 credits must be 300+ level ESS/ JEG/ JGA/ JPE courses",
@@ -166,7 +166,7 @@ func TestPhraseNodes2(t *testing.T) {
 		{"DRM220Y1 with a minimum of 70% in DRM300Y1", tCourse, "DRM220Y1", jC("DRM220Y1")},
 
 		{"0.5 credit in BR=1/ 2/ 3", tCredits, "0.5 credit in BR=1/ 2/ 3", `{"type":"credits","amount":0.5,"breadth":[1,2,3]}`},
-		{"no more than 14.0 credits, including", tCredits, "no more than 14.0 credits", `{"type":"credits","max":14}`},
+		{"no more than 14.0 credits, including", tCredits, "no more than 14.0 credits", `{"type":"credits","max_amount":14}`},
 		{"a full course in PHL/CSC/MAT", tCredits, "a full course in PHL/CSC/MAT", `{"type":"credits","amount":1,"designators":["PHL","CSC","MAT"]}`},
 		{"a half-course in HIS", tCredits, "a half-course in HIS", `{"type":"credits","amount":0.5,"designators":["HIS"]}`},
 		{"at least two other 0.5 credit courses in Jewish Studies", tCredits, "at least two other 0.5 credit courses in Jewish Studies",
@@ -175,10 +175,10 @@ func TestPhraseNodes2(t *testing.T) {
 		{"A student must be in third or fourth year.", tCredits, "A student must be in third or fourth year", `{"type":"credits","amount":9}`},
 		{"Must be enrolled in 4th year", tCredits, "Must be enrolled in 4th year", `{"type":"credits","amount":14}`},
 
-		{"Cumulative GPA of at least 2.70", tGPA, "Cumulative GPA of at least 2.70", `{"type":"gpa","min":2.7}`},
-		{"a GPA of at least 3.5 in CSE courses", tGPA, "a GPA of at least 3.5 in CSE courses", `{"type":"gpa","min":3.5,"scope":"CSE courses"}`},
+		{"Cumulative GPA of at least 2.70", tGPA, "Cumulative GPA of at least 2.70", `{"type":"gpa","min_gpa":2.7}`},
+		{"a GPA of at least 3.5 in CSE courses", tGPA, "a GPA of at least 3.5 in CSE courses", `{"type":"gpa","min_gpa":3.5,"scope":"CSE courses"}`},
 		{"3.0 GPA in Political Science courses, supervisor", tGPA, "3.0 GPA in Political Science courses",
-			`{"type":"gpa","min":3,"scope":"Political Science courses"}`},
+			`{"type":"gpa","min_gpa":3,"scope":"Political Science courses"}`},
 	}
 	for _, tt := range tests {
 		tok, ok := firstPhrase(tt.in)

@@ -147,7 +147,7 @@ func exempt(n *types.ReqNode, g string) *types.ReqNode {
 	if n == nil || hasAudience(n, audienceKey(g)) {
 		return n
 	}
-	alt := &types.ReqNode{Type: types.NodeText, Kind: types.KindProgram, Text: g}
+	alt := &types.ReqNode{Type: types.NodeText, Kind: types.TextMembership, Text: g}
 	if n.Type == types.NodeOr {
 		n.Items = append(n.Items, alt)
 		return n
@@ -166,7 +166,7 @@ func hasAudience(n *types.ReqNode, key string) bool {
 		if a.Type == types.NodeAnd && len(a.Items) > 0 {
 			a = a.Items[0]
 		}
-		return a.Type == types.NodeText && a.Kind == types.KindProgram && audienceKey(a.Text) == key
+		return a.Type == types.NodeText && a.Kind == types.TextMembership && audienceKey(a.Text) == key
 	})
 }
 

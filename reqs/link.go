@@ -17,6 +17,10 @@ import (
 //   - program names are resolved to program codes;
 //   - a timing restriction in the requisites ("should not be taken
 //     concurrently with AST425Y1") becomes a concurrent exclusion.
+//
+// Programs' enrolment requirements get the same code repair, program names
+// and subjects resolved (enrolment_link.go), and jointly offered courses and
+// "or equivalent" read from the catalogue (enrolment_catalog.go).
 func Link(courses []*types.Course, programs []*types.Program) {
 	known := map[string]bool{}
 	for _, c := range courses {
@@ -31,6 +35,27 @@ func Link(courses []*types.Course, programs []*types.Program) {
 		idx.Resolve(c.Prerequisites)
 		idx.Resolve(c.Corequisites)
 		c.Exclusions = applyTiming(c.Exclusions, c.Prerequisites, c.Corequisites)
+	}
+	titles, areas := newTitleIndex(programs), newAreaIndex(programs)
+	cat := newEnrolCatalog(courses, programs)
+	for _, p := range programs {
+		p.Enrolment = repairEnrolment(p.Enrolment, known)
+		e := p.Enrolment
+		if e == nil {
+			continue
+		}
+		titles.resolveEnrolment(e, p.Code, idx, areas)
+		if e.Kind == types.EnrolmentFocus {
+			e.Req = titles.narrowToParent(e.Req, p.Title)
+		}
+		titles.ambiguousExclusions(e, p.Code, programs, requiredPrograms(e.Req), areas)
+		oneFocus(e, p.Code, programs)
+		area := ""
+		if len(p.Areas) > 0 {
+			area = p.Areas[0]
+		}
+		e.Req = cat.linkEquivalent(cat.linkJoint(e.Req, area))
+		cat.linkEquivalents(e)
 	}
 }
 
@@ -52,10 +77,16 @@ var (
 // Only a near-code followed by what can follow a code in a list counts, so
 // "MAT100-series" and "the BIO120 Office" are left alone.
 func repairCatalogCodes(s string, known map[string]bool) (string, bool) {
+	return repairCodesFollowedBy(s, known, codeFollowRe)
+}
+
+// repairCodesFollowedBy is repairCatalogCodes with its own rule for what may
+// follow a near-code.
+func repairCodesFollowedBy(s string, known map[string]bool, follow *regexp.Regexp) (string, bool) {
 	var b strings.Builder
 	last := 0
 	for _, m := range nearCodeRe.FindAllStringIndex(s, -1) {
-		if !codeFollowRe.MatchString(s[m[1]:]) {
+		if !follow.MatchString(s[m[1]:]) {
 			continue
 		}
 		var hits []string
@@ -111,7 +142,7 @@ func timingItems(sentence string) []types.ExclusionItem {
 	}
 	var items []types.ExclusionItem
 	for _, c := range codeRe.FindAllString(m[1], -1) {
-		items = append(items, types.ExclusionItem{Codes: []string{c}, Concurrent: true})
+		items = append(items, types.ExclusionItem{Courses: []string{c}, Concurrent: true})
 	}
 	return items
 }

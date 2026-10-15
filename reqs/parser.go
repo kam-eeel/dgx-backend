@@ -60,7 +60,7 @@ func (p *parser) parseField() *types.ReqNode {
 				plain = []*types.ReqNode{p.or(p.and(plain...), p.parseSeq())}
 			}
 		case p.at(tCond):
-			body := []*types.ReqNode{p.text(types.KindProgram, p.next())}
+			body := []*types.ReqNode{p.text(types.TextMembership, p.next())}
 			for !p.done() && !p.at(tCond, tRParen) {
 				if p.at(tSemi) {
 					p.next()
@@ -175,7 +175,7 @@ func (p *parser) parseAtom() *types.ReqNode {
 	case tText:
 		return p.text("", t) // kind is assigned in post-processing
 	case tCond:
-		return p.text(types.KindProgram, t)
+		return p.text(types.TextMembership, t)
 	case tLParen:
 		n := p.parseField()
 		if p.at(tRParen) { // tolerate a missing ")"

@@ -92,9 +92,9 @@ func parseCourses(doc *goquery.Document) []*types.Course {
 
 		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
 		if t != "" {
-			for _, br := range types.UTSGBreadthReqs {
+			for i, br := range types.UTSGBreadthCategories {
 				if strings.Contains(t, br) {
-					c.BreadthReq = append(c.BreadthReq, br)
+					c.Breadth = append(c.Breadth, i+1)
 				}
 			}
 		}
@@ -138,14 +138,14 @@ func parsePrograms(doc *goquery.Document) []*types.Program {
 		}
 
 		if t := blockText(s.Find(".views-field-field-enrolment-requirements").Find(".field-content")); t != "" {
-			p.EnrolmentReqs = &t
+			p.Enrolment = reqs.ParseEnrolment(t)
 		}
 		if t := blockText(s.Find(".views-field-field-completion-requirements").Find(".field-content")); t != "" {
-			p.CompletionReqs = &t
+			p.Completion = &t
 		}
 
 		s.Find(".views-field-field-section-link").Find("a").Each(func(_ int, ss *goquery.Selection) {
-			p.ProgramArea = append(p.ProgramArea, ss.Text())
+			p.Areas = append(p.Areas, ss.Text())
 		})
 
 		programs = append(programs, p)
@@ -174,14 +174,16 @@ func parseDir[T any](dir string, parse func(*goquery.Document) []*T) []*T {
 	return slices.Concat(results...)
 }
 
+// ParsePages parses the downloaded program and course pages, links them
+// (see reqs.Link), and stores both.
 func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	programs := parseDir(cfg.ProgramsDir, parsePrograms)
+	courses := parseDir(cfg.CoursesDir, parseCourses)
+	reqs.Link(courses, programs)
+
 	if err := db.CreatePrograms(ctx, programs); err != nil {
 		return err
 	}
-
-	courses := parseDir(cfg.CoursesDir, parseCourses)
-	reqs.Link(courses, programs)
 	if err := db.CreateCourses(ctx, courses); err != nil {
 		return err
 	}

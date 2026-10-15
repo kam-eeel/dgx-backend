@@ -25,7 +25,7 @@ func TestTitleRuns(t *testing.T) {
 			jAnd(credits("1.5"), jT("other", "that count toward the History and Philosophy of Science (HPS), Science, Technology and Society (STS), History, or Philosophy programs of study"))},
 		{"lower-case head noun ends the last name", "a 0.5 credit from HPS or a course required for the Science, Technology, and Society minor",
 			jOr(`{"type":"credits","amount":0.5,"designators":["HPS"]}`,
-				jT("program", "a course required for the Science, Technology, and Society minor"))},
+				jT("membership", "a course required for the Science, Technology, and Society minor"))},
 		{"programming languages", "CSC209H1/ proficiency in C, C++, or Fortran",
 			jOr(jC("CSC209H1"), jT("placement", "proficiency in C, C++, or Fortran"))},
 		{"high-school course names", "MCV4U Calculus & Vectors; SPH4U Physics / SES4U Earth and Space Science",
@@ -58,7 +58,7 @@ func TestTitleRuns(t *testing.T) {
 		// real operators stay operators
 		{"courses", "CSC148H1, MAT137Y1 and STA247H1", jAnd(jC("CSC148H1"), jC("MAT137Y1"), jC("STA247H1"))},
 		{"lower-case end", "Admission to Munk One, permission of the instructor",
-			jAnd(jT("program", "Admission to Munk One"), jT("permission", "permission of the instructor"))},
+			jAnd(jT("membership", "Admission to Munk One"), jT("permission", "permission of the instructor"))},
 		{"requirement after a name", "Specialist or Major in Drama, Independent Study Application Form",
 			jAnd(`{"type":"program","text":"Specialist or Major in Drama"}`, jT("permission", "Independent Study Application Form"))},
 		{"series without a conjunction", "CSC108H1/ Statistics Canada, Data Science",

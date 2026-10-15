@@ -68,10 +68,10 @@ func TestPhraseNodes(t *testing.T) {
 
 		// GPA
 		{"Minimum GPA 3.5 for APM and MAT courses, permission", tGPA, "Minimum GPA 3.5 for APM and MAT courses",
-			`{"type":"gpa","min":3.5,"scope":"APM and MAT courses"}`},
+			`{"type":"gpa","min_gpa":3.5,"scope":"APM and MAT courses"}`},
 		{"a minimum GPA of B+ in Astronomy program courses and the permission", tGPA, "a minimum GPA of B+ in Astronomy program courses",
-			`{"type":"gpa","min":3.3,"scope":"Astronomy program courses"}`},
-		{"cGPA 3.0", tGPA, "cGPA 3.0", `{"type":"gpa","min":3}`},
+			`{"type":"gpa","min_gpa":3.3,"scope":"Astronomy program courses"}`},
+		{"cGPA 3.0", tGPA, "cGPA 3.0", `{"type":"gpa","min_gpa":3}`},
 	}
 	for _, tt := range tests {
 		tok, ok := firstPhrase(tt.in)

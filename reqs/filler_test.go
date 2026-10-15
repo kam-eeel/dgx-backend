@@ -167,7 +167,7 @@ func TestStripFillerKeepsMeaning(t *testing.T) {
 
 func TestClassifyPreparation(t *testing.T) {
 	for _, s := range []string{"SPH4U Physics", "MCV4U Calculus & Vectors", "SBI4U", "RCM Level 9 Harmony", "U or M level"} {
-		if got := classify(s); got != types.KindPreparation {
+		if got := classify(s); got != types.TextPreparation {
 			t.Errorf("classify(%q) = %q, want preparation", s, got)
 		}
 	}

@@ -30,7 +30,7 @@ func ParseRequisite(raw string) *types.Requisite {
 	}
 	if r.Req == nil && len(r.Notes) == 0 {
 		// Only noise was left; keep the text rather than silently dropping it.
-		r.Req = &types.ReqNode{Type: types.NodeText, Kind: types.KindOther, Text: reqText}
+		r.Req = &types.ReqNode{Type: types.NodeText, Kind: types.TextOther, Text: reqText}
 	}
 	return r
 }

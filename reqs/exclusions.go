@@ -151,7 +151,7 @@ func rewriteExclusion(s string) string {
 
 // itemKey identifies an item for deduping; the note doesn't count.
 func itemKey(it types.ExclusionItem) string {
-	return fmt.Sprint(slices.Sorted(slices.Values(it.Codes)), it.Designators, it.Levels,
+	return fmt.Sprint(slices.Sorted(slices.Values(it.Courses)), it.Designators, it.Levels,
 		slices.Sorted(slices.Values(it.Exclude)), it.Concurrent, it.Text)
 }
 
@@ -341,7 +341,7 @@ func segmentItems(src string, seg []token, notes map[*types.ReqNode]string) segR
 	if combos := toDNF(n); combos != nil {
 		var items []types.ExclusionItem
 		for _, codes := range combos {
-			items = append(items, types.ExclusionItem{Codes: codes, Note: noteFor(n, codes, notes)})
+			items = append(items, types.ExclusionItem{Courses: codes, Note: noteFor(n, codes, notes)})
 		}
 		return segResult{items: items, span: sp}
 	}
@@ -400,13 +400,13 @@ func filterItem(s string) (types.ExclusionItem, bool) {
 func exclKind(text string, preset types.TextKind) types.TextKind {
 	k := classify(text)
 	switch {
-	case k == types.KindPermission:
+	case k == types.TextPermission:
 		return k
 	case schoolRe.MatchString(text):
-		return types.KindPreparation
+		return types.TextPreparation
 	case speakersRe.MatchString(text):
-		return types.KindPlacement
-	case k == types.KindOther && preset != "":
+		return types.TextPlacement
+	case k == types.TextOther && preset != "":
 		return preset
 	}
 	return k

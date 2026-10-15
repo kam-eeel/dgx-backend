@@ -55,7 +55,7 @@ var averageGoldens = []struct{ name, raw, want string }{
 	{"average with its own grade stays text", "an average of 75% in 2.0 PHL credits with a minimum grade of 70%",
 		jT("other", "an average of 75% in 2.0 PHL credits with a minimum grade of 70%")},
 	{"GPA stays GPA", "Completion of at least 2.0 CHM credits with a minimum cGPA of 3.0 in all CHM credits",
-		jAnd(`{"type":"credits","amount":2,"designators":["CHM"]}`, `{"type":"gpa","min":3,"scope":"CHM credits"}`)},
+		jAnd(`{"type":"credits","amount":2,"designators":["CHM"]}`, `{"type":"gpa","min_gpa":3,"scope":"CHM credits"}`)},
 }
 
 func TestParseAverages(t *testing.T) {
