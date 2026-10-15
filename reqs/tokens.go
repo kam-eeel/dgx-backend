@@ -24,14 +24,21 @@ const (
 	tLParen                     // (
 	tRParen                     // )
 	tText                       // fallback: a run of words
+
+	// Completion text only (lexCompletion):
+	tWild    // a pool member named by designator and level: "PSL400-series courses", "EEB (excluding ...)"
+	tEither  // "Either" before alternatives: "Either A or B"
+	tSkip    // words that only restate the grammar ("All of:"); dropped by lexCompletion
+	tExclude // ", excluding JPH311H1, JPH441H1" after a list
 )
 
 type token struct {
 	kind       tokKind
 	start, end int            // byte span in the source string
-	node       *types.ReqNode // prebuilt leaf for course / credits / gpa
+	node       *types.ReqNode // prebuilt leaf for course / credits / gpa; tPool (completion): levels that narrow every member
 	grade      int            // tGradePrefix, tGradeSuffix, tAvgSuffix
 	each       bool           // tGradePrefix: "in each of"; tGradeSuffix: "in each (course)"
 	amount     float64        // tPool: credit amount ("1.0 credit from:"), else 0
 	count      int            // tPool: how many items ("one of" = 1, "two of" = 2); tAvgSuffix: courses named ("both" = 2, else 0)
+	codes      []string       // tExclude: the excluded codes
 }

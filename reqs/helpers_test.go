@@ -29,6 +29,8 @@ func assertJSON(t *testing.T, got any, want string) {
 
 func jsonString(s string) string { b, _ := json.Marshal(s); return string(b) }
 
+func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
+
 func jC(code string) string { return fmt.Sprintf(`{"type":"course","code":%q}`, code) }
 func jCG(code string, grade int) string {
 	return fmt.Sprintf(`{"type":"course","code":%q,"min_grade":%d}`, code, grade)

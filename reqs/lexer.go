@@ -2,6 +2,7 @@ package reqs
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -25,13 +26,21 @@ var operators = []struct {
 // lex splits normalized text into tokens. Anything no matcher recognizes
 // becomes a tText token that runs until the next word where some other
 // matcher would match.
-func lex(src string) []token {
+func lex(src string) []token { return lexWith(src, phraseMatchers) }
+
+// lexCompletion lexes program completion text: the completion phrases are
+// tried before the shared ones, and tSkip tokens are dropped.
+func lexCompletion(src string) []token {
+	return slices.DeleteFunc(lexWith(src, completionMatchers), func(t token) bool { return t.kind == tSkip })
+}
+
+func lexWith(src string, matchers []phraseMatcher) []token {
 	var toks []token
 	pos := skipSpace(src, 0)
 	for pos < len(src) {
-		t, ok := matchAt(src, pos)
+		t, ok := matchAt(src, pos, matchers)
 		if !ok {
-			t = textAt(src, pos)
+			t = textAt(src, pos, matchers)
 		}
 		toks = append(toks, t)
 		pos = skipSpace(src, t.end)
@@ -40,9 +49,9 @@ func lex(src string) []token {
 }
 
 // matchAt tries every phrase matcher, then every operator, at pos.
-func matchAt(src string, pos int) (token, bool) {
+func matchAt(src string, pos int, matchers []phraseMatcher) (token, bool) {
 	rest := src[pos:]
-	for _, m := range phraseMatchers {
+	for _, m := range matchers {
 		if t, ok := m(rest); ok {
 			t.start, t.end = pos, pos+t.end
 			return t, true
@@ -58,7 +67,7 @@ func matchAt(src string, pos int) (token, bool) {
 
 // textAt consumes words starting at pos until the next word is something
 // another matcher recognizes. A word ends at whitespace or at one of , ; / ( ).
-func textAt(src string, pos int) token {
+func textAt(src string, pos int, matchers []phraseMatcher) token {
 	end := pos
 	for {
 		end = wordEnd(src, end)
@@ -66,7 +75,7 @@ func textAt(src string, pos int) token {
 		if next >= len(src) {
 			break
 		}
-		if _, ok := matchAt(src, next); ok {
+		if _, ok := matchAt(src, next, matchers); ok {
 			break
 		}
 		end = next
