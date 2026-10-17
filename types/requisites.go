@@ -33,6 +33,7 @@ const (
 	TextOther       TextKind = "other"
 	TextAdmission   TextKind = "admission" // decided by the department: a variable cutoff, an application, interview, audition, portfolio or test
 	TextAmbiguity   TextKind = "ambiguity" // the calendar supports two readings; this node marks the branch only the lenient one accepts
+	TextContent     TextKind = "content"   // completion: the course's content, topic, type or language decides, which the catalogue doesn't record
 )
 
 // ReqNode is one node of a requirement tree.
@@ -65,6 +66,14 @@ type ReqNode struct {
 	Breadth     []int    `json:"breadth,omitempty"`
 	Courses     []string `json:"courses,omitempty"`
 	Exclude     []string `json:"exclude,omitempty"`
+	// ExcludeDesignators (credits): courses with one of these designators
+	// never count, a filter like Exclude: "8.0 credits in non-RSM courses",
+	// "Courses offered by other academic units may not be counted" (a cap
+	// of 0 on the program's own designators excluded).
+	ExcludeDesignators []string `json:"exclude_designators,omitempty"`
+	// MaxCourseAmount (credits, 0 = none): only courses worth at most this
+	// many credits match: "any FRE or FCS half-course" is 0.5.
+	MaxCourseAmount float64 `json:"max_course_amount,omitempty"`
 	// Lists (credits, average): the course must be on one of these named
 	// lists (Completion.Lists); several names are a union. A union of pools
 	// that need different filters ("POL101H1/... or first-year seminars") is
@@ -91,7 +100,14 @@ type ReqNode struct {
 	MaxAmount *float64 `json:"max_amount,omitempty"`
 	// Weight (credits, list items): the credit a matched course contributes,
 	// at most its own weight ("HIS208Y1 counts 0.5 toward each area"). The
-	// rest of a split course can count elsewhere.
+	// rest of a split course can count elsewhere. On a pair item (below),
+	// the credit the pair contributes in total.
+	//
+	// A pair item is a list item and(course, course): the two courses count
+	// as one unit ("( PHL205H1, PHL206H1)" among "2.0 credits from
+	// PHL200Y1/( PHL205H1, PHL206H1)/ PHL210Y1"). Neither course is on the
+	// list alone; a row drawing on the list claims both together, and the
+	// pair counts their summed credits (or Weight).
 	Weight float64 `json:"weight,omitempty"`
 
 	MinGPA float64 `json:"min_gpa,omitempty"` // gpa

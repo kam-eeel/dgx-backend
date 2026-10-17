@@ -1,0 +1,888 @@
+package reqs
+
+import (
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+
+	"degree-explorer/types"
+)
+
+// Cross-references between requirements: a pool drawn from other
+// requirements' pools ("from Requirements 1, 3, 4, 5, or 6", "from the
+// remaining courses in requirement 3"), resolved by label (labelled) and
+// numbered once the rows are (numberReqRefs).
+
+var (
+	// complReqRefRe: a pool drawn from other requirements' pools: "from
+	// Requirements 1, 3, 4, 5, or 6", "from the remaining courses in
+	// requirement 3", "from remaining courses in requirement 1", "from
+	// program requirements (1), (2) and (3) above", "either from courses not
+	// already taken to fulfill Requirement 2" (what another row claims it
+	// can't take: the claims rule).
+	complReqRefRe = regexp.MustCompile(`(?i)\s*\b(?:either\s+)?from\s+(?:the\s+)?(?:remaining\s+courses?\s+in\s+|courses\s+not\s+already\s+(?:taken|used)\s+to\s+fulfil+\s+)?(?:program\s+)?requirements?\s+(\(?#?\d{1,2}\)?(?:\s*(?:,\s*(?:and|or)?|and|or)\s*\(?\d{1,2}\)?)*)(?:\s+above)?`)
+	// complReqRefRestRe: what may be left once the requirements are taken
+	// out: the amount, then courses the pool adds: ", or from: POL314H1,
+	// ...", "and the following courses: ...", "and/or from the approved
+	// list of cognate courses: ...", ", with up to 1.0 credit from ...".
+	complReqRefRestRe = regexp.MustCompile(`(?i)^(?:complete\s+)?(.+?\bcredits?)(?:\s*,?\s*(?:(?:or|and/or)\s+from(?:\s+the\s+approved\s+list\s+of\s+cognate\s+courses)?|(?:,\s*)?(?:or|and)\s+the\s+following\s+courses|with\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from)\s*:?\s*(.+))?$`)
+)
+
+// compReqRef is a pool that refers to other requirements, which get their
+// numbers once the rows are numbered (finish).
+type compReqRef struct {
+	node *types.ReqNode
+	rows []*compRow
+	list *types.CourseList // the list whose item node is; nil when node is a row's body
+	// scope: node is a rule's on the courses rows claim (scopeRules), not a
+	// pool drawn from theirs: it names every row, open text or not.
+	scope bool
+}
+
+// reqRefAlloc reads an allocation's text that draws on the pools of other
+// requirements by their labels ("An additional 2.5 credits from
+// Requirements 1, 3, 4, 5, or 6, with up to 1.0 credit from ENG215H1,
+// ...", "1.5 credits from the remaining courses in requirement 3, or from:
+// POL314H1, POL342H1, POL440H1"): credits{requirements: [...]}, or, with
+// courses besides, a list of both (design 3.2) and a limit on the courses'
+// share when the text caps it. Each label must name one other allocation.
+func (a *compAssembler) reqRefAlloc(row *compRow, text string, ls compListRefs) (*types.ReqNode, []*types.Requirement, bool) {
+	t := complClean(text)
+	m := complReqRefRe.FindStringSubmatchIndex(t)
+	if m == nil || len(complReqRefRe.FindAllString(t, -1)) != 1 || row.r.Label == "" {
+		return nil, nil, false
+	}
+	var rows []*compRow
+	for _, l := range regexp.MustCompile(`\d{1,2}`).FindAllString(t[m[2]:m[3]], -1) {
+		r := a.labelled(l)
+		if r == nil || r == row {
+			return nil, nil, false
+		}
+		rows = append(rows, r)
+	}
+	left := strings.TrimSpace(t[:m[0]] + " " + t[m[1]:])
+	// ", or from any of the following:" over lines of courses by subject
+	// ("- Anthropology: ANT464H1"), the row's notes: those courses.
+	var following, keep []string
+	if loc := complFromFollowingTailRe.FindStringIndex(left); loc != nil {
+		var ok bool
+		if following, keep, ok = a.followingCodes(row); !ok {
+			return nil, nil, false
+		}
+		left = strings.TrimSuffix(strings.TrimSpace(left[:loc[0]]), ",")
+	}
+	rest := complReqRefRestRe.FindStringSubmatch(left)
+	if rest == nil || following != nil && rest[3] != "" {
+		return nil, nil, false
+	}
+	if following != nil {
+		rest[3] = strings.Join(following, ", ")
+	}
+	n, _, ok := listRefPoolOf(rest[1], ls, false, []string{"x"})
+	if !ok || n.Designators != nil || n.Levels != nil {
+		return nil, nil, false
+	}
+	n.Lists = nil
+	if rest[3] == "" {
+		n.Requirements = []int{} // filled in once numbered
+		a.reqRefs = append(a.reqRefs, compReqRef{node: n, rows: rows})
+		return n, nil, true
+	}
+	codes := complAnyCodeRe.FindAllString(rest[3], -1)
+	if codes == nil || !complListRestRe.MatchString(complAnyCodeRe.ReplaceAllString(rest[3], " ")) {
+		return nil, nil, false
+	}
+	ref := &types.ReqNode{Type: types.NodeCredits}
+	name, l, ok := a.addUnion(row, []*types.ReqNode{ref, {Type: types.NodeCredits, Courses: dedupe(codes)}}, ls)
+	if !ok {
+		return nil, nil, false
+	}
+	a.reqRefs = append(a.reqRefs, compReqRef{node: ref, rows: rows, list: l.list})
+	n.Lists = []string{name}
+	if following != nil {
+		row.r.Notes = keep // the list's lines are its courses now
+	}
+	var rules []*types.Requirement
+	if rest[2] != "" {
+		// ", with up to 1.0 credit from ENG215H1, ...": the courses' share.
+		v, _ := strconv.ParseFloat(rest[2], 64)
+		rules = append(rules, &types.Requirement{Kind: types.RequirementLimit, Raw: cleanNote(text),
+			Req: &types.ReqNode{Type: types.NodeCredits, Courses: dedupe(codes), MaxAmount: maxAmount(v)}})
+	}
+	return n, rules, true
+}
+
+// labelled returns the one allocation labelled l, or nil.
+func (a *compAssembler) labelled(l string) *compRow {
+	var found []*compRow
+	var walk func(rs []*compRow)
+	walk = func(rs []*compRow) {
+		for _, r := range rs {
+			if r.r.Kind == types.RequirementAllocation && r.r.Label == l {
+				found = append(found, r)
+			}
+			walk(r.children)
+		}
+	}
+	walk(a.items)
+	if len(found) != 1 {
+		return nil
+	}
+	return found[0]
+}
+
+// numberReqRefs sets the requirement numbers of the pools that refer to
+// other requirements (reqRefAlloc, poolListAlts), once the rows are
+// numbered. A requirement whose body has open text (a text item, a bare
+// route, a pool condition of text: "and(credits{levels}, text{offered by
+// the Canadian Studies program})") has no pool the checker can tell, so it
+// is never a plain reference, which would count any course: the courses it
+// may count are a maybe (Review), as an enrolment average over such a row is
+// (linkEnrolmentCompletion). A list item referring to it is the list's maybe
+// item and(credits{requirements: [those rows]}, text); a row body is
+// or(credits{the closed rows}, and(credits{all the rows}, text)), or with
+// no closed row, and(credits{the rows}, text).
+func (a *compAssembler) numberReqRefs() {
+	for _, ref := range a.reqRefs {
+		if ref.scope {
+			for _, r := range ref.rows {
+				ref.node.Requirements = append(ref.node.Requirements, r.r.Number)
+			}
+			slices.Sort(ref.node.Requirements)
+			continue
+		}
+		var closed, open []int
+		var labels []string
+		for _, r := range ref.rows {
+			if r.r.Req == nil || openText(r.r.Req) {
+				open = append(open, r.r.Number)
+				labels = append(labels, r.r.Label)
+			} else {
+				closed = append(closed, r.r.Number)
+			}
+		}
+		if open == nil {
+			ref.node.Requirements = closed
+			continue
+		}
+		text := textNode(types.TextOther, "the courses of "+refLabels(labels)+", which "+map[bool]string{true: "is", false: "are"}[len(labels) == 1]+" partly text")
+		if ref.list != nil {
+			maybe := andNode(&types.ReqNode{Type: types.NodeCredits, Requirements: open}, text)
+			if closed == nil {
+				ref.list.Items = slices.DeleteFunc(ref.list.Items, func(it *types.ReqNode) bool { return it == ref.node })
+			} else {
+				ref.node.Requirements = closed
+			}
+			ref.list.Items = append(ref.list.Items, maybe)
+			continue
+		}
+		all := cloneNode(ref.node)
+		all.Requirements = append(slices.Clone(closed), open...)
+		slices.Sort(all.Requirements)
+		if closed == nil {
+			*ref.node = *andNode(all, text)
+			continue
+		}
+		strict := cloneNode(ref.node)
+		strict.Requirements = closed
+		*ref.node = *orNode(strict, andNode(all, text))
+	}
+}
+
+// refLabels names requirements by their calendar labels: "requirement 6",
+// "requirements 6 and 9".
+func refLabels(labels []string) string {
+	if len(labels) == 1 {
+		return "requirement " + labels[0]
+	}
+	return "requirements " + strings.Join(labels[:len(labels)-1], ", ") + " and " + labels[len(labels)-1]
+}
+
+// Rules across rows (Task 8): a must-include on another row's choices ("The
+// choices in 3 must satisfy the requirement for an integrative ... by
+// including one of ..."), rules over several numbered rows together ("No
+// more than 0.5 credit in BCH can be used towards requirements 5. and 6"),
+// the program's floors and caps the sentence grammar left as text, a cap
+// per designator, and an "Additional courses ... from Groups A and C for a
+// total of 8.0 credits" pool.
+
+var (
+	// complChoicesIncludeRe: a must-include on the courses a row (or the
+	// program) chooses: "The choices in 3 must satisfy the requirement for
+	// an integrative, inquiry-based activity by including one of the
+	// following courses: CSC301H1, ...", "The choices from 3 must ... by
+	// including at least 0.5 credit from the following: ...", "The choices
+	// in the program must ... by including at least one of the following
+	// courses: ...". The groups: the row's label, the amount, the courses.
+	complChoicesIncludeRe = regexp.MustCompile(`(?i)^the\s+choices\s+(?:in|from)\s+(?:(\d{1,2})|the\s+program)\s+must\s+satisfy\s+the\s+requirement\s+for\s+an\s+integrative,\s+inquiry-based(?:\s+and/or\s+experiential)?\s+activity\s+by\s+including\s+(?:(?:at\s+least\s+)?one|at\s+least\s+(\d+(?:\.\d+)?)\s+credits?)\s+(?:of|from)\s+the\s+following(?:\s+courses)?\s*:\s*(.+)$`)
+	// complIntegrativeMetByRe: the same must-include on the program, written
+	// as an item: "The requirement for an integrative, inquiry-based and/or
+	// experiential activity must be met by completing at least one of the
+	// following: ENV421Y1, ...".
+	complIntegrativeMetByRe = regexp.MustCompile(`(?i)^the\s+requirement\s+for\s+an\s+integrative,\s+inquiry-based(?:\s+and/or\s+experiential)?\s+activity\s+must\s+be\s+met\s+by\s+completing\s+(?:at\s+least\s+)?one\s+of\s+the\s+following(?:\s+courses)?\s*:\s*(.+)$`)
+	// complIntegrativeByRe: the must-include met by a course a row requires:
+	// "The requirement for an integrative, inquiry-based activity is
+	// satisfied by the required course PHY424H1".
+	complIntegrativeByRe = regexp.MustCompile(`(?i)^the\s+requirement\s+for\s+an\s+integrative,\s+inquiry-based(?:\s+and/or\s+experiential)?\s+activity\s+is\s+(?:satisfied|met)\s+by\s+the\s+required\s+course\s+(` + codePat + `)$`)
+	// complReqScopeRe: a rule on several numbered rows together: "No more
+	// than 0.5 credit in BCH can be used towards requirements 5. and 6",
+	// "For numbers 5 and 6 above, 2.0 credits must be at the 300-level and a
+	// 0.5 credit must be at the 400-level". The groups: the rule and the
+	// labels, in either order.
+	complReqScopeRe = regexp.MustCompile(`(?i)^(?:(.+?)\s+towards?\s+requirements\s+(\d{1,2})\.?\s+and\s+(\d{1,2})\.?|for\s+numbers\s+(\d{1,2})\s+and\s+(\d{1,2})\s+above,\s+(.+))$`)
+	// complFloorAndFloorRe: two floors joined by "and": "2.0 credits must be
+	// at the 300-level and a 0.5 credit must be at the 400-level".
+	complFloorAndFloorRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?\s+must\s+be\s+.+?)\s+and\s+an?\s+(\d+(?:\.\d+)?\s+credits?\s+must\s+be\s+.+)$`)
+	// complPerDesignatorCapRe: a cap on each designator of an item's pool:
+	// "No more than 1.5 credits of the 2.5 credits required from this list of
+	// options may come from any single 3-letter course designator, except for
+	// CSC courses".
+	complPerDesignatorCapRe = regexp.MustCompile(`(?i)^no\s+more\s+than\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+the\s+(\d+(?:\.\d+)?)\s+credits?\s+required\s+from\s+this\s+list(?:\s+of\s+options)?\s+may\s+come\s+from\s+any\s+single\s+(?:3-letter\s+)?(?:course\s+)?designator(?:,?\s+except\s+(?:for\s+)?((?-i:[A-Z]{3})(?:\s*(?:,|and|or)\s*(?-i:[A-Z]{3}))*)\s+courses)?$`)
+	// complNotCountListRe: courses that don't count toward the program:
+	// "Additional courses that may strengthen your background in this program
+	// can be taken, but will not count towards your program: ANA300Y1/ ...".
+	complNotCountListRe = regexp.MustCompile(`(?i)\bbut\s+will\s+not\s+count\s+towards?\s+(?:your|the|this)\s+program\s*:\s*(.+)$`)
+	// complOfTheCreditsRe: a floor on the item's own amount: "Of the 4.5
+	// credits, at least 1.5 credits must come from the following:
+	// CHC203Y1/ ...". The groups: the item's amount, the floor's, the
+	// courses.
+	complOfTheCreditsRe = regexp.MustCompile(`(?i)^of\s+the\s+(\d+(?:\.\d+)?)\s+credits,\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+must\s+come\s+from\s+the\s+following\s*:\s*(.+)$`)
+	// complLevelsListsFloorRe: "4.0 credits must be 300/400-level (including
+	// at least 1.0 credit at the 400-level) of which at least 1.0 credit
+	// must be from Group A and another from Group B".
+	complLevelsListsFloorRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+must\s+be\s+([1-4]00(?:\s*/\s*[1-4]00)*)-level\s+\(including\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+([1-4]00)-level\)\s+of\s+which\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+must\s+be\s+from\s+(` + complListRefPat + `)\s+and\s+another\s+from\s+(` + complListRefPat + `)$`)
+	// complAdditionalListsRe: "Additional courses (excluding those already
+	// counted) from Groups A and C for a total of 8.0 credits": Req 1's own
+	// pool, from lists (design 3.1). The groups: the lists, the total.
+	complAdditionalListsRe = regexp.MustCompile(`(?i)^additional\s+(?:courses|credits)\s+from\s+(` + complListRefPat + `)\s+(?:for|to)\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?$`)
+	// complNotAlreadyRe: what a course claimed by another row already means:
+	// "Any URB or JGU courses not already taken to fulfill requirement 3".
+	complNotAlreadyRe = regexp.MustCompile(`(?i)\s+not\s+already\s+(?:taken|used)\s+to\s+fulfil+\s+requirement\s+\d{1,2}\b`)
+	// complFromFollowingTailRe: a pool's courses set out under it: ", or
+	// from any of the following:" over "- Anthropology: ANT464H1", ....
+	complFromFollowingTailRe = regexp.MustCompile(`(?i),?\s*(?:or|and/or)\s+from\s+(?:any\s+of\s+)?the\s+following\s*:?\s*$`)
+)
+
+// floorRewrites put the program's floors and caps the sentence grammar
+// leaves as text into the words readFloor and capRow read, each kept to the
+// meaning of its sentence: "Of these, at least one 0.5 credit must be at the
+// 400-level (includes Fourth Year Course requirement)" is a floor of 0.5 at
+// the 400-level (the bracket says the item's course counts toward it); "You
+// need a minimum of 4.0 credits of 300/400-level courses"; "At least 2.0 out
+// of the 5.0 credits must be at the 300+ level" (complOutOfRe); "These
+// credits must include 1.0 credit at the 300+ level from AMS courses";
+// "Students may not use more than 2.0 credits towards their program from
+// JPM400Y1/ ...", "... of BCH372Y1/ ... to fulfill program requirements"; "At
+// least 1.5 credits must be in FRE or FSL courses taken in the Faculty of
+// Arts & Science" (FRE and FSL are St. George designators: the campus rule
+// says the rest); "At least one 0.5 credit from PCL367H1 or PCL368H1 is
+// required for the program, however if desired the alternative course can
+// be taken as a program elective" (the other course's place in the
+// electives is its pool's).
+var floorRewrites = []struct {
+	re   *regexp.Regexp
+	repl string
+}{
+	{regexp.MustCompile(`(?i)^of\s+(?:these|the\s+courses\s+chosen),\s+`), ""},
+	{regexp.MustCompile(`(?i)\s*\(includes\s+[^()]*\brequirement\)$`), ""},
+	{regexp.MustCompile(`(?i)^at\s+least\s+one\s+(\d+(?:\.\d+)?\s+credits?)\b`), "at least $1"},
+	{regexp.MustCompile(`(?i)^you\s+need\s+a\s+minimum\s+of\s+(\d+(?:\.\d+)?\s+credits?)\s+of\s+([1-4]00(?:\s*[/+]\s*(?:[1-4]00)?)*)-level\s+courses$`), "At least $1 must be at the $2-level"},
+	{regexp.MustCompile(`(?i)^at\s+least\s+(\d+(?:\.\d+)?\s+out\s+of\s+the\s+)`), "$1"},
+	{regexp.MustCompile(`(?i)^these\s+credits\s+must\s+include\s+(\d+(?:\.\d+)?\s+credits?)\s+(at\s+the\s+.+?\s+level\s+from\s+(?-i:[A-Z]{3})\s+courses)$`), "At least $1 must be $2"},
+	{regexp.MustCompile(`(?i)^students\s+may\s+not\s+use\s+more\s+than\s+(\d+(?:\.\d+)?\s+credits?)\s+(?:towards?\s+their\s+program\s+(?:from|of)\s+(.+)|(?:from|of)\s+(.+?)\s+to\s+fulfil+\s+program\s+requirements)$`), "No more than $1 from $2$3 may be used"},
+	{regexp.MustCompile(`(?i)^(at\s+least\s+\d+(?:\.\d+)?\s+credits?\s+must\s+be\s+in\s+(?-i:[A-Z]{3})(?:\s+or\s+(?-i:[A-Z]{3}))*\s+courses)\s+taken\s+in\s+the\s+faculty\s+of\s+arts\s+(?:&|and)\s+science$`), "$1"},
+	{regexp.MustCompile(`(?i)^(at\s+least)\s+(?:one\s+)?(\d+(?:\.\d+)?\s+credits?\s+from\s+` + codePat + `\s+or\s+` + codePat + `)\s+is\s+required\s+for\s+the\s+program,\s+however\s+if\s+desired\s+the\s+alternative\s+course\s+can\s+be\s+taken\s+as\s+a\s+program\s+elective$`), "$1 $2"},
+}
+
+// compCrossMove is a row crossRules moves: under another row, or to the
+// program (to is nil).
+type compCrossMove struct {
+	row *compRow
+	to  *compRow
+}
+
+// crossRules reads the rules that tie rows together, once the lists are
+// known (namedLists) and before the routes are placed: the rows of text
+// they were (rules that name other rows, the program's floors and caps the
+// sentence grammar couldn't read) become constraints and limits where the
+// text puts them, and a route on lists only Req 1's pool draws on joins it
+// (totalListRoutes). names are the lists in the envelope.
+func (a *compAssembler) crossRules(lists []*types.CourseList) {
+	var names []string
+	for _, l := range lists {
+		names = append(names, l.Name)
+	}
+	var moves []compCrossMove
+	var walk func(parent *compRow, rows []*compRow) []*compRow
+	walk = func(parent *compRow, rows []*compRow) []*compRow {
+		var out []*compRow
+		for _, r := range rows {
+			r.children = walk(r, r.children)
+			rs, to, move := a.crossRule(parent, r, names)
+			if move {
+				for _, x := range rs {
+					moves = append(moves, compCrossMove{x, to})
+				}
+				continue
+			}
+			out = append(out, rs...)
+		}
+		return out
+	}
+	a.items = walk(a.total, a.items)
+	a.program = walk(a.total, a.program)
+	for _, m := range moves {
+		if m.to != nil {
+			m.to.children = append(m.to.children, m.row)
+		} else {
+			a.program = append(a.program, m.row)
+		}
+	}
+	a.totalListRoutes()
+}
+
+// totalListRoutes places a program route that names only lists Req 1's own
+// pool draws on and no item does ("Students who have completed
+// criminology/sociolegal type courses ... (not included in Group C) may
+// email the Program Coordinator to find out if theses courses can be used
+// towards the Group C requirements", additionalLists) on Req 1: its pool's
+// route, or(pool, text{permission}).
+func (a *compAssembler) totalListRoutes() {
+	if a.total == nil || a.total.r.Req == nil || a.total.r.Req.Type != types.NodeCredits || a.total.r.Req.Lists == nil {
+		return
+	}
+	pool := a.total.r.Req
+	keys := map[string]string{}
+	for _, name := range pool.Lists {
+		if _, key := listName(name); key != "" {
+			keys[key] = name
+		}
+	}
+	var walk func(rs []*compRow)
+	walk = func(rs []*compRow) {
+		for _, r := range rs {
+			walkReq(r.r.Req, func(n *types.ReqNode) {
+				for _, name := range n.Lists {
+					for k, v := range keys {
+						if v == name {
+							delete(keys, k)
+						}
+					}
+				}
+			})
+			walk(r.children)
+		}
+	}
+	walk(a.items)
+	walk(a.program)
+	a.programRoutes = slices.DeleteFunc(a.programRoutes, func(s string) bool {
+		refs := complListRefRe.FindAllString(a.clean(s), -1)
+		if refs == nil || !a.isApproval(s) {
+			return false
+		}
+		for _, ref := range refs {
+			for _, k := range listRefNames(ref) {
+				if keys[k] == "" {
+					return false
+				}
+			}
+		}
+		a.total.r.Req = orNode(a.total.r.Req, textNode(types.TextPermission, s))
+		addRaw(a.total, s)
+		return true
+	})
+}
+
+// crossRule reads row r under parent (nil: the program) again, and returns
+// the rows it becomes, and whether they move (to another row, or with to
+// nil, to the program).
+func (a *compAssembler) crossRule(parent, r *compRow, names []string) (rows []*compRow, to *compRow, move bool) {
+	n := r.r.Req
+	if n == nil {
+		return []*compRow{r}, nil, false
+	}
+	// The text of the rule, and the alternatives after it: or(text, the
+	// ASIP route).
+	text, alts := n, []*types.ReqNode(nil)
+	if n.Type == types.NodeOr && len(n.Items) > 1 && !slices.ContainsFunc(n.Items, func(it *types.ReqNode) bool { return it.Type != types.NodeText }) {
+		text, alts = n.Items[0], n.Items[1:]
+	}
+	if text.Type != types.NodeText || text.Kind != types.TextOther {
+		return []*compRow{r}, nil, false
+	}
+	t := strings.TrimSuffix(complClean(text.Text), ".")
+	switch r.r.Kind {
+	case types.RequirementAllocation:
+		m := complIntegrativeMetByRe.FindStringSubmatch(t)
+		if m == nil || len(r.children) > 0 || parent != a.total || a.total == nil {
+			return []*compRow{r}, nil, false
+		}
+		// The program's must-include written as an item: a constraint on
+		// what the program counts (the ASIP route its alternative), never an
+		// allocation, which would take the course from the row that requires
+		// it.
+		codes, ok := includedCodes(m[1])
+		if !ok {
+			return []*compRow{r}, nil, false
+		}
+		r.r.Kind, r.r.Label = types.RequirementConstraint, ""
+		r.r.Req = orNode(append([]*types.ReqNode{{Type: types.NodeCredits, Amount: 0.5, Courses: codes}}, alts...)...)
+		return []*compRow{r}, nil, true
+	case types.RequirementConstraint:
+	default:
+		return []*compRow{r}, nil, false
+	}
+	if m := complChoicesIncludeRe.FindStringSubmatch(t); m != nil {
+		codes, ok := includedCodes(m[3])
+		if !ok {
+			return []*compRow{r}, nil, false
+		}
+		amount := 0.5
+		if m[2] != "" {
+			amount, _ = strconv.ParseFloat(m[2], 64)
+		}
+		target := parent
+		if m[1] != "" {
+			if target = a.labelledRef(m[1]); target == nil {
+				return []*compRow{r}, nil, false
+			}
+		}
+		if alts == nil {
+			alts = a.nextAlternative(r, text.Text)
+		}
+		r.r.Req = orNode(append([]*types.ReqNode{{Type: types.NodeCredits, Amount: amount, Courses: codes}}, alts...)...)
+		if target == parent {
+			return []*compRow{r}, nil, false
+		}
+		return []*compRow{r}, target, true
+	}
+	if alts != nil {
+		return []*compRow{r}, nil, false
+	}
+	if m := complIntegrativeByRe.FindStringSubmatch(t); m != nil && a.requiresCourse(m[1]) {
+		// Met by a course an item requires: a must-include that always holds
+		// once the item does.
+		r.r.Req = &types.ReqNode{Type: types.NodeCredits, Amount: courseWeight(m[1]), Courses: []string{m[1]}}
+		return []*compRow{r}, nil, false
+	}
+	if m := complReqScopeRe.FindStringSubmatch(t); m != nil {
+		if rs, ok := a.scopeRules(r, m); ok {
+			return rs, nil, false
+		}
+		return []*compRow{r}, nil, false
+	}
+	if m := complNotCountListRe.FindStringSubmatch(t); m != nil {
+		// Courses that don't count toward the program: a cap of 0 on them,
+		// the program's.
+		codes, ok := includedCodes(m[1])
+		if !ok {
+			return []*compRow{r}, nil, false
+		}
+		r.r.Kind = types.RequirementLimit
+		r.r.Req = &types.ReqNode{Type: types.NodeCredits, Courses: codes, MaxAmount: maxAmount(0)}
+		return []*compRow{r}, nil, parent != a.total
+	}
+	if m := complPerDesignatorCapRe.FindStringSubmatch(t); m != nil {
+		if rs, ok := perDesignatorCaps(parent, r, m); ok {
+			return rs, nil, false
+		}
+		return []*compRow{r}, nil, false
+	}
+	if m := complOfTheCreditsRe.FindStringSubmatch(t); m != nil {
+		total, _ := strconv.ParseFloat(m[1], 64)
+		v, _ := strconv.ParseFloat(m[2], 64)
+		codes, ok := includedCodes(m[3])
+		if !ok || parent == nil || itemAmount(parent.r.Req) != total {
+			return []*compRow{r}, nil, false
+		}
+		r.r.Req = &types.ReqNode{Type: types.NodeCredits, Amount: v, Courses: codes}
+		return []*compRow{r}, nil, false
+	}
+	if m := complLevelsListsFloorRe.FindStringSubmatch(t); m != nil {
+		return a.levelsListsFloors(parent, r, m, names), nil, false
+	}
+	u := t
+	for _, rw := range floorRewrites {
+		u = rw.re.ReplaceAllString(u, rw.repl)
+	}
+	if fs, ok := readFloor(u); ok {
+		return a.newRules(parent, r, fs), nil, false
+	}
+	if c := capRow(u); c != nil && u != t {
+		return a.newRules(parent, r, []*types.Requirement{c}), nil, false
+	}
+	return []*compRow{r}, nil, false
+}
+
+// newRules makes rules rs, read from row r's sentence, rows under parent in
+// r's place, keeping r's raw, label and notes. A floor the parent has
+// already (the header's "at least 2.0 credits at the 300+ level" stated
+// again) takes the raw instead of a second row.
+func (a *compAssembler) newRules(parent, r *compRow, rs []*types.Requirement) []*compRow {
+	var siblings []*compRow
+	if parent == a.total {
+		siblings = append(slices.Clone(a.floors), a.program...)
+	}
+	if parent != nil {
+		siblings = append(siblings, parent.children...)
+	}
+	var out []*compRow
+	for _, x := range rs {
+		if i := slices.IndexFunc(siblings, func(s *compRow) bool {
+			return s != r && s.r.Kind == x.Kind && s.r.Req != nil && sameNode(s.r.Req, x.Req)
+		}); i >= 0 {
+			addRaw(siblings[i], r.r.Raw)
+			continue
+		}
+		x.Raw = r.r.Raw
+		out = append(out, &compRow{r: x})
+	}
+	if out != nil {
+		out[0].r.Label, out[0].r.Section, out[0].r.Notes = r.r.Label, r.r.Section, r.r.Notes
+		out[0].children = r.children
+	}
+	return out
+}
+
+// includedCodes reads a must-include's courses: codes, with titles in
+// brackets ("JSC470H1 (Data Science III)"); ok is false when anything
+// else is left.
+func includedCodes(s string) ([]string, bool) {
+	s = strings.TrimSuffix(strings.TrimSpace(stripEmphasis(s)), ".")
+	s = complTitleParenRe.ReplaceAllStringFunc(s, func(p string) string {
+		if complAnyCodeRe.MatchString(p) {
+			return p
+		}
+		return " "
+	})
+	codes := complAnyCodeRe.FindAllString(s, -1)
+	if codes == nil || !complListRestRe.MatchString(complAnyCodeRe.ReplaceAllString(s, " ")) {
+		return nil, false
+	}
+	return dedupe(codes), true
+}
+
+// labelledRef returns the one allocation a cross-reference's label l
+// names: the row labelled l, else the one row whose label ends in it
+// ("Later years 3" for "The choices from 3"), or nil.
+func (a *compAssembler) labelledRef(l string) *compRow {
+	if r := a.labelled(l); r != nil {
+		return r
+	}
+	var found []*compRow
+	var walk func(rs []*compRow)
+	walk = func(rs []*compRow) {
+		for _, r := range rs {
+			if r.r.Kind == types.RequirementAllocation && strings.HasSuffix(r.r.Label, " "+l) {
+				found = append(found, r)
+			}
+			walk(r.children)
+		}
+	}
+	walk(a.items)
+	if len(found) != 1 {
+		return nil
+	}
+	return found[0]
+}
+
+// nextAlternative returns, as the rule's alternative, the sentence after
+// rule text s on its line when it points back at it ("Students who complete
+// the ASIP stream will also meet this requirement"), taking it from the
+// program's routes or notes; nil when there is none.
+func (a *compAssembler) nextAlternative(r *compRow, s string) []*types.ReqNode {
+	for i := range a.lines {
+		sents := a.lineSentences(i)
+		for k, x := range sents[:max(len(sents)-1, 0)] {
+			next := sents[k+1]
+			if rawWords(cleanNote(x)) != rawWords(s) || !complThisRequirementRe.MatchString(next) || !a.isAlternative(next) {
+				continue
+			}
+			// The sentence waits as a program route (it named no row) or is
+			// a note already.
+			same := func(n string) bool { return rawWords(cleanNote(n)) == rawWords(cleanNote(next)) }
+			if !slices.ContainsFunc(a.notes, same) && !slices.ContainsFunc(a.programRoutes, same) {
+				return nil
+			}
+			a.notes = slices.DeleteFunc(a.notes, same)
+			a.programRoutes = slices.DeleteFunc(a.programRoutes, same)
+			addRaw(r, next)
+			return []*types.ReqNode{textNode(altKind(next), next)}
+		}
+	}
+	return nil
+}
+
+// requiresCourse reports whether an item requires course code by itself
+// (a course node outside any or).
+func (a *compAssembler) requiresCourse(code string) bool {
+	var req func(n *types.ReqNode) bool
+	req = func(n *types.ReqNode) bool {
+		switch {
+		case n == nil:
+			return false
+		case n.Type == types.NodeCourse:
+			return n.Code == code
+		case n.Type == types.NodeAnd:
+			return slices.ContainsFunc(n.Items, req)
+		}
+		return false
+	}
+	return slices.ContainsFunc(a.items, func(r *compRow) bool { return r.r.Kind == types.RequirementAllocation && req(r.r.Req) })
+}
+
+// scopeRules reads a rule on two numbered rows together (complReqScopeRe)
+// into rows under their common parent whose credits name the rows by
+// `requirements`: a limit or constraint that names rows applies to the
+// courses those rows claim, together (schema, "Completion evaluation"). It
+// reports false when the labels don't name two allocations under one parent
+// or the rule doesn't read. "2.0 credits must be at the 300-level" has two
+// readings, the 300-level alone or 300+ (the Major's "at least 2.0 credits
+// at the 300+ level, of which a 0.5 credit must be at the 400-level"), so
+// it is or(strict, and(lenient, text{ambiguity})).
+func (a *compAssembler) scopeRules(r *compRow, m []string) ([]*compRow, bool) {
+	rule, l1, l2 := m[1], m[2], m[3]
+	if rule == "" {
+		rule, l1, l2 = m[6], m[4], m[5]
+	}
+	x, y := a.labelledRef(l1), a.labelledRef(l2)
+	if x == nil || y == nil || x == y || !a.siblings(x, y) {
+		return nil, false
+	}
+	var rs []*types.Requirement
+	if c := capRow(rule); c != nil {
+		rs = []*types.Requirement{c}
+	} else {
+		parts := []string{rule}
+		if f := complFloorAndFloorRe.FindStringSubmatch(rule); f != nil {
+			parts = f[1:]
+		}
+		for _, p := range parts {
+			fs, ok := readFloor("At least " + p)
+			if !ok || len(fs) != 1 {
+				return nil, false
+			}
+			rs = append(rs, fs[0])
+		}
+	}
+	for _, x := range rs {
+		if x.Req.Type != types.NodeCredits || x.Req.Lists != nil || x.Req.Requirements != nil {
+			return nil, false
+		}
+	}
+	var out []*compRow
+	for _, q := range rs {
+		q.Raw = r.r.Raw
+		ref := q.Req
+		if q.Kind == types.RequirementConstraint && slices.Equal(ref.Levels, []int{300}) {
+			wide := cloneNode(ref)
+			wide.Levels = []int{300, 400}
+			a.reqRefs = append(a.reqRefs, compReqRef{node: wide, rows: []*compRow{x, y}, scope: true})
+			q.Req = orNode(ref, andNode(wide, textNode(types.TextAmbiguity, "at the 300-level or above")))
+		}
+		ref.Requirements = []int{}
+		a.reqRefs = append(a.reqRefs, compReqRef{node: ref, rows: []*compRow{x, y}, scope: true})
+		out = append(out, &compRow{r: q})
+	}
+	out[0].r.Notes = r.r.Notes
+	return out, true
+}
+
+// siblings reports whether rows x and y have the same parent: the program's
+// items, or one item's children.
+func (a *compAssembler) siblings(x, y *compRow) bool {
+	if slices.Contains(a.items, x) && slices.Contains(a.items, y) {
+		return true
+	}
+	var found bool
+	var walk func(rs []*compRow)
+	walk = func(rs []*compRow) {
+		for _, r := range rs {
+			found = found || slices.Contains(r.children, x) && slices.Contains(r.children, y)
+			walk(r.children)
+		}
+	}
+	walk(a.items)
+	return found
+}
+
+// perDesignatorCaps reads "No more than 1.5 credits of the 2.5 credits
+// required from this list of options may come from any single 3-letter
+// course designator, except for CSC courses" (complPerDesignatorCapRe) on
+// item parent's pool of listed courses: a limit per designator whose listed
+// courses could pass the cap, on those courses.
+func perDesignatorCaps(parent, r *compRow, m []string) ([]*compRow, bool) {
+	v, _ := strconv.ParseFloat(m[1], 64)
+	total, _ := strconv.ParseFloat(m[2], 64)
+	if parent == nil || parent.r.Req == nil {
+		return nil, false
+	}
+	p := parent.r.Req
+	if p.Type != types.NodeCredits || p.Amount != total || p.Courses == nil || p.Designators != nil || p.Lists != nil || p.Requirements != nil {
+		return nil, false
+	}
+	except := desigRe.FindAllString(m[3], -1)
+	by := map[string][]string{}
+	var order []string
+	for _, c := range p.Courses {
+		d := c[:3]
+		if slices.Contains(except, d) {
+			continue
+		}
+		if by[d] == nil {
+			order = append(order, d)
+		}
+		by[d] = append(by[d], c)
+	}
+	var out []*compRow
+	for _, d := range order {
+		sum := 0.0
+		for _, c := range by[d] {
+			sum += courseWeight(c)
+		}
+		if sum <= v {
+			continue // the designator's courses can't pass the cap
+		}
+		out = append(out, &compRow{r: &types.Requirement{Kind: types.RequirementLimit, Raw: r.r.Raw,
+			Req: &types.ReqNode{Type: types.NodeCredits, Courses: slices.Clone(by[d]), MaxAmount: maxAmount(v)}}})
+	}
+	if out == nil {
+		return nil, false
+	}
+	out[0].r.Notes = r.r.Notes
+	return out, true
+}
+
+// levelsListsFloors reads complLevelsListsFloorRe: a floor at levels, one
+// at a level within it, and one from each of two lists within the first.
+func (a *compAssembler) levelsListsFloors(parent, r *compRow, m []string, names []string) []*compRow {
+	byKey := map[string]string{}
+	for _, name := range names {
+		if _, key := listName(name); key != "" {
+			byKey[key] = name
+		}
+	}
+	resolve := func(ref string) []string {
+		keys := listRefNames(ref)
+		if len(keys) != 1 || byKey[keys[0]] == "" {
+			return nil
+		}
+		return []string{byKey[keys[0]]}
+	}
+	n1, n2 := resolve(m[6]), resolve(m[7])
+	if n1 == nil || n2 == nil {
+		return []*compRow{r}
+	}
+	num := func(s string) float64 { v, _ := strconv.ParseFloat(s, 64); return v }
+	levels := parseLevels(m[2] + "-level")
+	rs := []*types.Requirement{
+		{Kind: types.RequirementConstraint, Req: &types.ReqNode{Type: types.NodeCredits, Amount: num(m[1]), Levels: levels}},
+		{Kind: types.RequirementConstraint, Req: &types.ReqNode{Type: types.NodeCredits, Amount: num(m[3]), Levels: parseLevels(m[4] + "-level")}},
+		{Kind: types.RequirementConstraint, Req: &types.ReqNode{Type: types.NodeCredits, Amount: num(m[5]), Levels: slices.Clone(levels), Lists: n1}},
+		{Kind: types.RequirementConstraint, Req: &types.ReqNode{Type: types.NodeCredits, Amount: num(m[5]), Levels: slices.Clone(levels), Lists: n2}},
+	}
+	return a.newRules(parent, r, rs)
+}
+
+// additionalLists reads an item "Additional courses (excluding those already
+// counted) from Groups A and C for a total of 8.0 credits"
+// (complAdditionalListsRe) as Req 1's own pool, as additional() does for
+// designators (design 3.1): the item is no row of its own, its raw joins
+// Req 1's, and its routes (alts) become Req 1's. It reports false, reading
+// nothing, when the total isn't the program's or Req 1 has a pool already.
+func (a *compAssembler) additionalLists(row *compRow, text string, alts []*types.ReqNode, ls compListRefs) bool {
+	t := strings.TrimSpace(complAlreadyCountedRe.ReplaceAllString(strings.TrimSuffix(complClean(text), "."), ""))
+	m := complAdditionalListsRe.FindStringSubmatch(t)
+	if m == nil || a.total == nil || len(row.children) > 0 || !slices.Contains(a.items, row) {
+		return false
+	}
+	pool := a.total.r.Req
+	v, _ := strconv.ParseFloat(m[2], 64)
+	if pool == nil || pool.Type != types.NodeCredits || pool.Amount != v || pool.Designators != nil || pool.Levels != nil || pool.Courses != nil || pool.Lists != nil {
+		return false
+	}
+	names := ls.resolve(listRefNames(m[1]))
+	if names == nil {
+		return false
+	}
+	pool.Lists = names
+	if alts != nil {
+		a.total.r.Req = orNode(append([]*types.ReqNode{pool}, alts...)...)
+	}
+	a.total.r.Raw += "\n" + row.r.Raw
+	a.total.r.Notes = append(a.total.r.Notes, row.r.Notes...)
+	return true
+}
+
+// omitAsCourse reports whether n names code only as a course node, never
+// among a pool's courses: then leaving the course out is or(course,
+// not(course)) on it (relax). In a pool, the pool would be met with
+// nothing, so the sentence stays the alternative's text.
+func omitAsCourse(n *types.ReqNode, code string) bool {
+	course, pool := false, false
+	walkReq(n, func(x *types.ReqNode) {
+		course = course || x.Type == types.NodeCourse && x.Code == code
+		pool = pool || slices.Contains(x.Courses, code)
+	})
+	return course && !pool
+}
+
+// notCourse is not(course code).
+func notCourse(code string) *types.ReqNode {
+	return &types.ReqNode{Type: types.NodeNot, Items: []*types.ReqNode{{Type: types.NodeCourse, Code: code}}}
+}
+
+// followingCodes returns the courses of the list definitions that are row's
+// notes (lines of courses under it, "Anthropology: ANT464H1"), which must
+// be all its notes, and the notes to keep: a line with more than codes
+// ("CAR32H1", a code the calendar mistyped) gives the codes it has and
+// stays a note. ok is false when there are no such lines, or one has no
+// code or names a filter or a person.
+func (a *compAssembler) followingCodes(row *compRow) (codes, keep []string, ok bool) {
+	var n int
+	for _, d := range a.listDefs {
+		if !slices.Contains(row.r.Notes, d.note) {
+			continue
+		}
+		n++
+		items, except, perm, ok := listMembersPerm(d.members)
+		switch {
+		case !ok:
+			c := complAnyCodeRe.FindAllString(d.members, -1)
+			if c == nil || complListFilterRe.MatchString(d.members) || complListPermRe.MatchString(d.members) {
+				return nil, nil, false
+			}
+			codes = append(codes, c...)
+			keep = append(keep, d.note)
+		case except != nil || perm != "" || len(items) != 1 || items[0].Courses == nil || items[0].Weight != 0:
+			return nil, nil, false
+		default:
+			codes = append(codes, items[0].Courses...)
+		}
+	}
+	if n == 0 || n != len(row.r.Notes) {
+		return nil, nil, false
+	}
+	return dedupe(codes), keep, true
+}
+
+// itemAmount is the amount an item's body asks for: a pool's, or the one a
+// text item starts with ("4.5 credits from: courses carrying the CHC
+// designator, ..."); 0 when it has none.
+func itemAmount(n *types.ReqNode) float64 {
+	switch {
+	case n == nil:
+	case n.Type == types.NodeCredits:
+		return n.Amount
+	case n.Type == types.NodeText:
+		if m := complItemAmountRe.FindStringSubmatch(n.Text); m != nil {
+			v, _ := strconv.ParseFloat(m[1], 64)
+			return v
+		}
+	}
+	return 0
+}
+
+// complItemAmountRe: the amount a text item starts with.
+var complItemAmountRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\b`)

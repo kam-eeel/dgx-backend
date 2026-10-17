@@ -40,6 +40,7 @@ var (
 	enumStartRe   = regexp.MustCompile(`\(\s*1\s*\)`)
 	enumSplitRe   = regexp.MustCompile(`\(\s*\d\s*\)`)
 	enumTrailRe   = regexp.MustCompile(`(?i)[\s,;]*\b(?:or|and)?[\s,;]*$`)
+	enumRefRe     = regexp.MustCompile(`(?i)\brequirements?\s*$`) // "requirement (1)": a reference
 	wsRe          = regexp.MustCompile(`\s+`)
 )
 
@@ -155,7 +156,10 @@ func expandRange(m string) string {
 // "one of the following: (A and B)/ (C)/ (D)."
 func rewriteEnumerations(s string) string {
 	loc := enumStartRe.FindStringIndex(s)
-	if loc == nil {
+	if loc == nil || len(enumSplitRe.FindAllString(s[loc[0]:], -1)) < 2 || enumRefRe.MatchString(s[:loc[0]]) {
+		// A lone "(1)", or "requirement (1)", "requirements (1), (2) and (3)",
+		// is a reference, not an enumeration: "any courses from program
+		// requirement (1) above".
 		return s
 	}
 	end := strings.Index(s[loc[0]:], ". ")

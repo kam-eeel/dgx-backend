@@ -27,7 +27,7 @@ func TestClassifySentence(t *testing.T) {
 		{"a. CSC110Y1 and CSC111H1 must be completed in order to complete the Specialist program.", roleRequirement},                                                            // ASSPE1689
 		{"Students with a strong background in an object-oriented language such as Python, Java or C++ may omit CSC108H1 and proceed directly with CSC148H1.", roleRequirement}, // ASMAJ1689
 		{"3. At least second-year proficiency in Chinese, Korean or Japanese", roleRequirement},                                                                                 // ASMAJ1058
-		{"Courses must fulfill the following requirements:", roleRequirement},                                                                                                   // ASMAJ1647A
+		{"Courses must fulfill the following requirements:", roleAdvisory},                                                                                                      // ASMAJ1647A
 		{"Higher Years:", roleRequirement}, // ASMAJ2015: a heading
 		{"( STA257H1, STA261H1)/ ( STA237H1, STA238H1); while either pair of courses is accepted, we strongly recommend ( STA257H1, STA261H1).", roleRequirement},                                                                                                                         // ASMAJ0608: advice in a later clause
 		{"If you take CSC240H1 without CSC165H1, there is no need to replace the missing half-credit for program completion; but please see Note (a).", roleRequirement},                                                                                                                  // ASMAJ1689: an exception to the total
@@ -121,10 +121,10 @@ func TestClassifySentence(t *testing.T) {
 		{"(Only transfer credits that carry exclusions to CHM136H1 and/or CHM135H1 will be accepted)", roleAdvisory},                                                                                                                                                           // ASMAJ0365: no cap; the course itself is required
 
 		// CR/NCR.
-		{"Courses with a CR/NCR status may not be used to satisfy program requirements.", roleCrNcr},                          // ASMAJ1532
-		{"- Courses that have been taken as Credit/No Credit cannot be used to fulfill Certificate requirements.", roleCrNcr}, // ASCER0338
-		{"ENG100H1, ENG102H1, and courses with a CR/NCR final mark are not accepted toward any English program.", roleCrNcr},  // ASMAJ1647A
-		{"- Students may use CR/NCR on the course they use toward the ethics and social responsibility credit.", roleCrNcr},   // ASSPE1165
+		{"Courses with a CR/NCR status may not be used to satisfy program requirements.", roleCrNcr},                           // ASMAJ1532
+		{"- Courses that have been taken as Credit/No Credit cannot be used to fulfill Certificate requirements.", roleCrNcr},  // ASCER0338
+		{"ENG100H1, ENG102H1, and courses with a CR/NCR final mark are not accepted toward any English program.", roleCrNcr},   // ASMAJ1647A
+		{"- Students may use CR/NCR on the course they use toward the ethics and social responsibility credit.", roleAdvisory}, // ASSPE1165
 
 		// Sharing.
 		{"Some courses may contribute to both the Geographic Distribution and Temporal requirements (requirements 1 and 2).", roleOverlap},                           // ASMAJ0652
@@ -211,6 +211,64 @@ func TestClassifySentence(t *testing.T) {
 		{"No more than 1.0 credit from the recommended electives may count towards the program", roleLimit},
 		{"Only 0.5 credit from the suggested courses may be counted", roleLimit},
 		{"Up to 1.0 credit from the list of suggested courses may count", roleLimit},
+		{"No more than 1.0 credit from recommended courses may count towards the program", roleLimit},
+		// Advice on a substitution route binds (ASMAJ1533); a permission that
+		// only comes with advice doesn't (constructed).
+		{"Students are advised to discuss potential course substitutions for First Year with the Program Office", roleAdvisory},                        // ASMAJ1533: pins complNotBindingRes "advised to discuss"
+		{"Third-year students can take AST424H1 (Introduction to Research) provided they have at least a B+ average in program courses", roleAdvisory}, // ASSPE0271: pins complNotBindingRes "can take CODE ... provided they have"
+		{"Students can take either course as their required independent project, or may take JPM400Y1 as an additional elective", roleAdvisory},        // ASSPE2082: pins complNotBindingRes "either course ... additional elective"
+		{"A significant part of the course must involve the application of digital technologies to humanities scholarship", roleAdvisory},              // ASMIN1337: pins complNotBindingRes "a significant part of the course must involve"
+		{"Students are encouraged to take a graduate course with permission of the instructor", roleAdvisory},
+		// A question about counting another course is an approval route
+		// (ASMAJ0151, shortened).
+		{"If a student wishes a different language to count toward completing these programs they should consult with the Associate Chair, Undergraduate", roleRequirement},
+		// A placement after consultation that names no pool is advice (audit
+		// pass 2, ASMAJ1626).
+		{"After consultation with the Program Coordinator, exceptions may be made in certain cases regarding the sequence of language courses", roleAdvisory}, // ASMAJ1626 (shortened)
+		{"Please consult with CEES and Slavic departments to get approval", roleRequirement},
+		{"Please contact ug.office@utoronto.ca to get approval", roleRequirement},                                                                                                                               // constructed: an address before the approval
+		{"No exceptions can be made", roleAdvisory},                                                                                                                                                             // constructed: no consultation
+		{"Please contact the department to get approval to enrol in the course", roleAdvisory},                                                                                                                  // constructed: enrolment procedure                                                                                                                    // ASMAJ1626
+		{"Students wishing to apply their Arts & Science Internship Program (ASIP) towards the requirement to complete PCL472Y1/ JPM400Y1 should reach out to undergrad.pharmtox@utoronto.ca", roleRequirement}, // ASSPE2082
+		{"Please contact the Undergraduate Administrator at ug.office.env@utoronto.ca to request that these exceptions be posted on Degree Explorer", roleAdvisory},                                             // ASMAJ1076: granted already
+		{"For all other programs, consult with the offering department before enrolling in courses", roleAdvisory},                                                                                              // ASMAJ1536
+		{"Students who do not wish to attain APGO certification are advised to speak to the Associate Chair, Undergraduate Affairs concerning their course selection", roleAdvisory},                            // ASSPE0509
+		{"Students are encouraged to discuss possible options with the Director of the International Relations Program", roleAdvisory},                                                                          // ASCER1469
+		// A pointer to an outside list of courses approved for program credit
+		// widens the pool: an approval route, though it names a contact.
+		{"Please, consult with Associate Chair of Undergraduate Studies or our website for an updated list of courses pre-approved for program credit", roleRequirement},                                                          // ASMAJ0338
+		{"A complete and updated list of eligible courses is available at the departmental website https://www.spanport.utoronto.ca/ or through consultation with the Associate Chair of Undergraduate Studies", roleRequirement}, // ASMAJ0623
+		{"A complete list of eligible courses is available at the departmental website or by contacting the Associate Chair of Undergraduate Studies", roleRequirement},                                                           // ASSPE0338
+		{"Consult our website https://www.spanport.utoronto.ca/ for the updated list of courses pre-approved for program credit or reach out to our Associate Chair of Undergraduate Studies", roleRequirement},                   // ASSPE0623
+		{"Students with previous knowledge of Spanish can start taking language courses at the 200- or 300-level, depending on their placement test results, and after consultation with the department", roleAdvisory},           // ASMAJ0623: placement stays advice
+		{"*NOTE: This list of eligible courses is not exhaustive and some courses may not be offered every year", roleAdvisory},                                                                                                   // ASMAJ0135: describes a list, points nowhere
+		// Advice that reads like a rule: suggestions, notices about entry and
+		// prerequisites, course descriptions, past students' experience and
+		// timing (design 3.6).
+		{"Students should especially consider MAT221H1/ MAT223H1/ MAT240H1 (Linear Algebra), ( MAT235H1, MAT236H1)/ MAT235Y1/ MAT237Y1 (Multivariate Calculus), MAT246H1 (Abstract Mathematics), or even consider doing a Minor program in Mathematics", roleAdvisory}, // ASMAJ1478
+		{"Students should note that completing ( ECO231H1 and ECO232H1) limits future enrolment options in ECO courses", roleAdvisory},                                                                                                                                 // ASMAJ1469
+		{"Eligibility for all Economics programs is based, in part, on attaining a minimum grade in ECO101H1 and ECO102H1 (or ECO105Y1)", roleAdvisory},                                                                                                                // ASMIN1478
+		{"Many 300-level and higher courses in economics require ECO220Y1", roleAdvisory},                                                                                                                                                                              // ASMIN1478
+		{"While not a formal part of the Economics Minor program, students MUST meet the specified prerequisites for 300+ economics courses, and should seriously consider taking ECO220Y1", roleAdvisory},                                                             // ASMIN1478
+		{"All Major programs in the co-sponsoring life science departments require BIO120H1, however, it is not formally a part of this Specialist Program's requirements", roleAdvisory},                                                                              // ASSPE1868
+		{"CSC240H1 is an accelerated and enriched version of CSC165H1 plus CSC236H1, intended for students with a strong mathematical background, or who develop an interest after taking CSC165H1", roleAdvisory},                                                     // ASMIN1689
+		{"Former BCB students benefitted from taking CSB352H1, Bioinformatic Methods", roleAdvisory},                                                                                                                                                                   // ASSPE1868
+		{"They also found it to be helpful to take BCH441H1/ MGY441H1 prior to BCB410H1 due to BCB410H1's R programming requirement", roleAdvisory},                                                                                                                    // ASSPE1868
+		{"Students can also benefit from taking CSB280H1, Data Science for Cell and Systems Biology", roleAdvisory},
+		{"BCB students are allowed to enrol in up to 2.5 CSC credits at the 300/400-level", roleAdvisory}, // ASSPE1868                                                                                                                                                    // ASSPE1868
+		{"CSC108H1/ CSC148H1/ CSC110Y1 may be taken in First Year", roleAdvisory},
+		{"Students seeking an enriched introduction to the theory of computing may choose to enrol in CSC240H1 in their first year", roleAdvisory}, // ASSPE1689                                                                                                                                                                                      // ASSPE2599
+		// ... but not a requirement with a timing remark, nor an exception to
+		// what is required.
+		{"BIO120H1/ BIO130H1 (may be taken in Year 1), BIO220H1 and 1.5 credits from Cognition and the Brain stream courses:", roleRequirement},                                // ASMAJ1446B
+		{"Students with a strong background in an object-oriented language such as Python, Java or C++ may omit CSC108H1 and proceed directly with CSC148H1", roleRequirement}, // ASMIN1689
+		// A list marker alone says nothing (constructed).
+		{"1.", roleAdvisory},
+		{"a)", roleAdvisory},
+		{"(i)", roleAdvisory},
+		{"•", roleAdvisory},
+		{"  ii)  ", roleAdvisory},
+		{"(2)", roleAdvisory},
 		// "accepted"/"included" without an approver is a cap (constructed).
 		{"No more than 1.0 credit may be accepted from other universities", roleLimit},
 		{"A maximum of 0.5 credit may be included from Group B", roleLimit},
@@ -225,15 +283,21 @@ func TestClassifySentence(t *testing.T) {
 		{"Suggested Related Courses:", roleAdvisory}, // ASFOC1689A: pins complRecommendRe "suggested"
 		{"Students interested in actuarial practices should consider taking ACT371H1, ACT372H1, ACT470H1, ACT473H1, ACT475H1", roleAdvisory},                                                                                             // ASMAJ0608: pins complRecommendRe "should consider"
 		{"Students with very advanced previous knowledge of German may in consultation with the Department take a combination of other 300 or 400-level GER topics courses (taught in German) to meet the requirement", roleRequirement}, // ASCER1401: pins complFilterRe levels
-		{"Note: LIN courses from other campuses are considered courses from other Departments", roleRequirement},                                                                                                                         // ASMAJ0506: pins complFilterRe designators
+		{"Note: LIN courses from other campuses are considered courses from other Departments", roleAdvisory},                                                                                                                            // ASMAJ0506: the campus rule restated (complAsideRes)
+		{"First year (recommended): PHL100Y1/ PHL101Y1", roleAdvisory},                                                                                                                                                                   // ASMAJ0231: complAsideRes
+		{"PSL300H1 and PSL301H1 require MAT 100-level/ PHY 100-level courses", roleAdvisory},                                                                                                                                             // ASSPE0605: a course's prerequisite
+		{"BIO220H1 is required for all EEB 300+ level courses (Group A and B) and there are no exceptions", roleAdvisory},                                                                                                                // ASMIN1555
+		{"Neuroscience Centric Courses: HMB200H1, HMB300H1, HMB310H1", roleAdvisory},                                                                                                                                                     // ASMAJ1472, shortened
+		{"Additional BCH research project courses can be taken as part of the 20.0 credits needed for your degree", roleAdvisory},                                                                                                        // ASSPE1762
+		{"Additional BCH research project courses can be taken as part of the 20.0 credits needed for your degree, but cannot be counted towards the program completion", roleLimit},                                                     // ASMAJ1762: a rule, not a remark                                                                                                                         // ASMAJ0506: pins complFilterRe designators
 		{"1.0 credit of related courses offered by other academic units may be counted towards the fulfillment of the program", roleRequirement},                                                                                         // ASMAJ0151: pins complAmountRe decimals
-		{"First year in program: LCT202Y1", roleRequirement}, // ASMAJ1023: pins complNotListHeadRe "year"
-		{"1) All of: LIN101H1, LIN102H1", roleRequirement},   // ASMAJ0506: pins complNotListHeadRe choices
-		{"Only 0.5 credit of Credit/No Credit coursework or coursework taken outside of FRE or FSL courses taken with the Department of French may be accepted, and must be pre-approved by the Department of French", roleCrNcr}, // ASCER0120: pins complCrNcrRe "Credit/No Credit"
-		{"Other introductory language classes may be approved by the Director of the International Relations Program", roleRequirement},                                                                                           // ASCER1469: pins complApprovalRes "may be approved"
-		{"Students may be permitted to take Math graduate courses", roleRequirement},                                                                                                                                              // ASMAJ1165: pins complApprovalRes "may be permitted"
-		{"Courses taken in Summer Abroad programs or at UTM or UTSC will need to be pre-approved", roleRequirement},                                                                                                               // ASCER1200: pins complApprovalRes "pre-approved"
-		{"Students can request substitutions from the IRP Director", roleRequirement},                                                                                                                                             // ASFOC1469A: pins complApprovalRes "request substitutions"
+		{"First year in program: LCT202Y1", roleRequirement},                                                                                                                                                                             // ASMAJ1023: pins complNotListHeadRe "year"
+		{"1) All of: LIN101H1, LIN102H1", roleRequirement},                                                                                                                                                                               // ASMAJ0506: pins complNotListHeadRe choices
+		{"Only 0.5 credit of Credit/No Credit coursework or coursework taken outside of FRE or FSL courses taken with the Department of French may be accepted, and must be pre-approved by the Department of French", roleCrNcr},        // ASCER0120: pins complCrNcrRe "Credit/No Credit"
+		{"Other introductory language classes may be approved by the Director of the International Relations Program", roleRequirement},                                                                                                  // ASCER1469: pins complApprovalRes "may be approved"
+		{"Students may be permitted to take Math graduate courses", roleRequirement},                                                                                                                                                     // ASMAJ1165: pins complApprovalRes "may be permitted"
+		{"Courses taken in Summer Abroad programs or at UTM or UTSC will need to be pre-approved", roleRequirement},                                                                                                                      // ASCER1200: pins complApprovalRes "pre-approved"
+		{"Students can request substitutions from the IRP Director", roleRequirement},                                                                                                                                                    // ASFOC1469A: pins complApprovalRes "request substitutions"
 		{"Students must submit a nomination package to the Undergraduate Associate Director of the School of the Environment including: (1) the relevant cluster; (2) the course code and description; (3) the course syllabus (for completed courses); (4) a brief rationale (500 words max) addressing why this course belongs to the relevant cluster, how it addresses multiple dimensions of sustainability (environmental, social, political, ethical, cultural, or economic), and how it satisfies a gap in the student's Certificate learning objectives", roleAdvisory}, // ASCER1500: pins complProcedureRe "must submit"
 		{"ii) Students not placed in FSL220H1 or higher by the Placement test must first complete FSL122H1 before starting this program", roleAdvisory},                                                                                                                                                       // ASMAJ0525: pins complProcedureRe "must ... before"
 		{"iii) Students exempted from any of the required FSL courses based on placement test result or Department decision must replace these with the equivalent number of credits of additional FSL or FRE courses", roleRequirement},                                                                      // ASMAJ0525: pins complAdviceVetoRe "must"
@@ -248,7 +312,37 @@ func TestClassifySentence(t *testing.T) {
 		{"Only 0.5 credit of HPS390H1/ MAT390H1/ HPS391H1/ MAT391H1/ APM306Y1/ MAT329Y1 may count toward the major completion requirement of \"further topics\" except for students enrolled in the Education and Society Minor, who may apply 1.0 credit of MAT329Y1 toward their Minor program", roleLimit}, // ASMAJ1165: pins complLimitRes "only N ... may count"
 		{"Up to 1.0 credit in identified or pre-approved cognate courses may count (i.e. courses offered by other departments containing a relevant Germanic component and a final paper on a Germanic topic); please inquire at the Department and get approved in advance", roleLimit},                      // ASMAJ1400: pins complLimitRes "up to ... may"
 		{"It cannot be counted towards a History program, program requirements or as a pre-requisite for upper-level History courses", roleLimit},                                                                                                                                                             // ASMAJ0652: pins complLimitRes "cannot be counted towards"
-		{"Courses with codes that do not start with FSL or FRE (e.g., FCS185H1 or JFL388H1) are typically conducted partially or entirely in English and are therefore not included for consideration in the Certificate", roleLimit},                                                                         // ASCER0120: pins complLimitRes "not included for consideration"
+		{"Courses taught at UTM or UTSC are not included for consideration", roleLimit},                                                                                                                                                                                                                       // ASCER0338: pins complLimitRes "not included for consideration"
+		{"Courses with codes that do not start with FSL or FRE (e.g., FCS185H1 or JFL388H1) are typically conducted partially or entirely in English and are therefore not included for consideration in the Certificate", roleAdvisory},                                                                      // ASCER0120: the designator filter restated (complAsideRes)
+		{"should be taken together with GER200Y1, must be taken prior to completing GER300Y1", roleAdvisory},                                                                                                                                                                                                  // ASMAJ1400: a course's timing (complAsideMustRe)
+		{"Students taking PCL477H1 must take BCH210H1 prior", roleAdvisory},                                                                                                                                                                                                                                   // ASSPE0605: a course's prerequisite (complAsideMustRe)
+		{"*course(s) no longer offered", roleAdvisory}, // ASSPE0652: "(s)" is stripped as a bracket
+		{"ANT courses are those offered with the following prefixes: ANT, ARH, INS, JAA, JAL, and JGA", roleAdvisory},
+		{"The 1.5 credits can be chosen to reflect the particular academic interests of each student. *If not taken for Requirement 13 above", roleAdvisory},                               // ASSPE0365
+		{"if not taken in list 3", roleAdvisory},                                                                                                                                           // ASFOC1687A: the exclusive claims restated
+		{"* if not taken for the requirement immediately above", roleAdvisory},                                                                                                             // ASMIN1552
+		{"a capstone integrative course", roleAdvisory},                                                                                                                                    // ASSPE1525: a descriptor stripAsides keeps
+		{"Students may use the CR/NCR option towards any of the courses listed in Requirement 1", roleAdvisory},                                                                            // ASMAJ1944: a permission with no ban
+		{"except for students enrolled in the Education and Society Minor, who may apply 1.0 credit of MAT329Y1 toward their Minor program", roleAdvisory},                                 // ASMAJ1165: another program's rule
+		{"Enrolment in any of PCL474Y1 or JPM400Y1 is limited and requires permission from the Department of Pharmacology and Toxicology", roleAdvisory},                                   // ASSPE2573: enrolment
+		{"Please note that the 300 or 400-level STA course used to replace STA130H1 cannot be a course that is already being used to meet a program completion requirement", roleAdvisory}, // ASSPE2290: the exclusive claims restated
+		{"Only 0.5 credit of HPS390H1/ MAT390H1/ HPS391H1/ MAT391H1/ APM306Y1/ MAT329Y1 may count toward the major completion requirement of \"further topics\" except for students enrolled in the Education and Society Minor, who may apply 1.0 credit of MAT329Y1 toward their Minor program", roleLimit}, // ASMAJ1165: the cap stays one
+		{"Note: First-year students should take EAS103H1 and EAS105H1, a first-year language course (unless placed in an upper-year language course by the department), and may take up to 1.0 Society-Culture credit at the 200-level.", roleAdvisory},                                                       // ASMAJ1058
+		{"If you completed CSC148H1 before being admitted to the Minor, please note that this course is an exclusion to EEB125H1, ENG286H1, and GGR274H1", roleAdvisory},                                                                                                                                      // ASMIN0160
+		{"ACT390H1 is a required course in the actuarial science specialist program", roleAdvisory},                                                                                                                                                                                                           // ASMAJ0608: another program (complVetoDescriptionRe)
+		{"This list comprises courses which are required for the specialist as well as suggested courses; together they fulfill groups 1A, 1B, 2A and 2B of the APGO requirements", roleAdvisory},                                                                                                             // ASSPE1253
+		{"including PHL100Y1/ PHL101Y1 if taken", roleAdvisory}, // ASMAJ0231
+		// Restatements of the rows and advice in one wording (complRestatedRes).
+		{"MGT100H1, MGT201H1, MGT230H1, MGT250H1 have considerable overlap with RSM100H1, RSM219H1, RSM230H1 and RSM250H1 taught in Rotman Commerce", roleAdvisory}, // ASCER2400
+		{"if not taken in list 1", roleAdvisory}, // ASFOC1689F: the claims rule
+		{"The course taken in lieu of STA130H1 cannot be one that is already being used to satisfy Requirement 9 in the completion requirements for Higher Years", roleAdvisory}, // ASMAJ0608
+		{"Sub-total = 9.5 or 10.0 credits (depending on options chosen in #7)", roleAdvisory},                                                                                    // ASSPE1006
+		{"An Integrative, Inquiry-Based Activity Requirement must be satisfied.", roleRequirement},                                                                               // restatedProgramNotes joins it to the raw of the row that states it
+		{"Enrolment in either PCL472Y1 or JPM400Y1 is limited and requires permission from the Department of Pharmacology and Toxicology.", roleAdvisory},                        // ASSPE2082
+		{"Health Studies (ASFOC2270A): (2.0 credits) HMB342H1, at least 0.5 credit from HST209H1/ PHS209H1", roleAdvisory},                                                       // ASSPE2270: the focus's own program
+		{"CSC236H1 may be taken without CSC165H1 for students who completed CSC111H1", roleAdvisory},                                                                             // ASSPE1687
+		{"should be taken together with GER200Y1, must be taken prior to completing GER300Y1", roleAdvisory},                                                                     // ASSPE1400: timing
+		{"Students may use the CR/NCR option towards any of the courses listed in Requirement 5.", roleAdvisory},                                                                 // ASSPE1944: nothing bans it
 	}
 	for _, tt := range tests {
 		if got := classifySentence(tt.in); got != tt.want {

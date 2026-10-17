@@ -619,7 +619,13 @@ func ownFilter(c *types.ReqNode) bool {
 	return len(c.Levels) > 0 || len(c.Breadth) > 0 || len(c.Exclude) > 0
 }
 
-// minWeight is the fewest credits that can meet n.
+// minWeight is the fewest credits that can meet n, for enrolment: a
+// course's weight, a pool's or an average's amount, the sum of an "and", the
+// cheapest alternative of an "or", the cheapest count of a "choose".
+// Anything else (text, a program, a GPA) counts 0, so an "or" with a text
+// alternative costs nothing. nodeCredits (completion) differs on text: there
+// a text alternative is skipped and text makes the count unknown.
+// minCredits (the grammar) reads courses only.
 func minWeight(n *types.ReqNode) float64 {
 	if n == nil {
 		return 0
@@ -635,27 +641,30 @@ func minWeight(n *types.ReqNode) float64 {
 			sum += minWeight(it)
 		}
 		return sum
-	case types.NodeOr:
-		best := -1.0
-		for _, it := range n.Items {
-			if w := minWeight(it); best < 0 || w < best {
-				best = w
-			}
-		}
-		return max(best, 0)
-	case types.NodeChoose:
+	case types.NodeOr, types.NodeChoose:
 		var ws []float64
 		for _, it := range n.Items {
 			ws = append(ws, minWeight(it))
 		}
-		slices.Sort(ws)
-		sum := 0.0
-		for i := 0; i < n.Count && i < len(ws); i++ {
-			sum += ws[i]
+		k := 1
+		if n.Type == types.NodeChoose {
+			k = n.Count
 		}
-		return sum
+		return sumCheapest(ws, k)
 	}
 	return 0
+}
+
+// sumCheapest returns the sum of the k smallest of ws (all of them when
+// there are fewer, 0 for none): the fewest credits of an "or" (k = 1) or a
+// "choose" (k = its count). It sorts ws.
+func sumCheapest(ws []float64, k int) float64 {
+	slices.Sort(ws)
+	sum := 0.0
+	for _, w := range ws[:max(0, min(k, len(ws)))] {
+		sum += w
+	}
+	return sum
 }
 
 // andNode and orNode combine nodes, dropping nils and flattening children

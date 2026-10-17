@@ -36,8 +36,13 @@ func Link(courses []*types.Course, programs []*types.Program) {
 		idx.Resolve(c.Corequisites)
 		c.Exclusions = applyTiming(c.Exclusions, c.Prerequisites, c.Corequisites)
 	}
+	for _, p := range programs {
+		p.Completion = repairCompletion(p.Completion, known)
+	}
+	linkCompletionDesignators(courses, programs)
 	titles, areas := newTitleIndex(programs), newAreaIndex(programs)
 	cat := newEnrolCatalog(courses, programs)
+	linkCompletions(courses, programs, titles, idx, areas, cat)
 	for _, p := range programs {
 		p.Enrolment = repairEnrolment(p.Enrolment, known)
 		e := p.Enrolment
@@ -56,6 +61,18 @@ func Link(courses []*types.Course, programs []*types.Program) {
 		}
 		e.Req = cat.linkEquivalent(cat.linkJoint(e.Req, area))
 		cat.linkEquivalents(e)
+		linkEnrolmentCompletion(e, p.Completion)
+	}
+	// After the enrolment loop: a program enrolment requires (a focus's
+	// parent) is never a completion exclusion.
+	for _, p := range programs {
+		if p.Completion != nil {
+			var req *types.ReqNode
+			if p.Enrolment != nil {
+				req = p.Enrolment.Req
+			}
+			titles.linkCompletionExclusions(p.Completion, p.Code, req, programs, idx, areas)
+		}
 	}
 }
 

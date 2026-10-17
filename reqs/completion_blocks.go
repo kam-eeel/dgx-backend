@@ -61,6 +61,8 @@ type compBlock struct {
 	// higher (blkHeadingLevel).
 	level    int
 	children []*compBlock // the indented lines below, and lists adopted by their lead-in
+	// cont: the raw lines a hard-wrapped paragraph continues on (blkJoinWraps).
+	cont []int
 }
 
 var (
@@ -135,7 +137,7 @@ func completionBlocks(raw string) []*compBlock {
 		}
 		open = append(open, b)
 	}
-	top = blkAdoptItemBodies(blkAdoptSubItems(top))
+	top = blkAdoptItemBodies(blkAdoptSubItems(blkJoinWraps(top)))
 	blkSetSections(top, nil, "")
 	blkLabelItems(top)
 	return top
@@ -150,12 +152,16 @@ func completionBlocks(raw string) []*compBlock {
 //     Geographic Distribution (200+ level):**" then "a) …", "b) …").
 //
 // A heading ending in ":" isn't a lead-in: the lines after it get its section.
+// Nor is a bullet whose list is already indented under it: the bullets
+// flush with it are the next items of its own list (ASMAJ0151 "- 1.0 credit
+// of related courses ... The list of eligible courses includes:", its
+// indented list, then "- Up to two language courses ...").
 func blkAdoptSubItems(top []*compBlock) []*compBlock {
 	var out []*compBlock
 	for i := 0; i < len(top); i++ {
 		p := top[i]
 		out = append(out, p)
-		leadIn := p.kind != blockHeading && strings.HasSuffix(p.text, ":")
+		leadIn := p.kind != blockHeading && strings.HasSuffix(p.text, ":") && !(blkIsBullet(p.marker) && len(p.children) > 0)
 		j := i + 1
 		if j < len(top) && blkIsBullet(top[j].marker) && (leadIn || blkLeadsIntoBullets(p)) {
 			for j < len(top) && blkIsBullet(top[j].marker) && !blkAdviceRe.MatchString(top[j].text) {
@@ -262,6 +268,57 @@ func blkNumbered(b *compBlock) bool {
 	return style == blkStyleNumber
 }
 
+// blkWrapEndRe: a line that ends mid-sentence: no full stop, colon or
+// semicolon.
+var blkWrapEndRe = regexp.MustCompile(`[^.:;!?)]\s*$|,\s*$`)
+
+// blkWrapStartRe: a line that continues the sentence above: a lowercase word
+// or a code.
+var blkWrapStartRe = regexp.MustCompile(`^(?:[a-z]|` + codePat + `)`)
+
+// blkWrapWordEndRe, blkWrapWordStartRe: a sentence broken between two
+// lowercase words ("... and/or STA261H1 before being admitted" then "to the
+// Minor, ..."), a wrap even when the line above has codes enough to look
+// like a list (mostlyCodes).
+var (
+	blkWrapWordEndRe   = regexp.MustCompile(`\b[a-z]{2,}\s*$`)
+	blkWrapWordStartRe = regexp.MustCompile(`^[a-z]{2,}\b`)
+)
+
+// blkJoinWraps joins a paragraph hard-wrapped over several lines ("**Note:**
+// If you completed STA238H1 ... before being admitted" then "to the Minor,
+// please note that ...") into one block: a line of prose (or a note) that
+// ends mid-sentence, followed at the same indent by a line of prose that
+// starts with a lowercase word or a code. Lines of codes are steps of a
+// list, not a wrapped sentence.
+func blkJoinWraps(bs []*compBlock) []*compBlock {
+	var out []*compBlock
+	for _, b := range bs {
+		b.children = blkJoinWraps(b.children)
+		if n := len(out); n > 0 {
+			p := out[n-1]
+			if (p.kind == blockProse || p.kind == blockLabelled && blkNoteLabelRe.MatchString(p.label)) && len(p.children) == 0 &&
+				b.kind == blockProse && b.indent == p.indent && blkWrapEndRe.MatchString(p.text) && blkWrapStartRe.MatchString(b.text) &&
+				(!mostlyCodes(p.text) || blkWrapWordEndRe.MatchString(p.text) && blkWrapWordStartRe.MatchString(b.text)) && !isCodeList(b.text) {
+				p.text += " " + b.text
+				p.cont = append(append(p.cont, b.line), b.cont...)
+				p.children = b.children
+				continue
+			}
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+// blkItemText is an item's or bullet's text without emphasis. An italic
+// note after a code ("( CHM135H1 and CHM136H1)/ CHM151Y1 _Transfer credits
+// will be accepted ..._") becomes a sentence of its own, so it can't
+// swallow the item.
+func blkItemText(s string) string {
+	return stripEmphasis(complItalicNoteRe.ReplaceAllString(s, "$1. $2"))
+}
+
 // blkReadLine classifies one line. Its section and label come later.
 func blkReadLine(i int, raw string) *compBlock {
 	t := strings.TrimRight(raw, " ")
@@ -271,17 +328,17 @@ func blkReadLine(i int, raw string) *compBlock {
 	rest := t[len(lead):]
 	if m := blkItemRe.FindStringSubmatch(rest); m != nil {
 		b.kind, b.marker = blockItem, m[1]
-		b.text = stripEmphasis(lead + rest[len(m[0]):])
+		b.text = blkItemText(lead + rest[len(m[0]):])
 		return b
 	}
 	if m := blkGluedItemRe.FindStringSubmatch(rest); m != nil {
 		b.kind, b.marker = blockItem, m[1]
-		b.text = stripEmphasis(lead + rest[len(m[1]):])
+		b.text = blkItemText(lead + rest[len(m[1]):])
 		return b
 	}
 	if m := blkBulletRe.FindString(rest); m != "" {
 		b.kind, b.marker = blockBullet, strings.TrimSpace(m)
-		b.text = stripEmphasis(lead + rest[len(m):])
+		b.text = blkItemText(lead + rest[len(m):])
 		if label, body, ok := blkSplitLabel(b.text); ok {
 			b.kind, b.label, b.text = blockLabelled, label, body
 		}
@@ -380,7 +437,10 @@ func blkIsHeading(text string, emph bool) bool {
 	colon := strings.HasSuffix(strings.TrimSpace(bare), ":")
 	name := blkSectionName(text)
 	out := strings.TrimSpace(blkOutsideParens(name))
-	if name == "" || codeRe.MatchString(text) {
+	// A code in a credit parenthetical doesn't make the line an item:
+	// "_Later years (6.5 credits/7.0 credits for students who have not
+	// completed STA130H1 (see 4.))_".
+	if name == "" || codeRe.MatchString(bare) {
 		return false
 	}
 	if blkNotesHeadingRe.MatchString(name) {

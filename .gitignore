@@ -7,7 +7,5 @@ docs
 reqs/corpus_test.go
 reqs/programs_test.go
 reqs/programs_corpus_test.go
-reqs/completion_header_corpus_test.go
 reqs/completion_corpus_test.go
 reqs/requisites_snapshot_test.go
-reqs/completion_classify_corpus_test.go

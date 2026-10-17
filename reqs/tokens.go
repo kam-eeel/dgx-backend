@@ -39,6 +39,8 @@ type token struct {
 	grade      int            // tGradePrefix, tGradeSuffix, tAvgSuffix
 	each       bool           // tGradePrefix: "in each of"; tGradeSuffix: "in each (course)"
 	amount     float64        // tPool: credit amount ("1.0 credit from:"), else 0
+	upper      float64        // tPool (completion): the upper end of a range ("2.0 to 2.5 credits from"), else 0
+	sum        bool           // tPool (completion): "2.0 credits: A; B/ C; D", a list whose items are all needed when they add up to the amount
 	count      int            // tPool: how many items ("one of" = 1, "two of" = 2); tAvgSuffix: courses named ("both" = 2, else 0)
 	codes      []string       // tExclude: the excluded codes
 }

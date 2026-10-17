@@ -417,6 +417,32 @@ func TestLinkEnrolmentCatalog(t *testing.T) {
 	}
 }
 
+// TestLinkEnrolmentCompletion reads an enrolment average over "credits
+// that count toward the program" (ASMAJ1618, shortened) as an average over
+// the program's completion rows that claim courses: not the total, which
+// has no pool of its own. While one of those rows is text (here "4.0
+// credits from Groups A-D ..." without the groups), it is or(average, the
+// sentence): Review, not NotMet. Without completion rows it stays text. In
+// the corpus every row of ASMAJ1618 is read, and the average is bare.
+func TestLinkEnrolmentCompletion(t *testing.T) {
+	enrol := limitedLead + "**For students who have completed 9.0 credits:**\n" +
+		"• A minimum grade average of 77% in 3.0 credits that count toward the program, including 1.0 credit from: ETH201H1, ETH210H1, ETH220H1, ETH230H1, PHL265H1, PHL271H1, PHL275H1, and POL200Y1."
+	completion := "(7.0 credits)\n3. Third year: TRN303H1, TRN312H1\n4. Fourth year: TRN412H1."
+	esl := &types.Program{Code: "ASMAJ1618", Type: "Major", Title: "Ethics, Society, and Law Major (Arts Program)",
+		Enrolment: ParseEnrolment(enrol), Completion: ParseCompletion(completion)}
+	alone := &types.Program{Code: "ASMAJ9999", Type: "Major", Title: "Example Major (Arts Program)", Enrolment: ParseEnrolment(enrol)}
+	open := &types.Program{Code: "ASMAJ1618", Type: "Major", Title: "Ethics, Society, and Law Major (Arts Program)",
+		Enrolment: ParseEnrolment(enrol), Completion: ParseCompletion("(7.0 credits)\n2. 4.0 credits from Groups A-D, including at least a 0.5 credit from each of Groups A-C.\n3. Third year: TRN303H1, TRN312H1")}
+	Link(nil, []*types.Program{esl, alone})
+	Link(nil, []*types.Program{open})
+
+	pool := `{"type":"credits","amount":1,"courses":["ETH201H1","ETH210H1","ETH220H1","ETH230H1","PHL265H1","PHL271H1","PHL275H1","POL200Y1"]}`
+	assertJSON(t, esl.Enrolment.Req, jAnd(jCr(9), `{"type":"average","min_grade":77,"amount":3,"requirements":[2,3],"best":true}`, pool))
+	assertJSON(t, open.Enrolment.Req, jAnd(jCr(9), jOr(`{"type":"average","min_grade":77,"amount":3,"requirements":[2,3],"best":true}`,
+		jT("other", "A minimum grade average of 77% in 3.0 credits that count toward the program")), pool))
+	assertJSON(t, alone.Enrolment.Req, jAnd(jCr(9), jT("other", "A minimum grade average of 77% in 3.0 credits that count toward the program"), pool))
+}
+
 func TestParseFloors(t *testing.T) {
 	tests := []struct {
 		s    string

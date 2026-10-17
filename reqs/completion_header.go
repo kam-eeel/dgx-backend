@@ -176,7 +176,7 @@ func parseHeader(s string) (h compHeader, ok bool) {
 		h.pool = pool
 	}
 	if text { // "2.0 PRT credits at the 200+ level taught in Portuguese"
-		n := hdrCloneNode(pool)
+		n := cloneNode(pool)
 		n.Amount = h.total
 		h.rows = append(h.rows, hdrTextRow(n, tot.raw))
 	}
@@ -395,6 +395,19 @@ func (c *hdrChain) read(phrases []*hdrPhrase) {
 		p.node = n
 		c.phrases = append(c.phrases, p)
 	}
+	// "2.0 credits at the 300 level, including 0.5 credit at the 400 level":
+	// the floor inside counts toward the one around it, so that one takes
+	// its levels too.
+	for _, p := range c.phrases {
+		if p.parent < 0 || p.cap || p.node == nil || p.node.Levels == nil {
+			continue
+		}
+		if q := c.phrases[p.parent].node; q != nil && !c.phrases[p.parent].cap && q.Levels != nil &&
+			slices.ContainsFunc(p.node.Levels, func(l int) bool { return !slices.Contains(q.Levels, l) }) {
+			q.Levels = dedupe(append(slices.Clone(q.Levels), p.node.Levels...))
+			slices.Sort(q.Levels)
+		}
+	}
 }
 
 // narrow gives n the filters of the phrase it narrows, where they agree:
@@ -422,7 +435,7 @@ func (c *hdrChain) narrow(n *types.ReqNode, parent int) {
 // row returns the phrase's requirement row: a floor is a constraint, a cap
 // a limit.
 func (p *hdrPhrase) row() *types.Requirement {
-	n := hdrCloneNode(p.node)
+	n := cloneNode(p.node)
 	if p.cap {
 		n.MaxAmount = maxAmount(p.amount)
 		return &types.Requirement{Kind: types.RequirementLimit, Req: n, Raw: p.raw}
@@ -432,16 +445,6 @@ func (p *hdrPhrase) row() *types.Requirement {
 		return hdrTextRow(n, p.raw)
 	}
 	return &types.Requirement{Kind: types.RequirementConstraint, Req: n, Raw: p.raw}
-}
-
-// hdrCloneNode copies a credits node and its filter slices, so rows and the
-// pool share no backing arrays (cloneNode copies only the struct).
-func hdrCloneNode(n *types.ReqNode) *types.ReqNode {
-	c := cloneNode(n)
-	c.Designators = slices.Clone(n.Designators)
-	c.Levels = slices.Clone(n.Levels)
-	c.Courses = slices.Clone(n.Courses)
-	return c
 }
 
 // hdrTextRow is a floor with conditions the grammar can't check ("2.0

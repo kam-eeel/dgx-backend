@@ -1,6 +1,8 @@
 package reqs
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -68,7 +70,29 @@ func TestParseCompletionText(t *testing.T) {
 			`{"type":"credits","amount":2,"courses":["SLA117H1","SLA118H1","SLA257H1","SLA277H1","SLA337H1"]}`},
 		{"ASMAJ1098 a pool after a semicolon",
 			"BIO120H1; 1.0 credit from MSE101H1; ECO101H1, ECO102H1, ECO105Y1; CHM135H1, CHM136H1; MAT130H1/ MAT135H1",
-			jAnd(jC("BIO120H1"), `{"type":"credits","amount":1,"courses":["MSE101H1","ECO101H1","ECO102H1","ECO105Y1","CHM135H1","CHM136H1","MAT130H1","MAT135H1"]}`)},
+			jAnd(jC("BIO120H1"), `{"type":"credits","amount":1,"courses":["MSE101H1","ECO101H1","ECO102H1","ECO105Y1","CHM135H1","CHM136H1","MAT130H1","MAT135H1"]}`,
+				jPairCap(0.5, "MAT130H1", "MAT135H1"))},
+		// Review B2: "and" over groups of alternatives only when each group
+		// weighs the same either way (or, with a range, when the range
+		// accounts for the difference).
+		{"ASMAJ2660 a Y course after \"/\" replaces the H pair in a pool", "1.0 credit from ECO101H1, ECO102H1/ ECO105Y1",
+			jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"))},
+		{"ASSPE2290 uneven alternatives the range doesn't allow are a union",
+			"0.5 to 1.0 credit from STA492H1, STA496H1/ STA497H1/ STA498Y1/ STA499Y1",
+			jAnd(`{"type":"credits","amount":0.5,"courses":["STA492H1","STA496H1","STA497H1","STA498Y1","STA499Y1"]}`,
+				jPairCap(1, "STA496H1", "STA497H1", "STA498Y1", "STA499Y1"))},
+		{"ASSPE2290 uneven alternatives the range allows are each needed",
+			"2.5 to 3.0 credits from STA130H1, CSC108H1/ CSC110Y1/ CSC111H1/ CSC148H1, ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1)/ MAT157Y1, MAT223H1/ MAT224H1/ MAT240H1",
+			jAnd(jC("STA130H1"), jOr(jC("CSC108H1"), jC("CSC110Y1"), jC("CSC111H1"), jC("CSC148H1")),
+				jOr(jAnd(jC("MAT148H1"), jC("MAT149H1")), jC("MAT137Y1"), jAnd(jC("MAT158H1"), jC("MAT159H1")), jC("MAT157Y1")),
+				jOr(jC("MAT223H1"), jC("MAT224H1"), jC("MAT240H1")))},
+		{"ASSPE1469 two codes with only a space between them in a \"/\" list", "1.0 credit from: GGR342H1/ GGR343H1 GGR344H1/ JPA331H1",
+			`{"type":"credits","amount":1,"courses":["GGR342H1","GGR343H1","GGR344H1","JPA331H1"]}`},
+		{"ASCER1160 one grade after a slash list covers it", "RSM100H1/ MGT100H1/ ECO101H1 (minimum grade of 63%)",
+			jOr(`{"type":"course","code":"RSM100H1","min_grade":63}`, `{"type":"course","code":"MGT100H1","min_grade":63}`,
+				`{"type":"course","code":"ECO101H1","min_grade":63}`)},
+		{"ASMAJ0509 \"chosen from\"", "3.0 credits chosen from 300/400-level ESS/ JGA/ JPE courses or JEG301H1",
+			`{"type":"credits","amount":3,"designators":["ESS","JGA","JPE"],"levels":[300,400],"courses":["JEG301H1"]}`},
 		{"ASMIN1107 semicolon in a count pool", "One of PHL373H1, ENV333H1; JGE321H1, JGE331H1",
 			jOr(jC("PHL373H1"), jC("ENV333H1"), jC("JGE321H1"), jC("JGE331H1"))},
 		{"ASSPE2270 \"or\" before the last item closes the pool",
@@ -97,9 +121,23 @@ func TestParseCompletionText(t *testing.T) {
 			jOr(jAnd(jC("MAT235H1"), jC("MAT236H1")), jC("MAT235Y1"), jC("MAT237Y1"), jC("MAT257Y1"))},
 		{"ASSPE1469 \"/\" alternatives after a colon", "1.0 credit from: ( TRN409H1, TRN410H1)/ TRN411Y1/ TRN419Y1/ TRN421Y1",
 			jOr(jAnd(jC("TRN409H1"), jC("TRN410H1")), jC("TRN411Y1"), jC("TRN419Y1"), jC("TRN421Y1"))},
-		{"ASMAJ1423 a Y course after \"/\" inside a group isn't summed",
+		// A Y course after "/" replaces the pair of H courses before it.
+		{"ASMAJ1423 a Y course after \"/\" inside a group replaces the pair",
 			"1.0 credit from ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1/ MAT137Y1)/ ( MAT158H1, MAT159H1/ MAT157Y1) (( MAT148H1, MAT149H1/ MAT137Y1) recommended)",
-			jT("other", "1.0 credit from ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1/ MAT137Y1)/ ( MAT158H1, MAT159H1/ MAT157Y1)")},
+			jOr(jAnd(jOr(jC("MAT130H1"), jC("MAT135H1")), jC("MAT136H1")), jAnd(jC("MAT148H1"), jC("MAT149H1")), jC("MAT137Y1"),
+				jAnd(jC("MAT158H1"), jC("MAT159H1")), jC("MAT157Y1"))},
+		{"ASMAJ2543 pair or Y course in brackets",
+			"( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1/ MAT137Y1)/ ( MAT158H1, MAT159H1/ MAT157Y1)",
+			jOr(jAnd(jOr(jC("MAT130H1"), jC("MAT135H1")), jC("MAT136H1")), jAnd(jC("MAT148H1"), jC("MAT149H1")), jC("MAT137Y1"),
+				jAnd(jC("MAT158H1"), jC("MAT159H1")), jC("MAT157Y1"))},
+		{"ASMAJ0509 (shortened) unclosed bracket before the Y course",
+			"( MAT148H1, MAT149H1/ MAT137Y1; PHY131H1, PHY132H1",
+			jAnd(jOr(jAnd(jC("MAT148H1"), jC("MAT149H1")), jC("MAT137Y1")), jC("PHY131H1"), jC("PHY132H1"))},
+		{"ASSPE1758 a whole item of a pair or a Y course", "Computer Programming: CSC108H1, CSC148H1/ CSC110Y1",
+			jOr(jAnd(jC("CSC108H1"), jC("CSC148H1")), jC("CSC110Y1"))},
+		{"ASMAJ1023 a pair in a longer list stays a list",
+			"LCT308H1, LCT401H1/ LCT401Y1, LCT403H1",
+			jAnd(jC("LCT308H1"), jOr(jC("LCT401H1"), jC("LCT401Y1")), jC("LCT403H1"))},
 		{"ASSPE0482 groups that don't add up stay text",
 			"1.0 credit from BIO220H1, BIO260H1/ HMB265H1; ( MAT235H1, MAT236H1)/ MAT235Y1, PHY231H1, PSL299Y1/ PSL399Y1",
 			jT("other", "1.0 credit from BIO220H1, BIO260H1/ HMB265H1; ( MAT235H1, MAT236H1)/ MAT235Y1, PHY231H1, PSL299Y1/ PSL399Y1")},
@@ -109,19 +147,118 @@ func TestParseCompletionText(t *testing.T) {
 				`{"type":"credits","amount":1,"courses":["LIN228H1","LIN229H1","LIN232H1","LIN241H1"]}`,
 				`{"type":"credits","amount":1,"courses":["JLP374H1","JLP315H1","JLP471H1"]}`)},
 
+		// A range of amounts needs the lower end; the upper end stays in raw.
+		{"ASSPE0482 a range before a pool", "1.0-1.5 credits from PSL400-series or HMB430H1/ HMB470H1/ HMB472H1",
+			`{"type":"credits","amount":1,"designators":["PSL"],"levels":[400],"courses":["HMB430H1","HMB470H1","HMB472H1"]}`},
+		{"ASMAJ1019 a range before a credit phrase", "3.0 to 4.0 credits from any NMC courses",
+			`{"type":"credits","amount":3,"designators":["NMC"]}`},
+		{"ASMIN1029 (shortened) amounts joined by \"or\"", "0.5 or 1.0 credit from EDS360H1, EDS360Y1, VIC435H1",
+			`{"type":"credits","amount":0.5,"courses":["EDS360H1","EDS360Y1","VIC435H1"]}`},
+		{"ASSPE2270 groups whose smallest credits pass the range's lower end: text",
+			// 2.5 at least (STA130H1, a CSC pair, a MAT pair or Y course) where
+			// the range starts at 2.0, and the CSC alternatives weigh 1.0 or
+			// 1.5: no reading of "each needed" is sure (B2).
+			"2.0 to 2.5 credits from STA130H1, ( CSC108H1, CSC148H1)/ ( CSC110Y1, CSC111H1)/ ( CSC110Y1, CSC148H1), ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1) / MAT157Y1",
+			jT("other", "2.0 to 2.5 credits from STA130H1, ( CSC108H1, CSC148H1)/ ( CSC110Y1, CSC111H1)/ ( CSC110Y1, CSC148H1), ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1) / MAT157Y1")},
+		{"ASFOC1478B described pool", "1.5 credit of 300+ ECO elective courses from: ECO310H1, ECO334H1, ECO339H1",
+			`{"type":"credits","amount":1.5,"courses":["ECO310H1","ECO334H1","ECO339H1"]}`},
+		{"ASMAJ0509 described pool after \"of\"", "2.5 credits of core courses: JEG100H1/ ENV234H1/ EEB240H1/ ESS262H1, ESS223H1",
+			jAnd(`{"type":"credits","amount":2.5,"courses":["JEG100H1","ENV234H1","EEB240H1","ESS262H1","ESS223H1"]}`,
+				jPairCap(0.5, "JEG100H1", "ENV234H1", "EEB240H1", "ESS262H1"))},
+		{"ASMAJ2655 described pool before \"from\"", "0.5 credit laboratory course from: CSB472H1, CSB474H1; EEB460H1",
+			`{"type":"credits","amount":0.5,"courses":["CSB472H1","CSB474H1","EEB460H1"]}`},
+		{"ASMAJ0525 \"selected from\"", "1.0 credit selected from FRE210H1/ FRE245H1/ FRE273H1",
+			`{"type":"credits","amount":1,"courses":["FRE210H1","FRE245H1","FRE273H1"]}`},
+		{"ASMAJ0110 courses after \"credits:\" that add up to the amount",
+			"2.0 credits: BIO220H1 (ecology and evolutionary biology); EEB225H1/ GGR270H1 (statistics); EEB255H1 (conservation biology); EEB240H1 (environmental biology).",
+			jAnd(jC("BIO220H1"), jOr(jC("EEB225H1"), jC("GGR270H1")), jC("EEB255H1"), jC("EEB240H1"))},
+		{"constructed: a description with a level is a filter the list must pass",
+			"0.5 credit of 400-level ECO courses from: ECO310H1, ECO410H1",
+			jT("other", "0.5 credit of 400-level ECO courses from: ECO310H1, ECO410H1")},
+		{"ASMIN1006 courses after \"credits:\" that add up to the amount", "1.0 credits: BIO120H1; BIO220H1",
+			jAnd(jC("BIO120H1"), jC("BIO220H1"))},
+		{"ASMAJ0509 a described pool larger than its amount",
+			"0.5 credit of field courses chosen from: ESS234H1/ ESS324H1/ ESS410H1/ ESS450H1",
+			`{"type":"credits","amount":0.5,"courses":["ESS234H1","ESS324H1","ESS410H1","ESS450H1"]}`},
+
+		// Whole-number amounts and "must be taken from".
+		{"ASSPE0482 a whole-number amount", "3 credits from BCH370H1; PSL304H1, PSL305H1, PSL350H1/ CSB349H1/ BCH311H1, PSL372H1, PSL374H1",
+			jAnd(jC("BCH370H1"), jC("PSL304H1"), jC("PSL305H1"), jOr(jC("PSL350H1"), jC("CSB349H1"), jC("BCH311H1")), jC("PSL372H1"), jC("PSL374H1"))},
+		{"ASMIN2453 must be taken from", "1.0 credit must be taken from GER270H1/ GER272H1/ GER290H1/ GER391H1",
+			`{"type":"credits","amount":1,"courses":["GER270H1","GER272H1","GER290H1","GER391H1"]}`},
+		{"ASMAJ2027A a description with \"additional\"", "0.5 credits of additional music history: HMU225H1/ JMU210H1",
+			`{"type":"credits","amount":0.5,"courses":["HMU225H1","JMU210H1"]}`},
+
+		{"ASMIN1423 \"credit of\" before codes", "1 credit of AST221H1, AST222H1",
+			`{"type":"credits","amount":1,"courses":["AST221H1","AST222H1"]}`},
+		{"ASMIN1423 a doubled \"from\"", "0.5 credit from from PHY252H1, PHY224H1",
+			`{"type":"credits","amount":0.5,"courses":["PHY252H1","PHY224H1"]}`},
+		{"ASSPE1002 one course from the following list", "One course from the following list: BIO220H1/ TRN225Y1/ CHM220H1",
+			jOr(jC("BIO220H1"), jC("TRN225Y1"), jC("CHM220H1"))},
+		{"ASSPE1361 \"further\"", "2.0 credits further from PHL325H1/ PHL331H1",
+			`{"type":"credits","amount":2,"courses":["PHL325H1","PHL331H1"]}`},
+		{"ASSPE2027 the credits a list adds up to", "HMU225H1, TMU240Y1 (1.5 credits)", jAnd(jC("HMU225H1"), jC("TMU240Y1"))},
+		{"ASSPE1211 recommended before \"/\"", "CHM220H1/ CHM222H1, CHM223H1, ( CHM249H1 strongly recommended/ CHM247H1)",
+			jAnd(jOr(jC("CHM220H1"), jC("CHM222H1")), jC("CHM223H1"), jOr(jC("CHM249H1"), jC("CHM247H1")))},
+
+		{"ASMAJ0482 groups with alternatives that add up to the amount", "2.0 credits from BCH210H1; BIO230H1/ BIO255H1; PSL300H1, PSL301H1",
+			jAnd(jC("BCH210H1"), jOr(jC("BIO230H1"), jC("BIO255H1")), jC("PSL300H1"), jC("PSL301H1"))},
+		{"ASMIN1423 pairs of alternatives that add up to the amount", "1 credit from ( PHY131H1/ PHY151H1), ( PHY132H1/ PHY152H1)",
+			jAnd(jOr(jC("PHY131H1"), jC("PHY151H1")), jOr(jC("PHY132H1"), jC("PHY152H1")))},
+		{"ASCER1206 a missing comma", "2.0 credits from: SLA321H1; SLA322H1 SLA410H1; SLA420Y1",
+			`{"type":"credits","amount":2,"courses":["SLA321H1","SLA322H1","SLA410H1","SLA420Y1"]}`},
+		{"ASMIN1253 a course in brackets after a course", "CHM136H1 ( CHM138H1)", jOr(jC("CHM136H1"), jC("CHM138H1"))},
+		{"ASCER1401 a title in quotes", "GER290H1 ‘Global Issues / German Contexts’.", jC("GER290H1")},
+
+		{"ASMIN2453 \"and\" before the last excluded course", "1.0 additional GER or JGJ credit excluding GER150H1, GER361H1, and GER410H1",
+			`{"type":"credits","amount":1,"designators":["GER","JGJ"],"exclude":["GER150H1","GER361H1","GER410H1"]}`},
+		{"ASSPE2027 subjects named with their designators", "1.5 credit in music history (HMU) or music theory (TMU) at the 300+ level",
+			`{"type":"credits","amount":1.5,"designators":["HMU","TMU"],"levels":[300,400]}`},
+		{"ASSPE2599 an alternative designator and a course counted elsewhere",
+			"1.0 credit from 300-level or higher MAT (or APM) courses (in addition to APM462H1)",
+			`{"type":"credits","amount":1,"designators":["MAT","APM"],"levels":[300,400],"exclude":["APM462H1"]}`},
+
+		{"ASFOC1689F a remark on double counting", "1.0 credit from the following: CSC457H1/ CSC458H1 (if not taken in list 1), CSC324H1, CSC364H1",
+			jAnd(`{"type":"credits","amount":1,"courses":["CSC457H1","CSC458H1","CSC324H1","CSC364H1"]}`, jPairCap(0.5, "CSC457H1", "CSC458H1"))},
+		{"ASFOC0652A a course's title after a colon", "Methodological Training Requirement: HIS268H1: Law and History.", jC("HIS268H1")},
+
+		{"ASMAJ1682 an article before an alternative amount, a breadth category's name",
+			"0.5 credit from MST341H1/ SMC385H1 or a 0.5 credit at the 200/300/400-level from Breadth Requirement Category 5: The Physical and Mathematical Universes.",
+			jOr(`{"type":"credits","amount":0.5,"courses":["MST341H1","SMC385H1"]}`, `{"type":"credits","amount":0.5,"levels":[200,300,400],"breadth":[5]}`)},
+		{"ASMIN1165 a grade written with a plus", "MAT221H1(80%+)/ MAT223H1/ MAT240H1",
+			jOr(`{"type":"course","code":"MAT221H1","min_grade":80}`, jC("MAT223H1"), jC("MAT240H1"))},
+
+		{"ASMIN1390 a course joined to a pool by \"or\" is in the pool", "1.0 credits in any EEB or ENV432H1",
+			`{"type":"credits","amount":1,"designators":["EEB"],"courses":["ENV432H1"]}`},
+		{"ASSPE1002 a course worth the amount stays an alternative", "IMM450Y1 or 1.0 credit at the 400-level in ANA, BCH, IMM",
+			jOr(jC("IMM450Y1"), `{"type":"credits","amount":1,"designators":["ANA","BCH","IMM"],"levels":[400]}`)},
+
+		// Floors after an amount read as "including", whatever the wording.
+		{"ASMIN1107 \"with at least\"", "Additional 2.0 PHL credits, with at least a 0.5 credit at the 300+ level",
+			jAnd(`{"type":"credits","amount":2,"designators":["PHL"]}`, `{"type":"credits","amount":0.5,"levels":[300,400]}`)},
+
+		// Course titles, footnote references and timing in brackets.
+		{"ASMIN1124 a course title", "HIS389H1 (Hungarian History), HIS453H1", jAnd(jC("HIS389H1"), jC("HIS453H1"))},
+		{"ASSPE1868 a footnote reference", "( CSC111H1/ CSC165H1, CSC236H1)/ CSC240H1 (1)",
+			jOr(jAnd(jOr(jC("CSC111H1"), jC("CSC165H1")), jC("CSC236H1")), jC("CSC240H1"))},
+		{"ASMIN0385 see note", "CJS200H1/ CJS201H1 (See Note)", jOr(jC("CJS200H1"), jC("CJS201H1"))},
+		{"a condition in brackets stays", "1.0 credit of GER courses (taught in German)",
+			jAnd(`{"type":"credits","amount":1,"designators":["GER"]}`, jT("other", "taught in German"))},
+
 		// labels
 		{"ASMAJ0552 label", "Geography: JGE321H1", jC("JGE321H1")},
 		{"ASSPE2025 two labels", "Option A: Immunology: ( IMM341H1, IMM351H1)", jAnd(jC("IMM341H1"), jC("IMM351H1"))},
 		{"ASMAJ1205 italic label", "_Ukrainian:_ SLA108Y1, SLA208Y1, SLA308H1", jAnd(jC("SLA108Y1"), jC("SLA208Y1"), jC("SLA308H1"))},
 		{"ASSPE1580 label before a pool", "Algebra: 1.0 credit from MAT223H1/ MAT240H1, MAT224H1/ MAT247H1",
-			`{"type":"credits","amount":1,"courses":["MAT223H1","MAT240H1","MAT224H1","MAT247H1"]}`},
+			jAnd(jOr(jC("MAT223H1"), jC("MAT240H1")), jOr(jC("MAT224H1"), jC("MAT247H1")))},
 		{"ASMIN0667 advice keeps its label", "Recommended: 0.5 credit from any HPS 100-level courses.",
 			jAnd(jT("other", "Recommended"), `{"type":"credits","amount":0.5,"designators":["HPS"],"levels":[100]}`)},
 
 		// wildcard pool members
 		{"ASMAJ0482 PSL400-series courses",
 			"1.0 credit from HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1; PSL304H1, PSL399Y1, PSL400-series courses",
-			`{"type":"credits","amount":1,"items":[{"type":"credits","courses":["HMB430H1","HMB470H1","HMB472H1","JPM400Y1","PSL304H1","PSL399Y1"]},{"type":"credits","designators":["PSL"],"levels":[400]}]}`},
+			jAnd(`{"type":"credits","amount":1,"items":[{"type":"credits","courses":["HMB430H1","HMB470H1","HMB472H1","JPM400Y1","PSL304H1","PSL399Y1"]},{"type":"credits","designators":["PSL"],"levels":[400]}]}`,
+				jPairCap(0.5, "HMB430H1", "HMB470H1", "HMB472H1"))},
 		{"ASMAJ2027A described pool of wildcards",
 			"2.5 credits from electives in music history, culture, and theory, and music and health: HMU200+ level courses; JMU210H1; JMU215H1; TMU200+ courses; SMU400-level courses",
 			`{"type":"credits","amount":2.5,"items":[{"type":"credits","courses":["JMU210H1","JMU215H1"]},{"type":"credits","designators":["HMU","TMU"],"levels":[200,300,400]},{"type":"credits","designators":["SMU"],"levels":[400]}]}`},
@@ -133,7 +270,8 @@ func TestParseCompletionText(t *testing.T) {
 			`{"type":"credits","amount":2,"courses":["CRI100H1"],"designators":["ECO","HIS","PHL","POL","PSY","SOC"]}`},
 		{"ASMAJ1006 bare designator with exclusions",
 			"0.5 credit from: BIO251H1; BIO270H1/ PSL300H1; EEB (excluding EEB196H1, EEB197H1); ENV432H1",
-			`{"type":"credits","amount":0.5,"courses":["BIO251H1","BIO270H1","PSL300H1","ENV432H1"],"designators":["EEB"],"exclude":["EEB196H1","EEB197H1"]}`},
+			jAnd(`{"type":"credits","amount":0.5,"courses":["BIO251H1","BIO270H1","PSL300H1","ENV432H1"],"designators":["EEB"],"exclude":["EEB196H1","EEB197H1"]}`,
+				jPairCap(0.5, "BIO270H1", "PSL300H1"))},
 		{"ASMAJ2364 the pool's level narrows every member", "1.0 credit at 300+ level from: CJH332H1; CSB; EEB; EHJ352H1; ENV432H1",
 			`{"type":"credits","amount":1,"courses":["CJH332H1","EHJ352H1","ENV432H1"],"designators":["CSB","EEB"],"levels":[300,400]}`},
 		{"a qualified member ends the pool",
@@ -167,8 +305,9 @@ func TestParseCompletionText(t *testing.T) {
 		// pool wordings
 		{"ASMAJ1252 Any N courses (X credits) from", "Any 2 courses (1.0 credit) from GGR107H1, JEG100H1, GGR101H1",
 			`{"type":"credits","amount":1,"courses":["GGR107H1","JEG100H1","GGR101H1"]}`},
-		{"ASMAJ2030 slash pairs in the pool", "Any 3 courses (1.5 credits) from GGR201H1/ JEG201H1, GGR203H1, GGR205H1/ JEG205H1",
-			`{"type":"credits","amount":1.5,"courses":["GGR201H1","JEG201H1","GGR203H1","GGR205H1","JEG205H1"]}`},
+		{"ASMAJ2030 slash pairs in the pool", "Any 3 courses (1.5 credits) from GGR201H1/ JEG201H1, GGR203H1, GGR205H1/ JEG205H1, GGR206H1/ JEG206H1",
+			jAnd(`{"type":"credits","amount":1.5,"courses":["GGR201H1","JEG201H1","GGR203H1","GGR205H1","JEG205H1","GGR206H1","JEG206H1"]}`,
+				jPairCap(0.5, "GGR201H1", "JEG201H1"), jPairCap(0.5, "GGR205H1", "JEG205H1"), jPairCap(0.5, "GGR206H1", "JEG206H1"))},
 		{"ASMAJ0506 All of:", "All of: LIN101H1, LIN102H1", jAnd(jC("LIN101H1"), jC("LIN102H1"))},
 		{"ASMAJ1536 All of", "All of IRE242H1, IRE244H1, ( IRE379H1/ IRW220H1), IRE430H1",
 			jAnd(jC("IRE242H1"), jC("IRE244H1"), jOr(jC("IRE379H1"), jC("IRW220H1")), jC("IRE430H1"))},
@@ -224,7 +363,7 @@ func TestParseCompletionTextNotes(t *testing.T) {
 		notes     []string
 	}{
 		{"1.0 credit from PHY131H1/ PHY151H1, PHY132H1/ PHY152H1 ( PHY151H1, PHY152H1 recommended)",
-			`{"type":"credits","amount":1,"courses":["PHY131H1","PHY151H1","PHY132H1","PHY152H1"]}`,
+			jAnd(jOr(jC("PHY131H1"), jC("PHY151H1")), jOr(jC("PHY132H1"), jC("PHY152H1"))),
 			[]string{"PHY151H1, PHY152H1 recommended"}},
 		{"0.5 credit from MAT223H1/ MAT240H1 (( MAT223H1) recommended)",
 			`{"type":"credits","amount":0.5,"courses":["MAT223H1","MAT240H1"]}`,
@@ -241,9 +380,21 @@ func TestParseCompletionTextNotes(t *testing.T) {
 		{"( STA257H1, STA261H1)/ ( STA237H1, STA238H1); while either pair of courses is accepted, we strongly recommend ( STA257H1, STA261H1)",
 			jOr(jAnd(jC("STA257H1"), jC("STA261H1")), jAnd(jC("STA237H1"), jC("STA238H1"))),
 			[]string{"while either pair of courses is accepted, we strongly recommend ( STA257H1, STA261H1)"}},
+		{"BIO120H1/ BIO130H1 (may be taken in Year 1), BIO220H1", jAnd(jOr(jC("BIO120H1"), jC("BIO130H1")), jC("BIO220H1")),
+			[]string{"may be taken in Year 1"}},
+		{"( CHM220H1/ CHM222H1 is strongly recommended.)", "null", []string{"CHM220H1/ CHM222H1 is strongly recommended"}},
+		{"WGS160Y1 (normally taken in first year)", jC("WGS160Y1"), []string{"normally taken in first year"}},
+		{"CSC271H1 (first offering in 2025-26)", jC("CSC271H1"), []string{"first offering in 2025-26"}},
+		{"EAS103H1 and EAS105H1, normally taken in the first year;", jAnd(jC("EAS103H1"), jC("EAS105H1")), []string{"normally taken in the first year"}},
+		{"BIO120H1; plus 2.5 first year Science credits ( GGR101H1; CHM135H1, CHM136H1 recommended)",
+			jAnd(jC("BIO120H1"), jT("other", "2.5 first year Science credits")), []string{"GGR101H1, CHM135H1, CHM136H1 recommended"}},
+		{"3.0 SOC credits, which includes at least 1.0 SOC credit at the 300-level, i.e., 2.0 SOC credits at the 200 OR 300-level and 1.0 SOC credit at the 300-level",
+			jAnd(`{"type":"credits","amount":3,"designators":["SOC"]}`, `{"type":"credits","amount":1,"designators":["SOC"],"levels":[300]}`),
+			nil},
 		{"Any two of: ENV450H1, FOR310H1*/ GGR310H1*, FOR410H1 (* if not taken for the requirement immediately above)",
 			jChoose(2, jC("ENV450H1"), jOr(jC("FOR310H1"), jC("GGR310H1")), jC("FOR410H1")),
 			[]string{"if not taken for the requirement immediately above"}},
+		{"CSC457H1/ CSC458H1 (if not taken in list 1), CSC324H1", jAnd(jOr(jC("CSC457H1"), jC("CSC458H1")), jC("CSC324H1")), []string{"if not taken in list 1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -267,6 +418,12 @@ func TestCompletionGrammarGated(t *testing.T) {
 			jOr(`{"type":"credits","amount":1,"courses":["APM346H1"]}`, jT("other", "PHY 300-level courses"))},
 		{"All of: LIN101H1, LIN102H1", jAnd(jT("other", "All of: LIN101H1"), jC("LIN102H1"))},
 		{"CHM135H1(recommended)/ CHM151Y1", jOr(jAnd(jC("CHM135H1"), jT("other", "recommended")), jC("CHM151Y1"))},
+		// ";" doesn't make a pool a comma list (listSep), so "/" still
+		// separates its items. Constructed from ASMAJ0482's "1.0 credit from
+		// HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1", rewritten as a count; no
+		// corpus text depends on the gate.
+		{"Two of HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1",
+			jAnd(jChoose(2, jC("HMB430H1"), jC("HMB470H1"), jC("HMB472H1")), jC("JPM400Y1"))},
 	}
 	for _, tt := range tests {
 		s, _ := normalize(tt.src)
@@ -292,6 +449,9 @@ func TestCompletionGrammarGated(t *testing.T) {
 			jT("other", "1.0 credit from ( MAT235H1, MAT236H1)/ MAT235Y1/ MAT237Y1")},
 		// A pool of only filters is text (completion: the filter).
 		{"One of: any 300-level CSC course", jT("other", "One of: any 300-level CSC course")},
+		// A Y course after "/" in brackets is an alternative to the second H
+		// course only (completion: to the pair).
+		{"( MAT148H1, MAT149H1/ MAT137Y1)", jAnd(jC("MAT148H1"), jOr(jC("MAT149H1"), jC("MAT137Y1")))},
 		// A pool of groups stays text up to ";" (completion: and of the groups).
 		{"2.0 credits from ( BIO120H1, BIO130H1)/ BIO150Y1; ( CHM135H1, CHM136H1)/ CHM151Y1",
 			jAnd(jT("other", "2.0 credits from ( BIO120H1, BIO130H1)/ BIO150Y1"), jOr(jAnd(jC("CHM135H1"), jC("CHM136H1")), jC("CHM151Y1")))},
@@ -299,4 +459,10 @@ func TestCompletionGrammarGated(t *testing.T) {
 	for _, tt := range requisites {
 		assertJSON(t, ParseRequisite(tt.src).Req, tt.want)
 	}
+}
+
+// jPairCap builds a cap on listed courses: credits{courses, max_amount}.
+func jPairCap(most float64, codes ...string) string {
+	b, _ := json.Marshal(codes)
+	return fmt.Sprintf(`{"type":"credits","courses":%s,"max_amount":%g}`, b, most)
 }

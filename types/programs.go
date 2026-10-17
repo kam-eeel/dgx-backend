@@ -63,6 +63,16 @@ const (
 	RequirementChoice     RequirementKind = "choice"     // picks among option requirements; claims nothing; top level only (no Parent)
 )
 
+// ScopeKind says which courses a constraint or limit counts over.
+type ScopeKind string
+
+const (
+	// ScopeTranscript: every course on the student's transcript, not only
+	// what the row's parent counts ("a minimum of 8.0 credits in RSM and 8.0
+	// credits in non-RSM courses" in a 15.0-credit program).
+	ScopeTranscript ScopeKind = "transcript"
+)
+
 // Requirement is one numbered row: DE's "Requirement N".
 type Requirement struct {
 	Number   int             `json:"number"` // 1..N
@@ -72,6 +82,8 @@ type Requirement struct {
 	Parent   int             `json:"parent,omitempty"`   // DE's "in ReqK" (0 = top level)
 	Overlaps []int           `json:"overlaps,omitempty"` // allocations under the same parent that may use the same course; listed on both
 	Req      *ReqNode        `json:"req"`                // nil only for an option group
+	Audience *ReqNode        `json:"audience,omitempty"` // a profile node: the row applies only to students who match it (nil = every student)
+	Scope    ScopeKind       `json:"scope,omitempty"`    // the courses a constraint or limit counts over ("" = what its parent counts)
 	Notes    []string        `json:"notes,omitempty"`    // advisory text that follows this requirement
 	Raw      string          `json:"raw"`                // the calendar sentence(s) it came from
 }

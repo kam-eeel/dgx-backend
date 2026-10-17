@@ -45,11 +45,12 @@ func blkSource(b *compBlock) string {
 }
 
 // blkSameLine reports whether a block's source matches its raw line, ignoring
-// emphasis markers, footnote asterisks (dropped from labels) and whitespace.
-// So it can't catch a lost asterisk.
+// emphasis markers, footnote asterisks (dropped from labels), whitespace and
+// the full stop that ends an item before an italic note (blkItemText). So it
+// can't catch a lost asterisk.
 func blkSameLine(b *compBlock, raw string) bool {
 	squash := func(s string) string { return strings.ReplaceAll(strings.Join(strings.Fields(s), ""), "*", "") }
-	return squash(blkSource(b)) == squash(stripEmphasis(raw))
+	return squash(blkSource(b)) == squash(blkItemText(raw))
 }
 
 func TestCompletionBlocks(t *testing.T) {

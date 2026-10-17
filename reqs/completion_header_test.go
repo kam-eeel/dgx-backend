@@ -102,9 +102,11 @@ func TestParseHeader(t *testing.T) {
 				jFloor(`{"type":"credits","amount":1.5,"levels":[300]}`, "including at least 1.5 credits at the 300-level") + `,` +
 				jFloor(`{"type":"credits","amount":1,"levels":[400]}`, "1.0 credit at the 400-level") + `],` +
 				`"tail":["other equivalent and approved courses offered by other Faculties, University of Toronto Mississauga or University of Toronto Scarborough may be eligible for inclusion."]}`},
-		{"disjoint levels don't nest", "(8.0 credits with at least 2.0 credits at the 300 level, including 0.5 credit at the 400 level )",
+		// "including" puts the 400-level credit inside the 300-level floor, so
+		// that floor counts 400-level courses too (ASMAJ2660).
+		{"an inner floor widens the levels of the floor it is in", "(8.0 credits with at least 2.0 credits at the 300 level, including 0.5 credit at the 400 level )",
 			`{"total":8,"rows":[` +
-				jFloor(`{"type":"credits","amount":2,"levels":[300]}`, "with at least 2.0 credits at the 300 level") + `,` +
+				jFloor(`{"type":"credits","amount":2,"levels":[300,400]}`, "with at least 2.0 credits at the 300 level") + `,` +
 				jFloor(`{"type":"credits","amount":0.5,"levels":[400]}`, "including 0.5 credit at the 400 level") + `]}`},
 
 		// 4. Ranges: the lower end is the total, the upper end is kept.

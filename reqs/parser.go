@@ -37,8 +37,11 @@ import (
 //
 // Text rewrites before lexing (phrases_completion.go): labels stripped
 // ("Option A: Immunology:"), annotations stripped or set aside as notes
-// ("(recommended)", "(no longer offered)", footnotes), and "in either GRK or
-// LAT" read as "in GRK or LAT".
+// ("(recommended)", "(no longer offered)", footnotes, course titles), and
+// the rewrites of rewriteCompletion: among them "in either GRK or LAT" read
+// as "in GRK or LAT", and a Y course after "/" made the alternative to the
+// pair before it ("( MAT148H1, MAT149H1/ MAT137Y1)" reads "( MAT148H1,
+// MAT149H1)/ MAT137Y1").
 
 type span struct{ start, end int }
 
@@ -294,9 +297,15 @@ func (p *parser) parsePoolList(t token, ti int) *types.ReqNode {
 	var items []*types.ReqNode
 	var desigs []string
 	closing := false // after ", or B": a further "," ends the list
+	alts := false    // completion: an item is alternatives joined by "/" ("BIO230H1/ BIO255H1")
+	var groups []*types.ReqNode
 	for {
 		item, closes := p.poolAlternatives(seps)
 		closing = closing || closes
+		alts = alts || item != nil && item.Type == types.NodeOr && !closes
+		if item != nil && item.Type == types.NodeOr && !closes {
+			groups = append(groups, item) // "CSC108H1/ CSC148H1" (completion: pairCaps)
+		}
 		if d := designatorItem(item); d != nil {
 			desigs = append(desigs, d...)
 		} else if item != nil {
@@ -311,7 +320,7 @@ func (p *parser) parsePoolList(t token, ti int) *types.ReqNode {
 		closing = p.next().kind == tCommaOr
 	}
 
-	if n := p.completionPool(t, ti, items, desigs, seps); n != nil {
+	if n := p.completionPool(t, ti, items, desigs, seps, alts, groups); n != nil {
 		return n
 	}
 	switch {
@@ -464,18 +473,85 @@ func (p *parser) hasFilters(items []*types.ReqNode) bool {
 //   - a level floor after "including" ("1.0 credit, including at least 0.5
 //     credit at the 400-level from A/ B") is text;
 //   - courses and filters: unionPool;
-//   - groups whose credits add up to the amount: groupPool.
-func (p *parser) completionPool(t token, ti int, items []*types.ReqNode, desigs []string, seps []tokKind) *types.ReqNode {
+//   - groups whose credits add up to the amount: groupPool, which a list
+//     that names no pool ("2.0 credits: A; B/ C; D") or has alternatives
+//     in a comma list tries first.
+func (p *parser) completionPool(t token, ti int, items []*types.ReqNode, desigs []string, seps []tokKind, alts bool, groups []*types.ReqNode) *types.ReqNode {
 	if !p.completion || t.amount == 0 {
 		return nil
 	}
 	if t.node != nil && ti > 0 && includingRe.MatchString(p.src[p.toks[ti-1].start:p.toks[ti-1].end]) {
 		return p.textSpan("", t.start, p.lastEnd)
 	}
+	// Alternatives in a list that adds up to the amount ("2.0 credits from
+	// BCH210H1; BIO230H1/ BIO255H1; PSL300H1, PSL301H1") are each needed, one
+	// way or the other; read as a union, both alternatives could count.
+	if t.sum || alts && !slices.Contains(seps, tSlash) {
+		if n := p.groupPool(t, items, desigs, seps); n != nil {
+			return n
+		}
+	}
 	if n := p.unionPool(t, items, desigs); n != nil {
-		return n
+		return p.pairCaps(n, groups, seps)
 	}
 	return p.groupPool(t, items, desigs, seps)
+}
+
+// pairCaps adds to a union pool a cap for each group of alternatives it
+// flattened (design 3.2): in "1.0 credit from: CHM135H1, CHM136H1, CSC108H1/
+// CSC148H1/ EEB125H1, JEG100H1" at most one of CSC108H1, CSC148H1 and
+// EEB125H1 counts, so and(pool, credits{courses: [the group], max_amount:
+// the heaviest}). The completion assembler makes each cap a limit row on
+// the item. A "/" list ("A/ B/ C") is all alternatives: no caps; nor is an
+// "or" that closes a comma list ("LIN228H1, LIN232H1 or LIN241H1").
+func (p *parser) pairCaps(n *types.ReqNode, groups []*types.ReqNode, seps []tokKind) *types.ReqNode {
+	if n.Type != types.NodeCredits || slices.Contains(seps, tSlash) {
+		return n
+	}
+	caps := []*types.ReqNode{n}
+	for _, it := range groups {
+		if codes := courseChoiceCodes(it); len(codes) >= 2 {
+			caps = append(caps, courseCap(codes))
+		}
+	}
+	if len(caps) == 1 {
+		return n
+	}
+	return p.and(caps...)
+}
+
+// courseCap caps courses at their heaviest: credits{courses, max_amount},
+// so that at most one of them counts (a "/" pair flattened into a pool,
+// pairCaps and bracketPairCaps; "No more than one from GGR273H1, GGR373H1",
+// capRow). The courses are deduplicated.
+func courseCap(codes []string) *types.ReqNode {
+	return &types.ReqNode{Type: types.NodeCredits, Courses: dedupe(codes), MaxAmount: maxAmount(heaviestCourse(codes))}
+}
+
+// heaviestCourse returns the largest weight among codes (courseWeight), 0
+// for none.
+func heaviestCourse(codes []string) float64 {
+	w := 0.0
+	for _, c := range codes {
+		w = max(w, courseWeight(c))
+	}
+	return w
+}
+
+// courseChoiceCodes returns the codes of an "or" of courses, deduplicated,
+// else nil. courseChoice (completion) also takes a single course.
+func courseChoiceCodes(n *types.ReqNode) []string {
+	if n == nil || n.Type != types.NodeOr {
+		return nil
+	}
+	var codes []string
+	for _, it := range n.Items {
+		if it.Type != types.NodeCourse {
+			return nil
+		}
+		codes = append(codes, it.Code)
+	}
+	return dedupe(codes)
 }
 
 // includingRe matches the token "including" or ", including".
@@ -590,47 +666,109 @@ func narrowLevels(n *types.ReqNode, levels []int) (empty bool) {
 // (minCredits), or returns nil:
 //   - in a comma or ";" list, groups that add up to the amount are all
 //     needed: "2.0 credits from ( BIO120H1, BIO130H1)/ BIO150Y1; ( CHM135H1,
-//     CHM136H1)/ CHM151Y1" needs one of each pair;
+//     CHM136H1)/ CHM151Y1" needs one of each pair. A group of alternatives
+//     must weigh the same either way: in "1.0 credit from ECO101H1, ECO102H1/
+//     ECO105Y1" (ASMAJ2660) ECO105Y1 alone is the amount, so the "and" would
+//     reject a student who took only it. With a range ("2.5 to 3.0 credits
+//     from STA130H1, CSC108H1/ CSC110Y1, ...") the groups' smallest credits
+//     must add up to its lower end and their largest to at most its upper
+//     end: the range is what the uneven alternatives allow. "0.5 to 1.0
+//     credit from STA492H1, STA496H1/ ... STA499Y1" adds up to 1.0, so it is
+//     not "both" (ASSPE2290);
 //   - in a "/" list the items are alternatives, never added up: when each
-//     one is the amount, the pool is their "or": "1.0 credit from ( MAT235H1,
-//     MAT236H1)/ MAT235Y1/ MAT237Y1/ MAT257Y1".
+//     one is the amount (or within the range), the pool is their "or":
+//     "1.0 credit from ( MAT235H1, MAT236H1)/ MAT235Y1/ MAT237Y1/ MAT257Y1".
 func (p *parser) groupPool(t token, items []*types.ReqNode, desigs []string, seps []tokKind) *types.ReqNode {
 	if desigs != nil || len(items) == 0 {
 		return nil
 	}
 	alternatives := slices.Contains(seps, tSlash)
-	sum := 0.0
+	sum, most := 0.0, 0.0
+	uneven := false
 	for _, it := range items {
 		c, ok := minCredits(it)
-		if !ok || alternatives && math.Abs(c-t.amount) > 1e-9 {
+		if !ok || alternatives && !inRange(c, t) {
 			return nil
 		}
 		sum += c
+		most += maxCredits(it)
+		uneven = uneven || !evenTree(it)
 	}
 	switch {
 	case alternatives:
 		return p.or(items...)
-	case math.Abs(sum-t.amount) < 1e-9:
-		return p.and(items...)
+	case math.Abs(sum-t.amount) > 1e-9:
+		return nil
+	case uneven && !t.sum && (t.upper == 0 || most > t.upper+1e-9):
+		// "N credits:" (t.sum) lists the courses that make up N: their
+		// lightest routes add up to it ("1.0 credit: AST320H1, AST325H1/
+		// AST326Y1").
+		return nil
 	}
-	return nil
+	return p.and(items...)
+}
+
+// maxCredits returns the most credits a route through n takes: the
+// heaviest alternative of each "or" (minCredits has checked the courses). It
+// is minCredits' upper end, for the same trees of courses, "and" and "or";
+// anything else counts 0.
+func maxCredits(n *types.ReqNode) float64 {
+	switch n.Type {
+	case types.NodeCourse:
+		return courseWeight(n.Code)
+	case types.NodeAnd, types.NodeOr:
+		c := 0.0
+		for _, it := range n.Items {
+			x := maxCredits(it)
+			switch {
+			case n.Type == types.NodeAnd:
+				c += x
+			case x > c:
+				c = x
+			}
+		}
+		return c
+	}
+	return 0
+}
+
+// evenTree reports whether every "or" in n has alternatives of the same
+// credits.
+func evenTree(n *types.ReqNode) bool {
+	even := true
+	walkReq(n, func(x *types.ReqNode) {
+		even = even && (x.Type != types.NodeOr || evenCredits(x))
+	})
+	return even
+}
+
+// inRange reports whether credits c are the pool's amount, or within its
+// range ("2.0 to 2.5 credits from").
+func inRange(c float64, t token) bool {
+	if t.upper > 0 {
+		return c > t.amount-1e-9 && c < t.upper+1e-9
+	}
+	return math.Abs(c-t.amount) < 1e-9
 }
 
 // minCredits returns the fewest credits that meet n, from the H/Y weights of
 // its courses. ok is false if n has anything but courses, "and" and "or", or
-// if an "and" holds an "or" whose alternatives differ in credits: in "(
-// MAT148H1, MAT149H1/ MAT137Y1)" the Y course replaces the pair, which "/"
-// binding tighter than "," misreads, so the sum would be wrong.
+// if an "and" holds an "or" whose alternatives differ in credits: in
+// "ECO101H1, ECO102H1/ ECO105Y1" (ASMAJ2660) the Y course replaces the pair,
+// which "/" binding tighter than "," misreads, so the sum would be wrong
+// (groupPairY rewrites only the unambiguous forms).
+//
+// Unlike minWeight (enrolment) and nodeCredits (completion), which also
+// count pools, text and "choose", it reads only courses with a valid code,
+// "and" and "or": the grammar uses it to check that the courses of a list
+// add up to its amount, where anything else means the list isn't one.
 func minCredits(n *types.ReqNode) (c float64, ok bool) {
 	switch n.Type {
 	case types.NodeCourse:
 		if !codeRe.MatchString(n.Code) || len(n.Code) != 8 {
 			return 0, false
 		}
-		if n.Code[6] == 'Y' {
-			return 1, true
-		}
-		return 0.5, true
+		return courseWeight(n.Code), true
 	case types.NodeAnd, types.NodeOr:
 		for i, it := range n.Items {
 			x, ok := minCredits(it)

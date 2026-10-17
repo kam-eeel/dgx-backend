@@ -2,6 +2,7 @@ package reqs
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"degree-explorer/types"
@@ -217,8 +218,9 @@ func replaceCourse(n *types.ReqNode, code string, f func(*types.ReqNode) *types.
 	return n
 }
 
-// cloneNode deep-copies n, so a route used in several places doesn't share
-// nodes.
+// cloneNode deep-copies n: its items, its slice fields (each nil stays nil)
+// and MaxAmount. A node used in several places, or changed after it was
+// copied, shares nothing with the original.
 func cloneNode(n *types.ReqNode) *types.ReqNode {
 	if n == nil {
 		return nil
@@ -228,6 +230,15 @@ func cloneNode(n *types.ReqNode) *types.ReqNode {
 		v := *n.MaxAmount
 		c.MaxAmount = &v
 	}
+	c.Designators = slices.Clone(n.Designators)
+	c.Levels = slices.Clone(n.Levels)
+	c.Breadth = slices.Clone(n.Breadth)
+	c.Courses = slices.Clone(n.Courses)
+	c.Exclude = slices.Clone(n.Exclude)
+	c.ExcludeDesignators = slices.Clone(n.ExcludeDesignators)
+	c.Lists = slices.Clone(n.Lists)
+	c.Requirements = slices.Clone(n.Requirements)
+	c.Programs = slices.Clone(n.Programs)
 	c.Items = nil
 	for _, it := range n.Items {
 		c.Items = append(c.Items, cloneNode(it))

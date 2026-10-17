@@ -284,6 +284,24 @@ func (p *enrolParser) categoryNode(text string) *types.ReqNode {
 // A sentence that only introduces a list ("the Biochemistry Major cannot be
 // combined with the:") returns lead = true; the list items follow.
 func (p *enrolParser) exclusionSentence(s string) (ok, lead bool) {
+	nodes, ok, lead := exclusionNodes(s)
+	p.exclusions = append(p.exclusions, nodes...)
+	return ok, lead
+}
+
+// exclusionPhrase adds the programs named in phrase to Exclusions
+// (exclusionPhraseNodes).
+func (p *enrolParser) exclusionPhrase(phrase string) {
+	p.exclusions = append(p.exclusions, exclusionPhraseNodes(phrase)...)
+}
+
+// exclusionNodes reads a sentence naming programs the student must not be
+// enrolled in, as enrolment and completion text write it: "not open to
+// students enrolled in ...", "cannot be combined with ...", "cannot combine
+// the X with ...", "cannot be simultaneously enrolled in ...". ok reports
+// whether s is one; lead, that it only introduces a list ("the Biochemistry
+// Major cannot be combined with the:"), whose items follow.
+func exclusionNodes(s string) (nodes []*types.ReqNode, ok, lead bool) {
 	for _, re := range []*regexp.Regexp{enrolNotOpenRe, enrolCombinedWithRe, enrolCombineRe, enrolSimultaneousRe} {
 		m := re.FindStringSubmatch(s)
 		if m == nil {
@@ -291,20 +309,20 @@ func (p *enrolParser) exclusionSentence(s string) (ok, lead bool) {
 		}
 		phrase := strings.TrimSpace(strings.TrimRight(m[1], ".:"))
 		if phrase == "" {
-			return true, true
+			return nil, true, true
 		}
-		p.exclusionPhrase(phrase)
-		return true, false
+		return exclusionPhraseNodes(phrase), true, false
 	}
-	return false, false
+	return nil, false, false
 }
 
-// exclusionPhrase adds the programs named in phrase to Exclusions. Explicit
+// exclusionPhraseNodes returns the programs named in phrase. Explicit
 // alternatives ("the Biomedical Toxicology Major or the Pharmacology Major")
 // become one node each. A phrase about a subject or a department ("any other
 // CIRHR program", "any Minor, Major, or Specialist offered by the Department
 // of French") stays membership text.
-func (p *enrolParser) exclusionPhrase(phrase string) {
+func exclusionPhraseNodes(phrase string) []*types.ReqNode {
+	var out []*types.ReqNode
 	phrase = enrolProgArticleRe.ReplaceAllString(phrase, "")
 	// "any Computer Science, Statistics, or Actuarial Science programs,
 	// including the Computer Science Minor, ...; nor any Mathematics Major or
@@ -313,20 +331,20 @@ func (p *enrolParser) exclusionPhrase(phrase string) {
 	phrase = exclusionIncludingRe.ReplaceAllString(phrase, "")
 	if parts := exclusionPartsRe.Split(phrase, -1); len(parts) > 1 {
 		for _, part := range parts {
-			p.exclusionPhrase(part)
+			out = append(out, exclusionPhraseNodes(part)...)
 		}
-		return
+		return out
 	}
 	if m := enrolDeptParenRe.FindStringSubmatch(phrase); m != nil {
 		for _, name := range enrolAltSepRe.Split(m[2], -1) {
-			p.exclusions = append(p.exclusions, &types.ReqNode{Type: types.NodeProgram, Text: name + " " + m[1]})
+			out = append(out, &types.ReqNode{Type: types.NodeProgram, Text: name + " " + m[1]})
 		}
-		return
+		return out
 	}
 	for _, piece := range enrolProgSplitRe.Split(phrase, -1) {
 		piece = enrolProgArticleRe.ReplaceAllString(strings.TrimSpace(piece), "")
 		if m := enrolProgTypesParenRe.FindStringSubmatch(piece); m != nil {
-			p.exclusions = append(p.exclusions, &types.ReqNode{Type: types.NodeProgram, Text: m[1] + " " + m[2]})
+			out = append(out, &types.ReqNode{Type: types.NodeProgram, Text: m[1] + " " + m[2]})
 			continue
 		}
 		_, ok := parseProgramRef(piece)
@@ -335,11 +353,12 @@ func (p *enrolParser) exclusionPhrase(phrase string) {
 			// read: "any other Economics program", "Psychology Specialist,
 			// Research Specialist, Major, or Minor". Link resolves it by
 			// subject area, or leaves it as text.
-			p.exclusions = append(p.exclusions, &types.ReqNode{Type: types.NodeProgram, Text: piece})
+			out = append(out, &types.ReqNode{Type: types.NodeProgram, Text: piece})
 			continue
 		}
-		p.exclusions = append(p.exclusions, programPhraseNode(piece))
+		out = append(out, programPhraseNode(piece))
 	}
+	return out
 }
 
 func programText(s string) *types.ReqNode {
