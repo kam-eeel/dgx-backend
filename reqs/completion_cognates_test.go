@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleCognates checks cognate caps read as union pools
-// (completion_cognates.go) on real snippets.
+// TestCompletionRuleCognates checks cognate caps read as union pools.
 func TestCompletionRuleCognates(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"substitutions for a pool's credits: a union with a limit on each share, the approved courses the route (ASMIN0382, shortened)",

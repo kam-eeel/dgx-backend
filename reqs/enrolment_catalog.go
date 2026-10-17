@@ -8,9 +8,8 @@ import (
 	"degree-explorer/types"
 )
 
-// Linking steps for enrolment that read the rest of the catalogue: which
-// jointly offered courses a subject uses, and what a course's equivalents
-// are.
+// Enrolment linking steps that read the rest of the catalogue: jointly offered
+// courses and equivalents.
 
 // enrolCatalog is what those steps need from the catalogue.
 type enrolCatalog struct {
@@ -18,7 +17,7 @@ type enrolCatalog struct {
 	joint      map[string][]string          // first area -> joint designators its programs list
 }
 
-// jointCodeRe is a jointly offered course: "JEG100H1", "JGU346H1".
+// jointCodeRe matches a jointly offered course: "JEG100H1".
 var jointCodeRe = regexp.MustCompile(`\bJ[A-Z]{2}\d{3}[HY]\d\b`)
 
 func newEnrolCatalog(courses []*types.Course, programs []*types.Program) *enrolCatalog {
@@ -46,12 +45,8 @@ func newEnrolCatalog(courses []*types.Course, programs []*types.Program) *enrolC
 var jointTextRe = regexp.MustCompile(`^a jointly-offered ([A-Z]{3}) course$`)
 
 // linkJoint replaces the jointText alternative to a subject's pools with the
-// subject's joint designators: those the programs of the same area list in
-// their completion requirements that share the subject's letter. Geography
-// programs list JEG, JGE, JGU, JIG, ... (G for Geography) as well as JAV and
-// JQR (other subjects' joint courses) and never JGJ (German) or JGA, so the
-// GGR pools and averages get JEG, JGC, JGE, JGI, JGU, JIG and JUG. Without
-// a list for the area the alternative stays.
+// joint designators its area's programs list that share the subject's letter
+// (G for Geography). With no list for the area the alternative stays.
 func (cat *enrolCatalog) linkJoint(n *types.ReqNode, area string) *types.ReqNode {
 	subjects := map[string][]string{}
 	walkReq(n, func(t *types.ReqNode) {
@@ -92,9 +87,8 @@ func (cat *enrolCatalog) linkJoint(n *types.ReqNode, area string) *types.ReqNode
 	return drop(n)
 }
 
-// linkEquivalent reads "MGT100H1 or equivalent" as the course or one of the
-// courses it excludes: the calendar lists a course's equivalents as its
-// exclusions. It is left alone when an exclusion isn't a list of courses.
+// linkEquivalent reads "MGT100H1 or equivalent" as the course or one it
+// excludes: the calendar lists a course's equivalents as its exclusions.
 func (cat *enrolCatalog) linkEquivalent(n *types.ReqNode) *types.ReqNode {
 	if n == nil {
 		return nil
@@ -131,24 +125,22 @@ func (cat *enrolCatalog) linkEquivalent(n *types.ReqNode) *types.ReqNode {
 }
 
 var (
-	// "The following courses or their equivalents must be completed:",
-	// "Minimum grades in required courses or their equivalents are needed
-	// for entry".
+	// theirEquivalentsRe matches "The following courses or their equivalents must
+	// be completed:".
 	theirEquivalentsRe = regexp.MustCompile(`(?i)\bor\s+their\s+equivalents\b`)
-	// "We will accept equivalent/exclusion statistics courses from UTM/UTSC
-	// in lieu of PSY201H1 and PSY202H1. Please contact us to verify if your
-	// stats course qualifies."
+	// campusEquivRe matches "We will accept equivalent/exclusion statistics
+	// courses from UTM/UTSC in lieu of PSY201H1".
 	campusEquivRe = regexp.MustCompile(`(?i)equivalent/exclusion\s+\w+\s+courses\s+from\s+UTM/UTSC\s+in\s+lieu\s+of\s+(` + codePat + `(?:\s*(?:,|and)\s*` + codePat + `)*)`)
-	// A UTM (5) or UTSC (3) course code.
+	// otherCampusRe matches a UTM (5) or UTSC (3) course code: "MATA36H3".
 	otherCampusRe = regexp.MustCompile(`^[A-Z]{3}[A-Z0-9]\d{2}[HY][35]$`)
 )
 
-// campusNoteRe is an exclusion note that only names the courses' campus:
-// "CHMB62H3(UTSC)", "[ BIOC12H3(UTSC) and BIOC13H3(UTSC)]" ("(UTSC); (UTSC)").
+// campusNoteRe matches an exclusion note that only names the courses' campus:
+// "(UTSC); (UTSC)".
 var campusNoteRe = regexp.MustCompile(`^\(\s*(?:UTM|UTSC)\s*\)(?:;\s*\(\s*(?:UTM|UTSC)\s*\))*$`)
 
-// sharesCourse reports whether two of items accept the same added course,
-// one that isn't among the listed ones.
+// sharesCourse reports whether two of items accept the same added course, one
+// not among the listed ones.
 func sharesCourse(items []*types.ReqNode, listed []string) bool {
 	seen := map[string]int{}
 	for i, it := range items {
@@ -176,10 +168,9 @@ func onlyCourses(n *types.ReqNode) bool {
 	return false
 }
 
-// coversWeight reports whether an excluded set of courses weighs at least as
-// much as code. An exclusion marks overlap, not equivalence: CHM151Y1
-// excludes CHM135H1, but one half course doesn't stand in for the full-year
-// course. The other way round it does (CHM151Y1 for CHM135H1).
+// coversWeight reports whether an excluded set weighs at least as much as
+// code: an exclusion marks overlap, so a half course doesn't stand in for a
+// full-year one.
 func coversWeight(set []string, code string) bool {
 	w := 0.0
 	for _, c := range set {
@@ -192,11 +183,9 @@ func coversWeight(set []string, code string) bool {
 // confirms.
 const equivalentConfirmText = "the department confirms the course qualifies"
 
-// linkEquivalents reads "or their equivalents" as every required course or
-// one of the courses it excludes, as linkEquivalent does for "X or
-// equivalent". "We will accept equivalent/exclusion statistics courses from
-// UTM/UTSC in lieu of PSY201H1" adds PSY201H1's UTM and UTSC exclusions,
-// which the department confirms.
+// linkEquivalents reads "or their equivalents" as each required course or one
+// it excludes, and adds the department-confirmed UTM and UTSC exclusions
+// campusEquivRe names.
 func (cat *enrolCatalog) linkEquivalents(e *types.Enrolment) {
 	if theirEquivalentsRe.MatchString(e.Raw) {
 		e.Req = cat.withEquivalents(e.Req, nil, nil, false)
@@ -208,10 +197,8 @@ func (cat *enrolCatalog) linkEquivalents(e *types.Enrolment) {
 }
 
 // withEquivalents gives the courses in n (only codes, when given) their
-// exclusions as alternatives, keeping its minimum grade; keep, when given,
-// says which excluded courses count. With confirm, an alternative also needs
-// the department's confirmation. Courses under a not are left alone. An
-// average over a course averages its equivalents too.
+// exclusions as alternatives, keeping grades; keep filters them, and confirm
+// adds the department's confirmation. Courses under a not are left alone.
 func (cat *enrolCatalog) withEquivalents(n *types.ReqNode, codes []string, keep func(string) bool, confirm bool) *types.ReqNode {
 	if n == nil {
 		return nil
@@ -243,8 +230,7 @@ func (cat *enrolCatalog) withEquivalents(n *types.ReqNode, codes []string, keep 
 	case types.NodeNot:
 		return n
 	case types.NodeCredits:
-		// A pool's courses: "1.0 credit from MAT130H1/ MAT135H1, MAT136H1,
-		// ..., PHY131H1".
+		// a pool's courses: "1.0 credit from MAT130H1/ MAT135H1, MAT136H1, ..."
 		for _, c := range slices.Clone(n.Courses) {
 			for _, set := range alternatives(c) {
 				n.Courses = append(n.Courses, set...)
@@ -253,9 +239,8 @@ func (cat *enrolCatalog) withEquivalents(n *types.ReqNode, codes []string, keep 
 		n.Courses = dedupe(n.Courses)
 		return n
 	case types.NodeAnd:
-		// Half courses that share an equivalent ("( MAT130H1/ MAT135H1,
-		// MAT136H1)": MATA36H3 excludes both MAT135H1 and MAT136H1) need
-		// separate courses, so the pair also needs its credits.
+		// half courses sharing an equivalent need separate courses, so the pair also
+		// needs its credits
 		before := cloneNode(n)
 		listed := nodeCodes(before)
 		for i, it := range n.Items {

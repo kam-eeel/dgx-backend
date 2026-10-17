@@ -8,26 +8,8 @@ import (
 	"degree-explorer/types"
 )
 
-// Routes: sentences that look like advice ("Note: …", "Students who …") but
-// change what meets the requirement, so they can't simply become notes:
-//
-//   - another way to meet the whole field: "Students with A, B and who are
-//     enrolled in P may take this course with Permission of the Instructor",
-//     "Students without these prerequisites may enrol … if they are
-//     concurrently enrolled in ENG110Y1, ENG140Y1 or ENG150Y1";
-//   - a substitute for one course: "students enrolled in ASMAJ1446A who have
-//     completed at least 9.0 credits may substitute A for CSC263H1 and B for
-//     STA237H1", "(Note: BCH210H1 may be acceptable with permission of
-//     instructor)";
-//   - more needed on one path: "Students who have completed CSC240H1 must
-//     enrol in MAT377H1/ STA237H1 concurrently";
-//   - a course that may be in progress: "(MAT257Y1 can be taken
-//     concurrently)".
-//
-// Each sentence is taken out of the text before the notes are extracted,
-// applied to the parsed tree, and kept in notes so the wording stays visible.
-// A sentence whose parts can't be parsed, or whose course isn't in the tree,
-// only becomes a note.
+// Routes: sentences that read as advice ("Students who ...") but change what
+// meets the requirement. Each is applied to the tree and kept in notes.
 
 type routeKind int
 
@@ -49,28 +31,29 @@ type route struct {
 }
 
 var (
-	// "Students with A and who are enrolled in P may take this course with
-	// Permission of the Instructor".
+	// routeAltRe matches another way to meet the whole field: "Students with A and
+	// who are enrolled in P may take this course with Permission of the Instructor".
 	routeAltRe = regexp.MustCompile(`(?i)^(?:notes?:\s*)?students\s+(?:with|who\s+have(?:\s+completed)?)\s+(.+?),?\s+may\s+(?:take|enrol(?:l)?\s+in)\s+this\s+course(?:\s+with\s+(.+))?$`)
-	// "Students without these prerequisites may enrol in a 200-level course if
-	// they are concurrently enrolled in ENG110Y1, ENG140Y1 or ENG150Y1".
+	// routeFallbackRe matches "Students without these prerequisites may enrol in a
+	// 200-level course if they are concurrently enrolled in ENG110Y1".
 	routeFallbackRe = regexp.MustCompile(`(?i)^students\s+without\s+(?:these|the|this)\s+prerequisites?\s+may\s+(?:enrol(?:l)?|take)\b.*?\bif\s+they\s+(?:are\s+(concurrently\s+)?enrol(?:l)?ed\s+in|have\s+completed)\s+(.+)$`)
-	// "students enrolled in ASMAJ1446A who have completed at least 9.0
-	// credits may substitute A for CSC263H1 and B for STA237H1".
+	// routeSubstituteRe matches a substitute for one course: "students enrolled in
+	// P who have completed at least 9.0 credits may substitute A for CSC263H1".
 	routeSubstituteRe = regexp.MustCompile(`(?i)^(?:notes?:\s*)?students\s+(.+?)\s+may\s+substitute\s+(.+)$`)
 	substitutePairRe  = regexp.MustCompile(`(?:^|\s+and\s+)(.+?)\s+for\s+(` + codePat + `)`)
-	// "Students who have completed CSC240H1 must enrol in MAT377H1/ STA237H1
-	// concurrently with CSC265H1, if they have not already completed one of
-	// those courses".
+	// routeExtraRe matches more needed on one path: "Students who have completed
+	// CSC240H1 must enrol in MAT377H1/ STA237H1 concurrently with CSC265H1".
 	routeExtraRe = regexp.MustCompile(`(?i)^(?:notes?:\s*)?students\s+who\s+have\s+completed\s+(` + codePat + `)\s+must\s+enrol(?:l)?\s+in\s+(.+?)\s+concurrently(?:\s+with\s+` + codePat + `)?` +
 		`(?:,?\s+if\s+they\s+have\s+not\s+already\s+completed\s+(?:one\s+of\s+)?(?:those|these|that|this|it)(?:\s+courses?)?)?$`)
-	// "(Note: BCH210H1 may be acceptable with permission of instructor)"
-	// right after a course: that course, or this one with permission.
+	// acceptableRe matches "(Note: BCH210H1 may be acceptable with permission of
+	// instructor)" after a course: that course, or this one with permission.
 	acceptableRe = regexp.MustCompile(`(?i)\(\s*notes?\s*:\s*(` + codePat + `(?:\s*(?:/|,|or)\s*` + codePat + `)*)\s+(?:may\s+be|is|are)\s+acceptable\s+with\s+([^()]+?)\s*\)`)
-	// "(MAT257Y1 can be taken concurrently)".
+	// concurrentOKRe matches a course that may be in progress: "(MAT257Y1 can be
+	// taken concurrently)".
 	concurrentOKRe = regexp.MustCompile(`(?i)\(([^()]*?\b(?:can|may)\s+be\s+taken\s+concurrently)\s*\)`)
 
-	// "ENG110Y1, ENG140Y1 or ENG150Y1" after "enrolled in": any one of them.
+	// codeListOrRe matches "ENG110Y1, ENG140Y1 or ENG150Y1" after "enrolled in":
+	// any one of them.
 	codeListOrRe = regexp.MustCompile(`^` + codePat + `(?:\s*,\s*` + codePat + `)*\s*,?\s+(?i:or)\s+` + codePat + `$`)
 	listCommaRe  = regexp.MustCompile(`\s*,\s*(?:(?i:or)\s+)?|\s+(?i:or)\s+`)
 
@@ -172,7 +155,8 @@ func parseFragment(s string) *types.ReqNode {
 
 func normalizeSpace(s string) string { return strings.TrimSpace(wsRe.ReplaceAllString(s, " ")) }
 
-// applyRoutes applies routes to the parsed field n.
+// applyRoutes applies routes to the parsed field n. One whose course isn't in n
+// changes nothing, so it is only a note.
 func applyRoutes(n *types.ReqNode, routes []route) *types.ReqNode {
 	for _, r := range routes {
 		switch r.kind {

@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionBindingNotes checks the notes the corpus report read as
-// rules (completion_binding.go, the "formerly" codes in item asides, the
-// advice zones) on snippets of real programs.
+// TestCompletionBindingNotes checks the notes read as rules (the "formerly"
+// codes in item asides, the advice zones) on snippets of real programs.
 func TestCompletionBindingNotes(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"\"(formerly X)\" in a pool of a choice: X joins the pool, the choice stays (ASMAJ2207, shortened)",

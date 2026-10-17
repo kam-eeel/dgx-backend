@@ -10,9 +10,8 @@ import (
 	"degree-explorer/types"
 )
 
-// The walk over enrolment lines: headings open sections and audiences,
-// leads open lists, items fill them, and every other sentence is classified
-// on its own (see ParseEnrolment).
+// The walk over enrolment lines: headings open sections and audiences, leads
+// open lists, items fill them, and other sentences are classified alone.
 
 func (p *enrolParser) line(l enrolLine) {
 	switch l.kind {
@@ -81,17 +80,16 @@ func (p *enrolParser) newAudience(cond []*types.ReqNode) *audience {
 }
 
 var (
-	// Credit bands: "4.0 to 8.5 credits", "between 4.0 and 8.5 credits",
-	// "9.0 or more credits", "9.0 credits or more", "at least 8.0 credits",
-	// "9.0 credits".
+	// bandRangeRe and bandMinRe match credit bands: "between 4.0 and 8.5
+	// credits", "9.0 or more credits".
 	bandRangeRe = regexp.MustCompile(`(?i)\b(?:between\s+)?(\d+\.\d+)\s+(?:and|to)\s+(\d+\.\d+)\s+credits\b`)
 	bandMinRe   = regexp.MustCompile(`(?i)\b(?:at\s+least\s+)?(\d+\.\d+)\s+(?:or\s+more\s+credits|credits(?:\s+or\s+more)?)\b`)
-	// Admission categories: "students admitted to Arts & Science in the Year
-	// 1 Computer Science (CMP1) admission category", "students NOT admitted to
-	// the Year 1 Rotman Commerce admission category".
+	// categoryRe matches an admission category: "students NOT admitted to the Year
+	// 1 Rotman Commerce admission category".
 	categoryRe = regexp.MustCompile(`(?i)admission\s+categor`)
 	languageRe = regexp.MustCompile(`(?i)\blanguage\b`)
-	// "students with ", "students who are ": what's left says what they have.
+	// audienceWhoRe strips "students with " or "students who are ": what's left
+	// says what they have.
 	audienceWhoRe = regexp.MustCompile(`(?i)^students\s+(?:with|who\s+are)\s+|\s*\(i\.e\.[^)]*\)$`)
 	forRe         = regexp.MustCompile(`(?i)^for\s+`)
 )
@@ -106,17 +104,15 @@ func (p *enrolParser) audienceCond(h string) []*types.ReqNode {
 	case categoryRe.MatchString(text):
 		return []*types.ReqNode{p.categoryNode(text)}
 	case languageRe.MatchString(text):
-		// "students with no prior language experience", "students who are
-		// exempted from a first-year language course (i.e. those with some
-		// prior language skills)"
+		// "students with no prior language experience"
 		value := audienceWhoRe.ReplaceAllString(text, "")
 		return []*types.ReqNode{{Type: types.NodeProfile, Attr: "language_background", Value: value, Text: text}}
 	}
 	return []*types.ReqNode{{Type: types.NodeText, Kind: classify(text), Text: text}}
 }
 
-// creditBand reads a credit band ("4.0 to 8.5 credits") as a credits node,
-// or returns nil.
+// creditBand reads a credit band ("4.0 to 8.5 credits") as a credits node, or
+// returns nil.
 func creditBand(s string) *types.ReqNode {
 	if m := bandRangeRe.FindStringSubmatch(s); m != nil {
 		lo, _ := strconv.ParseFloat(m[1], 64)
@@ -132,17 +128,16 @@ func creditBand(s string) *types.ReqNode {
 
 var (
 	orLineRe = regexp.MustCompile(`(?i)^(?:or|OR)$`)
-	// "MGT100H1 will be considered equivalent to RSM100H1"
+	// equivalentRe matches "MGT100H1 will be considered equivalent to RSM100H1".
 	equivalentRe = regexp.MustCompile(`(` + codePat + `)\s+will\s+be\s+considered\s+equivalent\s+to\s+(` + codePat + `)`)
-	// A heading run into the sentence after it: "Variable Minimum Grade A
-	// minimum grade is needed for entry."
+	// gluedHeadingRe matches a heading run into its sentence: "Variable Minimum
+	// Grade A minimum grade is needed for entry."
 	gluedHeadingRe = regexp.MustCompile(`^Variable\s+Minimum\s+Grade(?:\s+Average)?\s+(A\s)`)
 	sentenceRe     = regexp.MustCompile(`\.([A-Z])`) // "admission to the program.Obtaining" (missing space)
-	// A paragraph that is a requirement item: it starts with a course code, a
-	// bracket or a credit amount. "( CHM135H1, CHM136H1)/ CHM151Y1)",
-	// "URB235H1 (formerly INI235H1) and URB236H1 (formerly INI236H1), and:".
+	// reqParagraphRe matches a paragraph that is a requirement item, starting with
+	// a code, a bracket or an amount: "( CHM135H1, CHM136H1)/ CHM151Y1)".
 	reqParagraphRe = regexp.MustCompile(`^(?:[(\[]\s*)?(?:` + codePat + `|\d+\.\d+\s+(?:[A-Z]{3}\s+)?credits?\b)`)
-	// Item text that is a course requirement: it names a course, a credit
+	// reqItemRe matches item text that is a course requirement: a course, an
 	// amount, a grade in a course, or Grade 12 preparation.
 	reqItemRe = regexp.MustCompile(codePat + `|\b\d+\.\d+\s+(?:[A-Z]{3}\s+)?(?:\d00-level\s+)?(?:[A-Z]{3}\s+)?credits?\b|^(?i:Gr(?:ade|\.)\s*12)\b|^\d{2}%\s+in\b`)
 )
@@ -153,7 +148,7 @@ func (p *enrolParser) paragraph(l enrolLine) {
 		p.notes = append(p.notes, cleanNote(text))
 		return
 	}
-	// The ASIP block runs from its first sentence to the next heading.
+	// the ASIP block runs from its first sentence to the next heading
 	if asipHeadRe.MatchString(text) {
 		p.closeList()
 		p.setSection(secASIP)
@@ -169,8 +164,8 @@ func (p *enrolParser) paragraph(l enrolLine) {
 	}
 }
 
-// sentence classifies one sentence of a paragraph, or a whole item that
-// isn't a course requirement.
+// sentence classifies one sentence of a paragraph, or a whole item that isn't
+// a course requirement.
 func (p *enrolParser) sentence(s string, l enrolLine) {
 	s = cleanNote(gluedHeadingRe.ReplaceAllString(s, "$1"))
 	if s == "" || enrolNoiseRe.MatchString(s) {
@@ -199,9 +194,7 @@ func (p *enrolParser) sentence(s string, l enrolLine) {
 		p.lead(s, l)
 	case p.floorSentence(s):
 	case equivalentRe.MatchString(s):
-		// "For Arts and Science students admitted to Rotman Commerce,
-		// MGT100H1 will be considered equivalent to RSM100H1": said in a
-		// route, it is for that route.
+		// said in a route, an equivalence is for that route
 		m := equivalentRe.FindStringSubmatch(s)
 		sub := substitution{code: m[2], alts: []*types.ReqNode{{Type: types.NodeCourse, Code: m[1]}}}
 		if p.cur != p.common() {
@@ -233,11 +226,8 @@ func (p *enrolParser) sentence(s string, l enrolLine) {
 	}
 }
 
-// Where a variable cutoff's wording comes from, weakest first: a sentence
-// ("the minimum grade average in required courses may vary year to year"),
-// a section heading ("Variable Minimum Grade"), or a sentence naming the
-// courses averaged ("A minimum grade average in STA130H1 and ... is needed
-// for entry").
+// Where a variable cutoff's wording comes from, weakest first: a sentence, a
+// section heading, or a sentence naming the courses averaged.
 const (
 	varFromSentence = iota + 1
 	varFromHeading
@@ -254,15 +244,12 @@ func (p *enrolParser) setVariable(text string, from int) {
 	}
 }
 
-// variableTextRe marks a cutoff on both grades and the average: "Variable
-// Minimum Grade and Variable Minimum Grade Average", "Variable Minimum
-// Grade/Grade Average", "Minimum grades combined with a minimum grade
-// average", "A minimum grade or grade averages".
+// variableBothRe matches a cutoff on both grades and the average: "Variable
+// Minimum Grade/Grade Average".
 var variableBothRe = regexp.MustCompile(`(?i)minimum\s+grade\s+(?:and|or)\b|minimum\s+grades\b|\bgrade\s*/`)
 
-// variableText names a variable cutoff from its heading or sentence:
-// "variable minimum grade", "variable minimum grade average", or "variable
-// minimum grade and grade average".
+// variableText names a variable cutoff from its heading or sentence: "variable
+// minimum grade", with "average" or "and grade average".
 func variableText(s string) string {
 	switch {
 	case !strings.Contains(strings.ToLower(s), "average"):
@@ -287,13 +274,13 @@ var (
 	leadFollowingRe = regexp.MustCompile(`(?i)\bfollowing\b|\byou\s+must\b|\bwe\s+will\b`)
 )
 
-// lead handles a sentence ending in ":". Most open a list; some also start
-// an audience ("Students who have completed at least 8.0 credits ... must
-// apply using the following courses:").
+// lead handles a sentence ending in ":". Most open a list; some also start an
+// audience ("Students who have completed at least 8.0 credits ... must apply
+// using the following courses:").
 func (p *enrolParser) lead(s string, l enrolLine) {
 	body := strings.TrimSuffix(s, ":")
-	// "URB235H1 (formerly INI235H1) and URB236H1 (formerly INI236H1), and:"
-	// is an item of its own, followed by more.
+	// "URB235H1 (formerly INI235H1) and URB236H1 (formerly INI236H1), and:" is an
+	// item of its own, followed by more
 	if leadItemEndRe.MatchString(s) && codeRe.MatchString(s) && !leadFollowingRe.MatchString(s) {
 		p.addItem(l, leadItemEndRe.ReplaceAllString(s, ""), "and")
 		p.closeList()
@@ -378,7 +365,7 @@ func (p *enrolParser) item(l enrolLine) {
 		p.notes = append(p.notes, cleanNote(l.text))
 		return
 	}
-	// A numbered note after an "In lieu of ..." list closes it.
+	// a numbered note after an "In lieu of ..." list closes it
 	if p.list != nil && p.list.leadMarker != "" && l.marker == p.list.leadMarker && l.depth <= p.list.leadDepth {
 		p.closeList()
 	}
@@ -405,9 +392,7 @@ func (p *enrolParser) item(l enrolLine) {
 		p.addItem(l, "", conj)
 		return
 	}
-	// A requirement item may carry advice in a later sentence: "1.5 credits
-	// from: ... If more than 1.5 credits have been completed, the minimum
-	// grade average will be based on the higher course grades."
+	// an item may carry advice in a later sentence
 	sentences := splitSentences(sentenceRe.ReplaceAllString(text, ". $1"))
 	if len(sentences) == 0 {
 		return
@@ -455,9 +440,9 @@ func (p *enrolParser) addItem(l enrolLine, text, conj string) {
 	*items = append(*items, it)
 }
 
-// poolAmount turns an item that only lists courses ("Economics: ECO101H1,
-// ECO102H1, ECO105Y1", read as and(...)) into a pool of amount credits from
-// them, as the lead says ("1.0 credit from one of the following groups:").
+// poolAmount turns an item that only lists courses into a pool of amount
+// credits from them, as the lead says ("1.0 credit from one of the following
+// groups:").
 func poolAmount(n *types.ReqNode, amount float64) *types.ReqNode {
 	if n == nil || n.Type == types.NodeCredits {
 		return n
@@ -486,9 +471,8 @@ func containsType(n *types.ReqNode, ts ...types.NodeType) bool {
 	return false
 }
 
-// addDesignator gives credit pools without a subject the list's
-// designator: "1.0 credit at the 200+ level" under "2.0 HIS credits to be
-// made up in one of the following ways".
+// addDesignator gives credit pools without a subject the list's designator:
+// "2.0 HIS credits to be made up in one of the following ways".
 func addDesignator(n *types.ReqNode, d string) {
 	if n == nil {
 		return
@@ -524,8 +508,7 @@ func (p *enrolParser) closeList() {
 	}
 	var n *types.ReqNode
 	if len(list.options) > 1 {
-		// "Option 1:" / "Option 2:": each option's items are all needed, and
-		// the options are alternatives.
+		// each option's items are all needed; the options are alternatives
 		var opts []*types.ReqNode
 		for _, items := range list.options {
 			opts = append(opts, combineItems(items, modeAnd, 0, false))
@@ -543,13 +526,11 @@ func (p *enrolParser) closeList() {
 	p.addPartSec(list.aud, n, partList, list.sec)
 }
 
-// leadHalfCreditRe: "One of the following courses (0.5 credit) must be
-// completed:"
+// leadHalfCreditRe matches "One of the following courses (0.5 credit)".
 var leadHalfCreditRe = regexp.MustCompile(`(?i)\(0\.5\s+credits?\)`)
 
-// oneHalfReading reads a pair of half courses in a list that asks for one
-// course (0.5 credit) both ways: "( MAT158H1, MAT159H1/ MAT157Y1)" may need
-// the pair, or one of them may be enough.
+// oneHalfReading reads a pair of half courses in a list asking for one course
+// (0.5 credit) both ways: the pair may be needed, or one may be enough.
 func oneHalfReading(n *types.ReqNode) *types.ReqNode {
 	return replaceNodes(n, func(t *types.ReqNode) bool {
 		if t.Type != types.NodeAnd || len(t.Items) < 2 {
@@ -561,11 +542,9 @@ func oneHalfReading(n *types.ReqNode) *types.ReqNode {
 	})
 }
 
-// combineItems combines a list's items. A trailing "or" on any item but the
-// last makes the list OR ("Completion of GGR172H1 with a grade of at least
-// 70%, or"); so does a lead with "one of the following". A lead with "two
-// of the following groups" makes it choose 2. An item's sub-items
-// ("Either" + two bullets) combine the same way under it.
+// combineItems combines a list's items: a trailing "or" on any item but the
+// last, or a lead with "one of the following", makes it OR; "two of the
+// following groups" makes it choose 2. Sub-items combine the same way.
 func combineItems(items []*enrolItem, mode listMode, count int, forceOr bool) *types.ReqNode {
 	if len(items) == 0 {
 		return nil
@@ -600,9 +579,8 @@ func combineItems(items []*enrolItem, mode listMode, count int, forceOr bool) *t
 	return mergeAdditional(items, andNode(nodes...))
 }
 
-// mergeAdditional reads "0.5 credit from MUN150H1/ ... / MUN180H1" followed
-// by "Either: An additional 0.5 credit from MUN150H1/ ... or ..." as 1.0
-// credit from the pool on that alternative, so one course can't be counted
+// mergeAdditional reads "An additional 0.5 credit from" a pool named before as
+// both amounts from the pool on that alternative, so a course can't count
 // twice.
 func mergeAdditional(items []*enrolItem, n *types.ReqNode) *types.ReqNode {
 	var pools []*types.ReqNode

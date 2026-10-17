@@ -2,7 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleFixes checks the one-off readings (completion_fixes.go).
+// TestCompletionRuleFixes checks the one-off readings.
 func TestCompletionRuleFixes(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"an area's language and culture lines pair by name or correspondence: one option each, a choice of one (ASMIN1205, shortened)",
@@ -104,8 +104,7 @@ func TestCompletionRuleFixes(t *testing.T) {
 	})
 }
 
-// TestCompletionRulePass2 checks the second audit pass's readings
-// (completion_fixes.go, completion_limits.go, completion_residue.go).
+// TestCompletionRulePass2 checks more one-off readings, limits and residue.
 func TestCompletionRulePass2(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a capstone substitute is a course the clusters don't use: by cases, a capstone off the lists or on one beside another of its courses (ASMIN1240, shortened)",

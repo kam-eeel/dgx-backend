@@ -1,5 +1,5 @@
-// Package reqs parses course prerequisite, corequisite and exclusion text into
-// structured requirement trees, and evaluates them against a student record.
+// Package reqs parses U of T calendar requirement text (course requisites and
+// exclusions, program enrolment and completion) into requirement trees.
 package reqs
 
 import (
@@ -44,10 +44,9 @@ var (
 	wsRe          = regexp.MustCompile(`\s+`)
 )
 
-// normalize cleans up raw catalogue text so the lexer only has to deal with one
-// spelling of everything. Text that must not be parsed is removed and returned
-// as notes: URLs (their "/" must never be read as OR), "(exclusion to X)"
-// annotations and "completed before X is taken".
+// normalize cleans raw catalogue text into one spelling of everything for the
+// lexer. Text that must not be parsed is returned as notes: URLs (their "/" is
+// never OR), "(exclusion to X)" annotations and "completed before X is taken".
 func normalize(s string) (out string, notes []string) {
 	notes = urlRe.FindAllString(s, -1)
 	s = urlRe.ReplaceAllString(s, "")
@@ -87,20 +86,9 @@ var (
 	seriesRe      = regexp.MustCompile(`(?:\b(?i:an?|any|one)\s+)?\b([A-Z]{3})([1-4]00)-series\b(\s+(?i:courses?)\b)?`) // MAT100-series
 )
 
-// repairCodes fixes course codes the catalogue misprints, but only where the
-// repair can't be anything else:
-//   - a doubled campus digit ("HIS322H11" -> "HIS322H1");
-//   - an ACORN session letter glued on ("BMS301H1S", "WGS160Y1Y" -> drop it);
-//   - a missing campus digit on a St. George-style code ("MAT148H" ->
-//     "MAT148H1"): this is the Arts & Science catalogue, which always writes
-//     the campus out for UTM (H5) and UTSC (letter codes, H3) courses;
-//   - "MAT100-series" -> "a 100-level MAT course" (half a credit; with "/"
-//     it stays an alternative). The plural "MAT100-series courses" doesn't
-//     say how many, so it is left alone.
-//
-// A code missing its H/Y ("MAT1581") isn't repaired: it has the same shape as
-// a section code ("LEC0101") and can't tell H from Y. Graduate codes
-// ("CSC2527H") are left as they are and become course tokens later.
+// repairCodes fixes misprinted codes where the repair is certain: a doubled or
+// missing campus digit (this catalogue always writes UTM and UTSC campuses out),
+// a glued session letter, and "MAT100-series" (not the plural "... courses").
 func repairCodes(s string) string {
 	s = doubledRe.ReplaceAllStringFunc(s, func(m string) string {
 		if g := doubledRe.FindStringSubmatch(m); g[2] == g[3] {
@@ -120,10 +108,8 @@ func repairCodes(s string) string {
 }
 
 // rewriteExamples turns "A statistics course (e.g. PSY201H1, SOC202H1)" into
-// "A statistics course or one of PSY201H1, SOC202H1": any listed example
-// satisfies the requirement, anything else needs review. It runs on
-// requirement text only, after notes are split off, so advisory sentences
-// keep their wording.
+// "... or one of PSY201H1, SOC202H1": a listed example meets it, anything else
+// is Review. It runs on requirement text only, after notes are split off.
 func rewriteExamples(s string) string {
 	return exampleRe.ReplaceAllStringFunc(s, rewriteExample)
 }
@@ -157,9 +143,8 @@ func expandRange(m string) string {
 func rewriteEnumerations(s string) string {
 	loc := enumStartRe.FindStringIndex(s)
 	if loc == nil || len(enumSplitRe.FindAllString(s[loc[0]:], -1)) < 2 || enumRefRe.MatchString(s[:loc[0]]) {
-		// A lone "(1)", or "requirement (1)", "requirements (1), (2) and (3)",
-		// is a reference, not an enumeration: "any courses from program
-		// requirement (1) above".
+		// A lone "(1)" or "requirement (1)" is a reference, not an enumeration: "any
+		// courses from program requirement (1) above".
 		return s
 	}
 	end := strings.Index(s[loc[0]:], ". ")

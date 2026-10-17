@@ -9,18 +9,12 @@ import (
 	"degree-explorer/types"
 )
 
-// Pool and list grammar the item reader leaves as text (Task 10): a pool a
-// sentence extends ("200/300-level GGR courses may also be used to meet
-// this requirement"), course counts ("Any 4 half courses or the equivalent
-// (2.0 credits) from"), subject names ("credits in Sociology"), breadth
-// categories ("or 0.5 credit in any BR=5 course"), filters among a pool's
-// courses ("PSL400-series courses", "FRE at the 200+ level or FSL at the
-// 300+ level") and pools inside a course list ("BCH311H1/ CSB349H1/
-// MGY311Y1; 2.5 credits from ..."). poolGrammar runs inside namedLists,
-// after the rows that draw on lists by name are read, so that a union list
-// it makes is emitted with the others.
+// Pool grammar the item reader leaves as text: extended pools, course counts,
+// subject names, breadth categories, filters among members, embedded pools.
 
 // poolGrammar reads again the text of every allocation the rules here know.
+// It runs inside namedLists, so the union lists it makes are emitted with the
+// others.
 func (a *compAssembler) poolGrammar(ls compListRefs) {
 	for _, r := range a.allRows() {
 		if r == a.total || r.r.Kind != types.RequirementAllocation || r.r.Req == nil {
@@ -30,8 +24,8 @@ func (a *compAssembler) poolGrammar(ls compListRefs) {
 			continue
 		}
 		if n := r.r.Req; n.Type == types.NodeCredits && n.Lists != nil && n.Items == nil {
-			// "Any 6 courses (3.0 credits) from Group E", read already, and
-			// the note "One course (0.5 credit) can be from Group F".
+			// read already; a note may widen the pool: "One course (0.5
+			// credit) can be from Group F"
 			a.capNotes(r, n, ls)
 			continue
 		}
@@ -39,26 +33,20 @@ func (a *compAssembler) poolGrammar(ls compListRefs) {
 	}
 }
 
-// complAlsoUsedRe: a sentence that adds a filter to the row's pool: "200/
-// 300-level GGR courses may also be used to meet this requirement", "A 200
-// or 300-level Geography & Planning course, including joint courses, may
-// also be used to meet this requirement". Groups: the levels, the subject,
-// the joint-courses aside.
+// complAlsoUsedRe matches a sentence that adds a filter to the row's pool:
+// "200/300-level GGR courses may also be used to meet this requirement".
 var complAlsoUsedRe = regexp.MustCompile(`(?i)^(?:an?\s+)?(\d00(?:\s*(?:/|or)\s*\d00)*)-level\s+(.+?)\s+courses?(\s*,\s*including\s+joint\s+courses\s*,)?\s+may\s+also\s+be\s+used\s+to\s+meet\s+this\s+requirement$`)
 
-// poolSubjects maps the department names pools are written with to the
-// designator of the department's own courses (beside subjectDesignators).
+// poolSubjects maps department names in pools to the department's designator.
 var poolSubjects = map[string]string{"geography & planning": "GGR", "geography and planning": "GGR"}
 
-// complItemTitleLabelRe: a calendar label in italics at the start of a line,
+// complItemTitleLabelRe matches an italic label at the start of a line:
 // "_First Year Geography Courses:_".
 var complItemTitleLabelRe = regexp.MustCompile(`^_([^_:]+):?_`)
 
-// alsoUsed reads a row or(pool, text{"<filter> may also be used to meet
-// this requirement"}, ...) as a union list of the pool's courses and the
-// filter (design 3.2). "Including joint courses" doesn't say which joint
-// courses: the strict reading is the department's own designator, and any
-// course at those levels is a Review alternative (ambiguity policy).
+// alsoUsed reads or(pool, "<filter> may also be used ...") as a union list of
+// the pool and the filter. "Including joint courses" is vague: the strict
+// reading is the own designator; any course at those levels is Review.
 func (a *compAssembler) alsoUsed(r *compRow, ls compListRefs) bool {
 	n := r.r.Req
 	if n.Type != types.NodeOr || len(n.Items) < 2 {
@@ -91,8 +79,7 @@ func (a *compAssembler) alsoUsed(r *compRow, ls compListRefs) bool {
 		return false
 	}
 	if r.r.Label == "" {
-		// "_First Year Geography Courses:_ Any 2 courses ...": the year is the
-		// row's section, and the label names the union.
+		// the year is the row's section, so the label names the union
 		if l := complItemTitleLabelRe.FindStringSubmatch(r.r.Raw); l != nil {
 			r.r.Label = strings.TrimSpace(l[1])
 		}
@@ -115,13 +102,12 @@ func (a *compAssembler) alsoUsed(r *compRow, ls compListRefs) bool {
 	return true
 }
 
-// poolTexts replaces each text node of kind other in r's body that a
-// rewrite (poolRewrite) makes readable by the item grammar.
+// poolTexts replaces each text node of kind other in r's body that
+// poolRewrite makes readable by the item grammar.
 func (a *compAssembler) poolTexts(r *compRow, ls compListRefs) {
 	if n := r.r.Req; n.Type == types.NodeAnd && len(n.Items) == 2 && n.Items[0].Type == types.NodeText && n.Items[1].Type == types.NodeText &&
 		n.Items[0].Kind == types.TextOther && complExcludesRe.MatchString(complClean(n.Items[1].Text)) {
-		// "1.5 credits from BCH370H1/ CSB428H1/ BCH 400-level courses" then
-		// "Excludes BCH472Y1, ...": the pool's exclusions.
+		// a pool then "Excludes BCH472Y1, ...": the pool's exclusions
 		t := strings.TrimSuffix(complClean(n.Items[0].Text), ".") + ", excluding " + complExcludesRe.FindStringSubmatch(complClean(n.Items[1].Text))[1]
 		if x, rows, notes, ok := a.poolText(r, t, ls); ok {
 			r.r.Req = textNode(types.TextOther, t)
@@ -140,8 +126,7 @@ func (a *compAssembler) poolTexts(r *compRow, ls compListRefs) {
 		text, kept := r.r.Req.Text, r.r.Notes
 		for i, note := range r.r.Notes {
 			if m := complExcludesRe.FindStringSubmatch(complClean(note)); m != nil {
-				// "Excludes BCH472Y1, ..." on its own line: the pool's
-				// exclusions.
+				// "Excludes BCH472Y1, ..." on its own line: the pool's exclusions
 				text = strings.TrimSuffix(complClean(text), ".") + ", excluding " + m[1]
 				kept = slices.Delete(slices.Clone(r.r.Notes), i, i+1)
 				break
@@ -154,9 +139,7 @@ func (a *compAssembler) poolTexts(r *compRow, ls compListRefs) {
 				a.rowUnder(r, x)
 			}
 			r.r.Notes = dedupe(append(r.r.Notes, notes...))
-			// As the item reader does: caps and floors beside the pool are
-			// the item's rows; parts that share courses are child
-			// allocations.
+			// as the item reader does
 			splitCaps(r)
 			splitFloors(r, r.r.Raw)
 			a.splitShared(r)
@@ -185,52 +168,47 @@ func (a *compAssembler) poolTexts(r *compRow, ls compListRefs) {
 
 // Rewrites that bring a pool's wording to the item grammar's.
 var (
-	// complCountCreditsRe: a course count with the credits it makes, "Any 4
-	// half courses or the equivalent (2.0 credits) from", "Any 6 courses
-	// (3.0 credits) from": the credits.
+	// complCountCreditsRe matches a course count with its credits: "Any 6
+	// courses (3.0 credits) from".
 	complCountCreditsRe = regexp.MustCompile(`(?i)^any\s+(?:\d+|one|two|three|four|five|six)\s+(?:half[- ]?)?courses?\s+(?:or\s+the\s+equivalent\s+)?\((\d+(?:\.\d+)?)\s+credits?\)\s+from\b`)
-	// complCountFromTheRe: "Two courses from the BCH 400-series lecture
-	// courses:" over the codes.
+	// complCountFromTheRe matches a count of courses: "Two courses from the BCH
+	// 400-series lecture courses:".
 	complCountFromTheRe = regexp.MustCompile(`(?i)^(two|three|four)\s+courses\s+from\s+the\s+[^:]+:\s*`)
-	// complNoMoreRe: "One lab course (0.5 credit), and no more, taken from
-	// the following:": the credits, and a cap on the program.
+	// complNoMoreRe matches a capped pool: "One lab course (0.5 credit), and no
+	// more, taken from the following:".
 	complNoMoreRe = regexp.MustCompile(`(?i)^one\s+[a-z]+\s+course\s+\((\d+(?:\.\d+)?)\s+credits?\),\s+and\s+no\s+more,\s+taken\s+from(?:\s+the\s+following)?\s*:?`)
-	// complHalfCoursesOfWhichRe: ", at least two of which must be Math or
-	// Physics half courses": a floor of half courses in those subjects.
+	// complHalfCoursesOfWhichRe matches a floor in two subjects: ", at least two
+	// of which must be Math or Physics half courses".
 	complHalfCoursesOfWhichRe = regexp.MustCompile(`(?i),\s*at\s+least\s+(one|two|three|four)\s+of\s+which\s+must\s+be\s+([A-Za-z]+)\s+or\s+([A-Za-z]+)\s+half\s+courses$`)
-	// complSubjectCreditsRe: "2.0 credits in Sociology": the subject's
-	// designator (subjectDesignators).
+	// complSubjectCreditsRe matches a subject named in words: "2.0 credits in
+	// Sociology".
 	complSubjectCreditsRe = regexp.MustCompile(`(?i)\bcredits\s+in\s+([A-Z][a-z]+)\b`)
-	// complOfWhichIeRe: "(0.5 of which must be taken at the 300-level, i.e.,
-	// 1.5 credits at the 200 or 300-level and 0.5 at the 300-level)": the
-	// floor, without its restatement.
+	// complOfWhichIeRe matches a floor with its restatement: "(0.5 of which must
+	// be taken at the 300-level, i.e., ...)".
 	complOfWhichIeRe = regexp.MustCompile(`(?i)\s*\((\d+(?:\.\d+)?)\s+of\s+which\s+must\s+be\s+taken\s+at\s+the\s+(\d00)-level,\s*i\.e\.,[^()]*\)$`)
-	// complPrefixCoursesRe: "Peace, Conflict and Justice courses (i.e. PCJ
-	// prefix classes)": the designator the aside names.
+	// complPrefixCoursesRe matches courses named with their designator: "Peace,
+	// Conflict and Justice courses (i.e. PCJ prefix classes)".
 	complPrefixCoursesRe = regexp.MustCompile(`(?i)\b[A-Z][A-Za-z,\s]+?\s+courses\s+\(i\.e\.\s+([A-Z]{3})\s+prefix\s+classes\)`)
-	// complBareFloorRe: "including at least 0.5 at the 400 level": the
-	// credit the amount leaves out.
+	// complBareFloorRe matches a floor without the word credit: "at least 0.5 at
+	// the 400 level".
 	complBareFloorRe = regexp.MustCompile(`(?i)\b(at\s+least\s+\d+(?:\.\d+)?)(\s+at\s+the\s+\d00)`)
-	// complBreadthOrRe: "<pool> or 0.5 credit in any BR=5 course", "<pool>
-	// or any 0.5 credit from a 200/300/400-level course from Breadth
-	// Requirement Category 5: The Physical and Mathematical Universes".
-	// Groups: the pool, the credits, the levels, the category.
+	// complBreadthOrRe matches a pool or a breadth category: "<pool> or 0.5
+	// credit in any BR=5 course".
 	complBreadthOrRe = regexp.MustCompile(`(?i)^(.+?)\s+or\s+(?:any\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:in|from)\s+(?:any|an?)\s+(?:(\d00(?:/\d00)*)-level\s+)?(?:course\s+(?:from\s+)?)?(?:BR\s*=\s*|Breadth\s+(?:Requirement\s+)?Category\s+#?)(\d)\b(?:\s+course)?(?::\s*The\s+[A-Za-z&\s]+)?$`)
-	// complTitledFromRe: "0.5 credit from Quantitative Methods: ENG286H1/
-	// ENG287H1": the title before the courses.
+	// complTitledFromRe matches a title before the courses: "0.5 credit from
+	// Quantitative Methods: ENG286H1/ ENG287H1".
 	complTitledFromRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?\s+from)\s+[A-Z][A-Za-z\s]+:\s+(` + codePat + `)`)
 )
 
-// poolRewrite rewrites s into the item grammar's wording, with the caps on
-// the program the wording adds; ok is false when no rule applies.
+// poolRewrite rewrites s into the item grammar's wording; caps reports an
+// "and no more" cap on the program, and ok is false when no rule applies.
 func poolRewrite(s string) (t string, caps bool, ok bool) {
 	t = s
 	if m := complCountCreditsRe.FindStringSubmatch(t); m != nil {
 		t = m[1] + " credits from" + t[len(m[0]):]
 	}
 	if m := complCountFromTheRe.FindStringSubmatch(t); m != nil {
-		// "Two courses from the BCH 400-series lecture courses: BCH422H1,
-		// ...": half courses only, so the count is credits.
+		// half courses only, so the count gives the credits
 		if codes := codeRe.FindAllString(t, -1); codes != nil && !slices.ContainsFunc(codes, func(c string) bool { return c[6] != 'H' }) {
 			k := float64(countWords[strings.ToLower(m[1])]) * 0.5
 			t = strconv.FormatFloat(k, 'f', 1, 64) + " credits from " + t[len(m[0]):]
@@ -264,9 +242,9 @@ func poolRewrite(s string) (t string, caps bool, ok bool) {
 	return t, caps, t != s
 }
 
-// poolText reads a text node of row r again: by a breadth alternative, or
-// by poolRewrite and the item grammar (itemBody, then the lists the text
-// names). A reading that loses a course code is no reading.
+// poolText reads a text node of row r again: as a breadth alternative, filter
+// members, embedded pools, or poolRewrite then the item grammar. A reading
+// that loses a course code is no reading.
 func (a *compAssembler) poolText(r *compRow, text string, ls compListRefs) (n *types.ReqNode, rows []*types.Requirement, notes []string, ok bool) {
 	s := complClean(text)
 	defer func() {
@@ -317,7 +295,7 @@ func (a *compAssembler) poolText(r *compRow, text string, ls compListRefs) (n *t
 		if pool == nil || pool.Type != types.NodeCredits || pool.Courses == nil || pool.Lists != nil || pool.Designators != nil {
 			return nil, nil, nil, false
 		}
-		// "and no more": the program counts no more of these courses.
+		// "and no more": the program counts no more of these courses
 		max := pool.Amount
 		a.rowUnder(nil, &types.Requirement{Kind: types.RequirementLimit, Req: &types.ReqNode{Type: types.NodeCredits, Courses: slices.Clone(pool.Courses), MaxAmount: &max}, Raw: r.r.Raw})
 	}
@@ -325,19 +303,15 @@ func (a *compAssembler) poolText(r *compRow, text string, ls compListRefs) (n *t
 }
 
 var (
-	// complAtLeastOneOfRe: "at least one 0.5 credit from PCL367H1 or
-	// PCL368H1": one of the courses.
+	// complAtLeastOneOfRe matches "at least one 0.5 credit from PCL367H1 or
+	// PCL368H1".
 	complAtLeastOneOfRe = regexp.MustCompile(`,?\s*at\s+least\s+one\s+0\.5\s+credit\s+from\s+(` + codePat + `)\s+or\s+(` + codePat + `)`)
-	// complSeeNoteRe: "(see NOTE 2)".
+	// complSeeNoteRe matches "(see NOTE 2)".
 	complSeeNoteRe = regexp.MustCompile(`(?i)\s*\(see\s+note(?:\s+\d+)?\)`)
 )
 
-// embeddedPools reads a course list with a pool inside it ("BCH311H1/
-// CSB349H1/ MGY311Y1; 2.5 credits from MGY314H1, ...", "PHL232H1/
-// PSY280H1; and 2.0 credits of any of the following: ...", "BCH311H1/
-// PSL350H1, PCL302H1, at least one 0.5 credit from PCL367H1 or PCL368H1")
-// as the and of its parts, each read by the item grammar; parts that can
-// share a course become child allocations (splitShared).
+// embeddedPools reads a course list with a pool inside it ("BCH311H1/ CSB349H1/
+// MGY311Y1; 2.5 credits from MGY314H1, ...") as the and of its parts.
 func (a *compAssembler) embeddedPools(s string) (*types.ReqNode, []string, bool) {
 	t := complSeeNoteRe.ReplaceAllString(s, "")
 	t = complAtLeastOneOfRe.ReplaceAllString(t, ", $1/ $2")
@@ -359,18 +333,17 @@ func (a *compAssembler) embeddedPools(s string) (*types.ReqNode, []string, bool)
 	return andNode(nodes...), notes, true
 }
 
-// complExcludesRe: "Excludes BCH472Y1, BCH473Y1, BCH478H1, BCH479H1" after
-// a pool.
+// complExcludesRe matches exclusions after a pool: "Excludes BCH472Y1,
+// BCH473Y1".
 var complExcludesRe = regexp.MustCompile(`^Excludes\s+((?:` + codePat + `(?:\s*,\s*|\s+and\s+)?)+)$`)
 
-// complFromListCapNoteRe: a note on a row that lets part of its pool come
-// from another list, "One course (0.5 credit) can be from Group F".
+// complFromListCapNoteRe matches a note letting part of a pool come from
+// another list: "One course (0.5 credit) can be from Group F".
 var complFromListCapNoteRe = regexp.MustCompile(`(?i)^(?:one|a)\s+course\s+\((\d+(?:\.\d+)?)\s+credits?\)\s+can\s+be\s+from\s+(.+)$`)
 
-// capNotes widens a pool n drawn from lists by the lists r's notes let part
-// of it come from, with a limit on that part, and drops those notes. A note
-// whose list doesn't resolve leaves the pool unread (false): read alone,
-// it would be NotMet for a student who used it.
+// capNotes adds to pool n the lists r's notes let part of it come from, with a
+// limit on that part. An unresolved list leaves the pool unread (false): read
+// alone, it would be NotMet for a student who used it.
 func (a *compAssembler) capNotes(r *compRow, n *types.ReqNode, ls compListRefs) bool {
 	var keep []string
 	for _, note := range r.r.Notes {
@@ -391,8 +364,8 @@ func (a *compAssembler) capNotes(r *compRow, n *types.ReqNode, ls compListRefs) 
 	return true
 }
 
-// keepsCodes reports whether every course code of s is in the reading (or
-// in a union list it made).
+// keepsCodes reports whether every course code of s is in the reading or in a
+// union list it made.
 func (a *compAssembler) keepsCodes(s string, n *types.ReqNode, rows []*types.Requirement, notes []string) bool {
 	have := map[string]bool{}
 	var add func(x *types.ReqNode)
@@ -427,35 +400,29 @@ func (a *compAssembler) keepsCodes(s string, n *types.ReqNode, rows []*types.Req
 }
 
 var (
-	// complFilterUnionLeadRe: a pool whose members include filters: "1.5
+	// complFilterUnionLeadRe matches a pool lead with an optional floor: "1.5
 	// credits, including at least 0.5 credit at the 400-level, from <members>".
-	// Groups: the amount, the floor clause, the members.
 	complFilterUnionLeadRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+(?:additional\s+)?credits?(?:\s*,?\s*(including\s+at\s+least\s+[^,:]+?)\s*,?)?\s+(?:from|of|selected\s+from)\s*:?\s+(.+)$`)
-	// complMemberFilterRe: a filter among a pool's members: "PSL400-series
-	// courses", "any APM400-level course", "BCH 400-level courses", "FRE at
-	// the 200+ level", "further MUN coded100 level courses", "courses
-	// carrying the CHC designator", "any FRE or FCS half-course at the 200+
-	// level". Groups: the designator and level of each form; in the last,
-	// the designators, "half-" (max_course_amount 0.5) and the level.
+	// complMemberFilterRe matches a filter among a pool's members: "PSL400-series
+	// courses". Each alternative has its own groups; filterMembers indexes them.
 	complMemberFilterRe = regexp.MustCompile(`(?:[Aa]ny\s+(?:other\s+)?|further\s+)?(?:\b([A-Z]{3})\s?([1-4])00(\+)?[- ]?(?:series|level)\s+courses?|\b([A-Z]{3})\s+at\s+the\s+([1-4])00(\+)?\s+level|\b([A-Z]{3})\s+coded\s*([1-4])00\s+level\s+courses|courses\s+carrying\s+the\s+([A-Z]{3})\s+designator|\b([A-Z]{3}(?:\s+or\s+[A-Z]{3})*)\s+(half-)?courses?\s+at\s+the\s+([1-4])00(\+)?\s+level)`)
-	// complRecommendedAsideRe: "( BCH422H1, BCH425H1 recommended)" after a
-	// filter: advice.
+	// complRecommendedAsideRe matches advice after a filter: "( BCH422H1, BCH425H1
+	// recommended)".
 	complRecommendedAsideRe = regexp.MustCompile(`\s*\(([^()]*\brecommended)\)`)
-	// complExcludingTailRe: ", excluding JPH311H1, JPH441H1" at the end.
+	// complExcludingTailRe matches a closing exclusion: ", excluding JPH311H1,
+	// JPH441H1".
 	complExcludingTailRe = regexp.MustCompile(`(?i),?\s*excluding\s+((?:` + codePat + `(?:\s*,\s*|\s+and\s+|\s*$))+)$`)
-	// complBrokenCodeRe: a course code with a character missing ("CSB344H"):
-	// the members can't be read.
+	// complBrokenCodeRe matches a code with its last digit missing, which leaves
+	// the members unreadable: "CSB344H".
 	complBrokenCodeRe = regexp.MustCompile(`\b[A-Z]{3}\d{3}[HY](?:[^0-9]|$)`)
-	// complMemberSepRe: what is left between members once the filters are
-	// taken out.
+	// complMemberSepRe matches what may sit between members once the filters are
+	// taken out: ", or ".
 	complMemberSepRe = regexp.MustCompile(`^[\s,;/]*(?:(?:or|and)\b[\s,;/]*)?$`)
 )
 
-// filterMembers reads a pool whose members are courses and filters ("1.5
-// credits from BCH370H1/ CSB428H1/ BCH 400-level courses") as a union list
-// of the row's own (design 3.2): its courses, and one item per filter. A
-// floor in the lead is a constraint on the row; a "recommended" aside is a
-// note. Members that are only courses are left to the item grammar.
+// filterMembers reads a pool of courses and filters ("1.5 credits from
+// BCH370H1/ CSB428H1/ BCH 400-level courses") as the row's own union list.
+// A lead floor is a constraint row; members that are only courses are left.
 func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n *types.ReqNode, rows []*types.Requirement, notes []string, ok bool) {
 	m := complFilterUnionLeadRe.FindStringSubmatch(s)
 	if m == nil || complBrokenCodeRe.MatchString(s) {
@@ -536,8 +503,7 @@ func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n 
 			return nil, nil, nil, false
 		}
 		items = append([]*types.ReqNode{{Type: types.NodeCredits, Courses: dedupe(codes)}}, items...)
-		// "HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1; ...": the alternatives
-		// among the courses are capped as the item grammar caps them.
+		// alternatives among the courses are capped as the item grammar caps them
 		list := strings.TrimRight(strings.TrimSpace(rest.String()), " ,;/")
 		list = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(list), " or"), " and")
 		if x, _, _ := a.itemBody(m[1] + " credits from " + list); x != nil && !hasText(x) {
@@ -548,7 +514,7 @@ func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n 
 			}
 		}
 	}
-	// "PHY 300-level courses, PHY 400-level courses": one filter.
+	// "PHY 300-level courses, PHY 400-level courses": one filter
 	for i := 0; i < len(items); i++ {
 		for j := i + 1; j < len(items); j++ {
 			x, y := items[i], items[j]
@@ -567,8 +533,7 @@ func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n 
 	}
 	amount, _ := strconv.ParseFloat(m[1], 64)
 	if m[2] != "" {
-		// "including at least 0.5 credit at the 400-level": a floor on the
-		// row (splitFloors), read by the item grammar.
+		// the lead's floor is a constraint on the row
 		f, _, _ := a.itemBody(complBareFloorRe.ReplaceAllString(strings.TrimPrefix(strings.TrimSpace(strings.Replace(m[2], "including at least", "", 1)), "a "), "$1 credit$2"))
 		if f == nil || f.Type != types.NodeCredits || hasText(f) || f.Amount <= 0 || f.Amount >= amount {
 			return nil, nil, nil, false

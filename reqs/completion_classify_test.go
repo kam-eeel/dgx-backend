@@ -133,7 +133,7 @@ func TestClassifySentence(t *testing.T) {
 		{"Note: Some offerings of POL336H1; POL357H1; POL497H1 may also count towards requirement 2 of this focus at the department’s discretion.", roleRequirement}, // ASFOC2015C (shortened): membership
 		{"Some offerings of HIS357H1, HIS389H1, HIS466H1 and HIS496H1 may also count towards this focus.", roleRequirement},                                          // ASFOC0652A: membership, not sharing
 
-		// From the spec review.
+		// Notices, exclusions and other programs.
 		{"The focus that is available for students to pursue is “Focus in Quantitative Finance – ASFOC2290A\" and requires completion of 3.5 credits", roleAdvisory}, // ASSPE2290: another program
 		{"IMM435H1 is capped at 40 students", roleAdvisory}, // ASMAJ1002: an enrolment notice
 		{"Students who took GER463Y1 cannot take GER260Y1/ GER261H1/ GER262H1 or GER360H1; students who took GER260Y1/ GER261H1/ GER262H1 or GER360H1 cannot take GER463Y1", roleAdvisory},                                                                                                                                                                      // ASMIN1163: course exclusions
@@ -223,8 +223,7 @@ func TestClassifySentence(t *testing.T) {
 		// A question about counting another course is an approval route
 		// (ASMAJ0151, shortened).
 		{"If a student wishes a different language to count toward completing these programs they should consult with the Associate Chair, Undergraduate", roleRequirement},
-		// A placement after consultation that names no pool is advice (audit
-		// pass 2, ASMAJ1626).
+		// A placement after consultation that names no pool is advice (ASMAJ1626).
 		{"After consultation with the Program Coordinator, exceptions may be made in certain cases regarding the sequence of language courses", roleAdvisory}, // ASMAJ1626 (shortened)
 		{"Please consult with CEES and Slavic departments to get approval", roleRequirement},
 		{"Please contact ug.office@utoronto.ca to get approval", roleRequirement},                                                                                                                               // constructed: an address before the approval
@@ -244,8 +243,7 @@ func TestClassifySentence(t *testing.T) {
 		{"Students with previous knowledge of Spanish can start taking language courses at the 200- or 300-level, depending on their placement test results, and after consultation with the department", roleAdvisory},           // ASMAJ0623: placement stays advice
 		{"*NOTE: This list of eligible courses is not exhaustive and some courses may not be offered every year", roleAdvisory},                                                                                                   // ASMAJ0135: describes a list, points nowhere
 		// Advice that reads like a rule: suggestions, notices about entry and
-		// prerequisites, course descriptions, past students' experience and
-		// timing (design 3.6).
+		// prerequisites, course descriptions, past students' experience and timing.
 		{"Students should especially consider MAT221H1/ MAT223H1/ MAT240H1 (Linear Algebra), ( MAT235H1, MAT236H1)/ MAT235Y1/ MAT237Y1 (Multivariate Calculus), MAT246H1 (Abstract Mathematics), or even consider doing a Minor program in Mathematics", roleAdvisory}, // ASMAJ1478
 		{"Students should note that completing ( ECO231H1 and ECO232H1) limits future enrolment options in ECO courses", roleAdvisory},                                                                                                                                 // ASMAJ1469
 		{"Eligibility for all Economics programs is based, in part, on attaining a minimum grade in ECO101H1 and ECO102H1 (or ECO105Y1)", roleAdvisory},                                                                                                                // ASMIN1478
@@ -333,7 +331,7 @@ func TestClassifySentence(t *testing.T) {
 		{"ACT390H1 is a required course in the actuarial science specialist program", roleAdvisory},                                                                                                                                                                                                           // ASMAJ0608: another program (complVetoDescriptionRe)
 		{"This list comprises courses which are required for the specialist as well as suggested courses; together they fulfill groups 1A, 1B, 2A and 2B of the APGO requirements", roleAdvisory},                                                                                                             // ASSPE1253
 		{"including PHL100Y1/ PHL101Y1 if taken", roleAdvisory}, // ASMAJ0231
-		// Restatements of the rows and advice in one wording (complRestatedRes).
+		// Restatements of the rows and advice in one wording.
 		{"MGT100H1, MGT201H1, MGT230H1, MGT250H1 have considerable overlap with RSM100H1, RSM219H1, RSM230H1 and RSM250H1 taught in Rotman Commerce", roleAdvisory}, // ASCER2400
 		{"if not taken in list 1", roleAdvisory}, // ASFOC1689F: the claims rule
 		{"The course taken in lieu of STA130H1 cannot be one that is already being used to satisfy Requirement 9 in the completion requirements for Higher Years", roleAdvisory}, // ASMAJ0608

@@ -7,32 +7,15 @@ import (
 	"degree-explorer/types"
 )
 
-// ParseEnrolment turns a program's enrolment requirements, as scraped, into
-// their stored JSON form. Program names stay unresolved until Link.
-//
-// The text is read line by line (enrolment_lines.go) into a small tree:
-//
-//   - audiences: "For students who have completed 9.0 or more credits:",
-//     "For students admitted to ... (CMP1) ...". Each is one route; the routes
-//     are OR'd, and whatever comes before the first applies to everyone;
-//   - sections: "_Completed courses_", "_Variable Minimum Grade_", "_Special
-//     Requirement_", "_Notes:_", the ASIP block;
-//   - lists: a lead sentence ("The following courses must be completed:")
-//     and its items, AND'ed unless the lead or a trailing conjunction says
-//     otherwise.
-//
-// Sentences outside lists are classified one at a time: kind, credit
-// threshold, variable cutoff, floor, program enrolment, application,
-// cannot-combine, boilerplate. Anything left over is a note, except in a
-// "Special Requirement" section, where it is a requirement the checker
-// can't evaluate.
+// ParseEnrolment parses a program's enrolment text into its requirement tree:
+// one OR'd route per audience, each the AND of its lists and sentences.
+// Program names stay unresolved until Link.
 func ParseEnrolment(raw string) *types.Enrolment {
 	e, _ := parseEnrolment(raw)
 	return e
 }
 
-// enrolDiag is what the parser noticed but couldn't place. The corpus report
-// lists it.
+// enrolDiag is what the parser noticed but couldn't place, for the corpus report.
 type enrolDiag struct {
 	unknownHeadings []string
 	noKind          bool
@@ -77,7 +60,7 @@ type audience struct {
 	parts         []*part
 	admission     *types.ReqNode // the variable cutoff, if any
 	admissionFrom int            // where its wording came from (varFrom...)
-	redirect      bool           // "cannot apply directly ... must first apply to ASSPE2340": notes only
+	redirect      bool           // "cannot apply directly ... must first apply to ...": notes only
 }
 
 type listKind int
@@ -149,32 +132,23 @@ type enrolParser struct {
 	firstRound bool             // "considered in the first program request period only"
 	inPlace    [][2]string      // {used, replaced}: "STA261H1 will be used in place of STA130H1 ... if they have completed both"
 	best       bool             // "the grade average will be based on the higher course grades"
-	alts       []*types.ReqNode // other ways in, decided by the department (routeSentence)
+	alts       []*types.ReqNode // other ways in, decided by the department
 	hsAlt      bool             // Grade 12 courses can be fulfilled another way
-	// "Students who do not have the Computer Science Admission Guarantee
-	// must complete a supplementary application": maybe also students of
-	// the guarantee's category who missed it.
+	// lostGuarantee: the text names a missed admission guarantee, so students of
+	// its category may also come in by the other routes.
 	lostGuarantee bool
 	softFloor     bool // the floor being applied says "will not usually be considered"
 }
 
 var (
-	// "Grades in MAT158H1, MAT159H1, and MAT157Y1 will be adjusted to account
-	// for the greater difficulty of those courses."
+	// adjustedRe matches "Grades in MAT158H1, MAT159H1 ... will be adjusted".
 	adjustedRe = regexp.MustCompile(`(?i)grades\s+in\s+([^.]*?)\s+will\s+be\s+adjusted`)
-	// "Jointly-offered GGR courses will also be considered (e.g. JEG, JGI,
-	// JGE)."
-	// "STA261H1 will be used in place of STA130H1 for program admission
-	// purposes if a student has not completed STA130H1 or if they have
-	// completed both STA130H1 and STA261H1": with both, the first counts.
-	// "If more than 1.0 credits have been completed from LIN, CSC, PHL, or
-	// PSY, the grade average will be based on the higher course grades", "the
-	// two with the highest grades will be used".
+	// bestGradesRe matches "the grade average will be based on the higher course
+	// grades".
 	bestGradesRe = regexp.MustCompile(`(?i)based\s+on\s+the\s+higher\s+course\s+grades?|with\s+the\s+highest\s+grades\s+will\s+be\s+used`)
-	// "Students who do not have the Computer Science Admission Guarantee must
-	// complete a supplementary application", "failure to complete all the
-	// required courses within 12 months ... will result in losing the
-	// admission guarantee" (Rotman Commerce).
+	// lostGuaranteeRe matches a missed admission guarantee: "Students who do not
+	// have the Computer Science Admission Guarantee". inPlaceRe and jointRe match
+	// the wordings the inPlace and joint fields quote.
 	lostGuaranteeRe = regexp.MustCompile(`(?i)\bdo\s+not\s+have\s+the\s+.{0,40}\bAdmission\s+Guarantee\b|\blosing\s+the\s+admission\s+guarantee\b`)
 	inPlaceRe       = regexp.MustCompile(`(` + codePat + `)\s+will\s+be\s+used\s+in\s+place\s+of\s+(` + codePat + `)\b[^.]*\bcompleted\s+both\b`)
 	jointRe         = regexp.MustCompile(`(?i)jointly-offered\s+([A-Z]{3})\s+courses\s+will\s+also\s+be\s+considered\s+\(e\.g\.\s*([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\)`)
@@ -226,9 +200,8 @@ func (p *enrolParser) finish() *types.Enrolment {
 
 	common := p.common()
 	if p.lostGuarantee {
-		// "For students admitted to other ... admission categories" is not
-		// CMP1, but its "Students who do not have the ... Admission
-		// Guarantee" may include CMP1 students who missed it.
+		// "other ... admission categories" excludes CMP1, but CMP1 students who missed
+		// the guarantee may apply this way too
 		for _, a := range p.auds[1:] {
 			for i, c := range a.cond {
 				if c.Type == types.NodeNot && c.Items[0].Type == types.NodeProfile && c.Items[0].Attr == "admission_category" {
@@ -262,10 +235,7 @@ func (p *enrolParser) finish() *types.Enrolment {
 	if threshold == 0 && e.Kind != types.EnrolmentFocus {
 		threshold = 4.0
 	}
-	// Lists given before a band that starts above the threshold are for the
-	// students below it: "Students who have completed at least 8.0 credits
-	// but who are not already enrolled in ASMAJ2082 must apply using the
-	// following courses:" after the general list.
+	// lists before a band starting above the threshold are for students below it
 	if len(branches) > 0 && allBands && minBand > threshold && threshold > 0 {
 		var listed, rest []*part
 		for _, pt := range common.parts {
@@ -293,8 +263,8 @@ func (p *enrolParser) finish() *types.Enrolment {
 	if threshold > 0 && !coversCredits(req, threshold) {
 		req = andNode(&types.ReqNode{Type: types.NodeCredits, Amount: threshold}, req)
 	}
-	// Other ways in ("may be considered on the basis of their entire academic
-	// record") still need the credits.
+	// other ways in ("may be considered on the basis of their entire academic
+	// record") still need the credits
 	for _, alt := range p.alts {
 		req = orNode(req, andNode(&types.ReqNode{Type: types.NodeCredits, Amount: max(threshold, 4)}, alt))
 	}
@@ -318,8 +288,8 @@ func (p *enrolParser) finish() *types.Enrolment {
 	return e
 }
 
-// node builds an audience's route: who it is for, its requirements and
-// its variable cutoff.
+// node builds an audience's route: who it is for, its requirements and its
+// variable cutoff.
 func (a *audience) node() *types.ReqNode {
 	items := append([]*types.ReqNode{}, a.cond...)
 	for _, pt := range a.parts {
@@ -341,8 +311,8 @@ func bandOf(a *audience) *types.ReqNode {
 	return nil
 }
 
-// coversCredits reports whether n already requires at least amount credits
-// on every route, so a separate threshold would repeat it.
+// coversCredits reports whether n already requires at least amount credits on
+// every route, so a separate threshold would repeat it.
 func coversCredits(n *types.ReqNode, amount float64) bool {
 	if n == nil {
 		return false
@@ -367,9 +337,8 @@ func coversCredits(n *types.ReqNode, amount float64) bool {
 	return false
 }
 
-// substitute applies "In lieu of PSY100H1, we will also accept: PSY100Y5,
-// or PSYA01H3 and PSYA02H3": every PSY100H1 node becomes an OR with the
-// alternatives, keeping its grade on each alternative course.
+// substitute applies "In lieu of PSY100H1, we will also accept: ...": every
+// PSY100H1 node becomes an OR with the alternatives, each keeping its grade.
 func (p *enrolParser) substitute(n *types.ReqNode, aud *audience) *types.ReqNode {
 	for _, s := range p.subs {
 		if s.aud != aud {
@@ -390,9 +359,8 @@ func (p *enrolParser) substitute(n *types.ReqNode, aud *audience) *types.ReqNode
 	return tidy(n)
 }
 
-// usedInPlace applies "STA261H1 will be used in place of STA130H1 ... if
-// they have completed both": in an or of the two, the replaced course only
-// counts without the other, or(STA130H1, STA261H1) becomes
+// usedInPlace applies "STA261H1 will be used in place of STA130H1 ... if they
+// have completed both": or(STA130H1, STA261H1) becomes
 // or(and(STA130H1, not(STA261H1)), STA261H1).
 func (p *enrolParser) usedInPlace(n *types.ReqNode) *types.ReqNode {
 	if n == nil {
@@ -418,10 +386,8 @@ func (p *enrolParser) usedInPlace(n *types.ReqNode) *types.ReqNode {
 	return n
 }
 
-// sharedCourses reads two requirements whose pools overlap ("1. 0.5 credit
-// from ECO101H1/ ECO105Y1/ IRW230H1" and "2. 1.5 credits from SOC/ PSY/
-// IRE/ IRW": IRW230H1 fits both) both ways: separate courses for each (the
-// two together need their combined credits from the union), or a course
+// sharedCourses reads two requirements whose pools overlap both ways: separate
+// courses for each (their combined credits from the union), or a course
 // counting for both (Review).
 func sharedCourses(n *types.ReqNode) {
 	if n == nil {
@@ -439,7 +405,7 @@ func sharedCourses(n *types.ReqNode) {
 		case it.Type == types.NodeCredits && it.Amount > 0 && it.MaxAmount == nil && len(it.Levels) == 0 && len(it.Breadth) == 0 && len(it.Exclude) == 0:
 			pools = append(pools, it)
 		case it.Type == types.NodeOr && !slices.ContainsFunc(it.Items, func(c *types.ReqNode) bool { return c.Type != types.NodeCourse }):
-			// "ECO101H1 (67%)/ IRW230H1 (67%)/ ECO105Y1 (80%)": one of them.
+			// "ECO101H1 (67%)/ IRW230H1 (67%)/ ECO105Y1 (80%)": one of them
 			pools = append(pools, &types.ReqNode{Type: types.NodeCredits, Amount: minWeight(it), Courses: nodeCodes(it)})
 		}
 	}
@@ -455,10 +421,8 @@ func sharedCourses(n *types.ReqNode) {
 	}
 }
 
-// poolsOverlap reports whether a course could count for both pools and
-// make a difference: a shared full-year course that alone carries both
-// pools' credits (ECO220Y1 for "PSY201H1 or ECO220Y1" and "PSY202H1 or
-// ECO220Y1") meets both either way.
+// poolsOverlap reports whether a course could count for both pools and make a
+// difference: a shared full-year course carrying both pools' credits doesn't.
 func poolsOverlap(a, b *types.ReqNode) bool {
 	if slices.ContainsFunc(a.Designators, func(d string) bool { return slices.Contains(b.Designators, d) }) {
 		return true
@@ -471,12 +435,9 @@ func poolsOverlap(a, b *types.ReqNode) bool {
 		slices.ContainsFunc(b.Courses, func(c string) bool { return fits(c, a) && matters(c) })
 }
 
-// capsWithinPools reads a cap next to the pool it limits as a share of that
-// pool: "1.5 credits from SOC/ PSY/ IRE/ IRW, of which no more than 0.5
-// credit can be IRE/ IRW" limits what counts toward the 1.5, not what the
-// student has taken, so it means at least 1.0 of the 1.5 is SOC/ PSY. The
-// cap becomes that: credits{1.0, [SOC, PSY]}. Averages are built before
-// this, over the whole pool.
+// capsWithinPools reads a cap next to its pool as a share of it: "1.5 credits
+// from SOC/ PSY/ IRE/ IRW, of which no more than 0.5 credit can be IRE/ IRW"
+// is credits{1.0, [SOC, PSY]}. Averages are built before this.
 func capsWithinPools(n *types.ReqNode) {
 	if n == nil {
 		return
@@ -502,8 +463,7 @@ func capsWithinPools(n *types.ReqNode) {
 			share := &types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount - *c.MaxAmount, Designators: rest,
 				Levels: pool.Levels, Breadth: pool.Breadth, Exclude: pool.Exclude, MinGrade: pool.MinGrade}
 			n.Items[i] = share
-			// An average over the pool averages what counts toward it: the
-			// share, and the rest from the whole pool.
+			// an average over the pool averages what counts toward it
 			for _, avg := range n.Items {
 				if avg.Type == types.NodeAverage && avg.Items == nil && slices.Equal(avg.Designators, pool.Designators) && len(avg.Courses) == 0 {
 					avg.Items = []*types.ReqNode{
@@ -522,9 +482,8 @@ func isSubset(sub, of []string) bool {
 	return !slices.ContainsFunc(sub, func(s string) bool { return !slices.Contains(of, s) })
 }
 
-// ambiguous encodes wording with two readings: meeting the strict one is
-// Met, meeting only the lenient one is Review (the text says why), meeting
-// neither is NotMet.
+// ambiguous encodes wording with two readings: the strict one is Met, only the
+// lenient one is Review (the text says why), neither is NotMet.
 func ambiguous(strict, lenient *types.ReqNode, why string) *types.ReqNode {
 	return orNode(strict, andNode(lenient, &types.ReqNode{Type: types.NodeText, Kind: types.TextAmbiguity, Text: why}))
 }
@@ -550,10 +509,9 @@ func tidy(n *types.ReqNode) *types.ReqNode {
 	return n
 }
 
-// extendJoint widens pools of a subject to its jointly offered courses:
-// "Jointly-offered GGR courses will also be considered (e.g. JEG, JGI,
-// JGE)". The designators are only examples, so each pool also gets the
-// jointText alternative, which Link replaces with the full list.
+// extendJoint widens a subject's pools to its jointly offered courses. The
+// designators given are only examples, so each pool also gets the jointText
+// alternative, which Link replaces with the full list.
 func (p *enrolParser) extendJoint(n *types.ReqNode) *types.ReqNode {
 	if n == nil || len(p.joint) == 0 {
 		return n
@@ -576,8 +534,8 @@ func (p *enrolParser) extendJoint(n *types.ReqNode) *types.ReqNode {
 	return orNode(n, jointText(d))
 }
 
-// jointText stands for the jointly offered courses of subject d until Link
-// names their designators (linkJoint).
+// jointText stands for subject d's jointly offered courses until Link names
+// their designators.
 func jointText(d string) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeText, Kind: types.TextOther, Text: "a jointly-offered " + d + " course"}
 }

@@ -9,19 +9,12 @@ import (
 	"degree-explorer/types"
 )
 
-// Program routes: the approval routes and widened pools stated for the
-// program rather than an item ("Students can request substitutions from the
-// IRP Director", "Up to 1.0 credit may be from other departments"). Once
-// every row is read, finish calls placeProgramRoutes, which puts each route
-// on the rows it names, replaces or describes (routeTargets); a route that
-// concerns no row is a note.
+// Program routes: approval routes and widened pools stated for the program
+// rather than an item, placed on the rows they name, replace or describe.
 
-// placeProgramRoutes adds each approval route and widened pool stated for the
-// program to the requirements it concerns (routeTargets). A route that names
-// or describes no requirement is a note: an advisor records the substitution
-// it allows, which the checker can't anticipate (Review for everyone would be
-// wrong). Sentences that only look like routes (complNotRouteRe) are notes
-// too.
+// placeProgramRoutes adds each program route to the rows it concerns. One that
+// concerns no row is a note: an advisor records the substitution, and Review
+// for everyone would be wrong.
 func (a *compAssembler) placeProgramRoutes() {
 	for _, s := range a.programRoutes {
 		if a.halfCounts(s) {
@@ -33,9 +26,9 @@ func (a *compAssembler) placeProgramRoutes() {
 		}
 		text := s
 		if c := a.routeContext[s]; c != "" {
-			// "MAT221H1/ MAT223H1/ MAT240H1 is recommended as preparation for
-			// ECO375H1. Students taking one of these MAT courses can have it
-			// count in lieu of ...": the route names its courses before.
+			// The route names its courses in the sentence before: "MAT221H1/
+			// ... is recommended as preparation for ECO375H1. Students taking
+			// one ...".
 			text = strings.TrimSuffix(strings.TrimSpace(c), ".") + ". " + s
 		}
 		if a.directCourses(s) || a.conditionCourses(s) {
@@ -55,8 +48,8 @@ func (a *compAssembler) placeProgramRoutes() {
 			addRaw(t, s)
 		}
 		if m := complAsCoursesAtLevelRe.FindStringSubmatch(s); m != nil {
-			// "(e.g., as courses “at the 400-level”)": the route also
-			// counts toward the floor on that level.
+			// "as courses “at the 400-level”": the route also counts toward that
+			// level's floor.
 			d, _ := strconv.Atoi(m[1])
 			lvl := d * 100
 			for _, f := range a.floors {
@@ -68,21 +61,13 @@ func (a *compAssembler) placeProgramRoutes() {
 	}
 }
 
-// complHalfCountRe: the section a share of a course's credit counts for: "half
-// of the credit will count for Compulsory Foundation Sciences", "the other
-// half will count for Additional Foundation Sciences".
+// complHalfCountRe matches the section a half of a course's credit counts for:
+// "half of the credit will count for Compulsory Foundation Sciences".
 var complHalfCountRe = regexp.MustCompile(`(?i)\bhalf\s+(?:of\s+the\s+credit\s+)?will\s+count\s+(?:for|towards?)\s+(?:the\s+)?([^,.;]+)`)
 
-// halfCounts places a sentence that splits a course's credit between
-// sections ("Advanced courses, like CHM151Y1, PHY151H1, ..., can be used as
-// credits for both foundation sciences sections, meaning, half of the
-// credit will count for Compulsory Foundation Sciences, and the other half
-// will count for Additional Foundation Sciences") and reports whether it
-// did. The rows of the sections it names take it as an alternative,
-// or(strict, text): Review, not NotMet, for a student who took an advanced
-// course instead of a required one. The halves aren't encoded as weights:
-// each needs a structured row to count in, and the sentence names the
-// courses only by example ("like").
+// halfCounts places a sentence splitting a course's credit between sections as
+// or(strict, text) on those sections' rows, and reports whether it did. The
+// halves aren't weights: it names the courses only by example ("like").
 func (a *compAssembler) halfCounts(s string) bool {
 	var secs []string
 	for _, m := range complHalfCountRe.FindAllStringSubmatch(a.clean(s), -1) {
@@ -109,20 +94,17 @@ func (a *compAssembler) halfCounts(s string) bool {
 	return true
 }
 
-// complNotRouteRe: sentences that read like routes but aren't: weight
-// splitting ("In the instance that a Y course is used ..., the other half
-// may be used toward another"), list membership ("If ARH312Y1 is completed,
-// it will be considered a Group A course"), refusals ("No course
-// substitutions will be accepted for CSC110Y1").
+// complNotRouteRe matches sentences that read like routes but aren't: "No
+// course substitutions will be accepted for CSC110Y1".
 var complNotRouteRe = regexp.MustCompile(`(?i)\bthe\s+other\s+half\b|\bwill\s+be\s+considered\s+an?\s+group\b|\bconsidered\s+an?\s+(?:group|list)\s+\w+\s+course\b|^no\s+(?:course\s+)?substitutions?\s+(?:will|can|may)\b`)
 
-// complDirectCourseRe: "PSL432H1, HPS390H1, HPS391H1 may count toward the
-// "Advanced Topics" requirement": courses the named row also counts.
+// complDirectCourseRe matches courses a named row also counts: "PSL432H1,
+// HPS390H1, HPS391H1 may count toward the "Advanced Topics" requirement".
 var complDirectCourseRe = regexp.MustCompile(`(?i)^((?:` + codePat + `\s*(?:,|/|or|and)?\s*)+)\s+(?:may|can|will)\s+(?:also\s+)?(?:count|be\s+used|be\s+counted)\s+(?:towards?|for)\s+(?:the\s+)?["“']?(.+?)["”']?\s+requirement\.?$`)
 
 // directCourses adds the courses of a complDirectCourseRe sentence to the row
-// whose title it names, and reports whether it did: to its pool when they
-// pass the pool's levels, else as alternatives.
+// it names, and reports whether it did: to its pool when they pass its
+// levels, else as alternatives.
 func (a *compAssembler) directCourses(s string) bool {
 	m := complDirectCourseRe.FindStringSubmatch(strings.TrimSpace(a.clean(s)))
 	if m == nil {
@@ -148,8 +130,8 @@ func (a *compAssembler) directCourses(s string) bool {
 	return true
 }
 
-// complAboveConditionsRe: "JHE353H1, ... or PHL357H1 may also be used in
-// meeting the above two conditions".
+// complAboveConditionsRe matches "JHE353H1, ... or PHL357H1 may also be used
+// in meeting the above two conditions".
 var complAboveConditionsRe = regexp.MustCompile(`(?i)\bmay\s+also\s+be\s+used\s+(?:in|for|toward)\s+(?:meeting|fulfilling|satisfying)\s+the\s+above\b`)
 
 // conditionCourses adds the courses a complAboveConditionsRe sentence names to
@@ -166,8 +148,7 @@ func (a *compAssembler) conditionCourses(s string) bool {
 	}
 	n.Courses = dedupe(append(slices.Clone(n.Courses), codes...))
 	addRaw(a.total, s)
-	// The conditions are the floors read after the lead: the courses count
-	// toward each floor whose levels they pass.
+	// The conditions are the floors read after the lead.
 	for _, f := range a.floors {
 		fn := f.r.Req
 		if f.r.Kind != types.RequirementConstraint || fn == nil || fn.Type != types.NodeCredits || !sameSet(fn.Designators, n.Designators) {
@@ -187,9 +168,8 @@ func (a *compAssembler) conditionCourses(s string) bool {
 	return true
 }
 
-// titledRows returns the allocations whose title is title: the label, the
-// text before the colon in their raw ("4. Advanced Topics: 1.0 credit ..."),
-// or their section, case aside.
+// titledRows returns the allocations titled title, case aside: by label,
+// section, or the text before the colon ("4. Advanced Topics: ...").
 func (a *compAssembler) titledRows(title string) []*compRow {
 	t := strings.ToLower(strings.TrimSpace(title))
 	if t == "" {
@@ -209,9 +189,8 @@ func (a *compAssembler) titledRows(title string) []*compRow {
 	return out
 }
 
-// wrapRoute adds route text alt to row r: on the node of r's body the route
-// replaces (the course or alternatives naming the replaced codes, "in lieu
-// of PSY201H1"), else on the whole body.
+// wrapRoute adds route alt to row r: on the node naming the replaced codes,
+// else on the whole body.
 func (a *compAssembler) wrapRoute(r *compRow, replaced []string, alt *types.ReqNode) {
 	if r.r.Req == nil {
 		a.textRow(r, alt.Text)
@@ -227,8 +206,8 @@ func (a *compAssembler) wrapRoute(r *compRow, replaced []string, alt *types.ReqN
 	r.r.Req = orNode(r.r.Req, alt)
 }
 
-// wrapNode replaces, in n, the smallest node naming every code of codes
-// with or(node, alt).
+// wrapNode replaces, in n, the smallest node naming every code of codes with
+// or(node, alt).
 func wrapNode(n *types.ReqNode, codes []string, alt *types.ReqNode, done *bool) *types.ReqNode {
 	if n == nil || *done {
 		return n
@@ -258,8 +237,8 @@ func wrapNode(n *types.ReqNode, codes []string, alt *types.ReqNode, done *bool) 
 	return orNode(n, alt)
 }
 
-// rowsHolding returns the rows among rows whose body names one of codes: as
-// a course, or among a pool's listed courses.
+// rowsHolding returns the rows whose body names one of codes, as a course or
+// in a pool's courses.
 func rowsHolding(rows []*compRow, codes []string) []*compRow {
 	var out []*compRow
 	for _, r := range rows {
@@ -275,20 +254,18 @@ func rowsHolding(rows []*compRow, codes []string) []*compRow {
 	return out
 }
 
-// complAsCoursesAtLevelRe: a route that counts toward a level floor: "as
-// courses “at the 400-level”".
+// complAsCoursesAtLevelRe matches a route that counts toward a level floor:
+// "as courses “at the 400-level”".
 var complAsCoursesAtLevelRe = regexp.MustCompile(`(?i)\bas\s+courses\s+["“'‘]?at\s+the\s+([1-4])00[-\s]?level`)
 
 var (
-	// complReplacedRe: the courses a route stands in for: "in lieu of PSY201H1
-	// and PSY202H1", "in place of PSY100H1", "towards the requirement to
-	// complete PCL472Y1/ PCL474Y1/ JPM400Y1", "to meet the MAT246H1
-	// requirement".
+	// complReplacedRe matches the courses a route stands in for: "in lieu of
+	// PSY201H1 and PSY202H1".
 	complReplacedRe = regexp.MustCompile(`(?i)\b(?:in\s+lieu\s+of|in\s+place\s+of|instead\s+of|substitut\w*\s+(?:\w+\s+){0,4}for|requirement\s+to\s+complete|to\s+meet\s+the|replace)\s+((?:` + codePat + `[\s,/]*(?:and|or)?\s*)+)`)
-	// complRefPhraseRe: a requirement named in a route: "list 2", "Group C",
-	// "requirement 3", a quoted title.
+	// complRefPhraseRe matches a requirement a route names: "Group C", or a
+	// quoted title.
 	complRefPhraseRe = regexp.MustCompile(`(?i)\b(?:list|group|requirement|cluster|area)\s+(?:[A-Z]|\d{1,2})\b|["“]([^"”]{3,60})["”]`)
-	// complRouteTopicStop: words too common to tell rows apart.
+	// complRouteTopicStop holds words too common to tell rows apart.
 	complRouteTopicStop = map[string]bool{"courses": true, "course": true, "credits": true, "credit": true, "students": true, "student": true,
 		"program": true, "programs": true, "requirement": true, "requirements": true, "department": true, "approval": true,
 		"permission": true, "consultation": true, "coordinator": true, "undergraduate": true, "director": true, "offered": true,
@@ -301,30 +278,9 @@ var (
 		"case-by-case": true, "written": true, "prior": true, "request": true, "requests": true, "considered": true, "following": true}
 )
 
-// routeTargets returns the rows a program-level route concerns, and the
-// codes it stands in for, if it names them:
-//   - the requirement it names: by a quoted title or "list 2", "Group C",
-//     "requirement 3" (titled or labelled, or whose lead says so);
-//   - the rows holding the courses it stands in for ("in lieu of PSY201H1
-//     and PSY202H1": each row with one of them; its node is the one
-//     wrapped);
-//   - the item naming one of its courses ("If the FOR301H1 is not on offer,
-//     ...");
-//   - the item its footnote marker points at ("*A research project ..." for
-//     "HMB496Y1*");
-//   - the program's only allocation;
-//   - the allocations under a heading it names ("... for both foundation
-//     sciences sections");
-//   - the allocations whose lead shares a telling word with it ("the
-//     sequence of language courses" and the language items);
-//   - the allocations whose courses match what it describes: designators or
-//     subjects and levels ("physics courses", "a 0.5 credit 300-level ECO
-//     elective"), preferring pools when it speaks of credits or electives
-//     (describedRows);
-//   - for a widened pool ("Up to 1.0 credit may be from other
-//     departments"), the items that are pools of designators or levels.
-//
-// Otherwise nil: the route is a note (placeProgramRoutes).
+// routeTargets returns the rows program-level route s concerns, and the codes
+// it stands in for. The narrowest match wins, from the rows it names to the
+// rows its words describe; nil makes it a note.
 func (a *compAssembler) routeTargets(s string) ([]*compRow, []string) {
 	rows := a.routeRows()
 	desc := s
@@ -335,9 +291,8 @@ func (a *compAssembler) routeTargets(s string) ([]*compRow, []string) {
 		return rs, nil
 	}
 	if complAboveListRe.MatchString(s) {
-		// "An elective course ... not captured in the above list", "not
-		// listed in the above clusters": the last item above the sentence
-		// that lists courses.
+		// "not captured in the above list": the last item above that lists
+		// courses.
 		at := a.lineOf(s)
 		for i := len(rows) - 1; i >= 0; i-- {
 			if l := a.lineOf(rawHead(rows[i].r)); l >= 0 && l < at &&
@@ -363,10 +318,8 @@ func (a *compAssembler) routeTargets(s string) ([]*compRow, []string) {
 		return rows, nil
 	}
 	if rs := sectionRows(desc, rows); rs != nil {
-		// "... can be used as credits for both foundation sciences sections";
-		// "up to 1.0 credit in the Higher Years Requirement with two of the
-		// following ARC courses": credits replace a share of the heading's
-		// pools (and items of text), not its required courses.
+		// Credits replace a share of the heading's pools and text items, not its
+		// required courses.
 		if complRoutePoolRe.MatchString(s) {
 			if ps := slices.DeleteFunc(slices.Clone(rs), func(r *compRow) bool { return !poolOrText(r.r.Req) }); ps != nil {
 				return ps, nil
@@ -386,8 +339,7 @@ func (a *compAssembler) routeTargets(s string) ([]*compRow, []string) {
 		}
 	}
 	if complWidenRe.MatchString(a.clean(s)) {
-		// "Up to 1.0 credit may be from other departments": it widens the
-		// pools (electives), not the named courses.
+		// A widening widens the pools, not the named courses.
 		var pools []*compRow
 		for _, r := range rows {
 			filter := false
@@ -405,13 +357,12 @@ func (a *compAssembler) routeTargets(s string) ([]*compRow, []string) {
 	return nil, nil
 }
 
-// referencedRows returns the rows a route names (complRefPhraseRe): a quoted
-// title ("the “Advanced Topics” requirement"), or "list 2", "Group C",
-// "requirement 3", found in a row's label or the lead of its raw. Nil when
-// it names none, or a name no row has.
+// referencedRows returns the rows route s names by complRefPhraseRe, found by
+// title, label or the lead of their raw. Nil when it names none, or a name no
+// row has.
 func (a *compAssembler) referencedRows(s string) []*compRow {
-	// "..., provided no other Group A or B courses are being counted": a
-	// condition on the route, not what it is for.
+	// A proviso is a condition on the route, not what it is for: "provided no
+	// other Group A or B courses are being counted".
 	s = complProvisoRe.ReplaceAllString(s, "")
 	var out []*compRow
 	for _, loc := range complRefPhraseRe.FindAllStringSubmatchIndex(s, -1) {
@@ -420,9 +371,8 @@ func (a *compAssembler) referencedRows(s string) []*compRow {
 			m[1] = s[loc[2]:loc[3]]
 		}
 		if complSubstituteWithRe.MatchString(s[:loc[0]]) {
-			// "may substitute language courses with the equivalent number of
-			// credits in requirement 3": the courses come from it; the route
-			// is on what they replace.
+			// "substitute language courses with ... credits in requirement 3":
+			// the courses come from it, and the route is on what they replace.
 			continue
 		}
 		name := m[0]
@@ -434,8 +384,7 @@ func (a *compAssembler) referencedRows(s string) []*compRow {
 			continue
 		}
 		lower := strings.ToLower(name)
-		// "list 2", "requirement 3": the item numbered 2 or 3 ("2. 3.0
-		// credits from the following:").
+		// "list 2", "requirement 3": the item numbered 2 or 3.
 		num := ""
 		if f := strings.Fields(lower); len(f) == 2 && (f[0] == "list" || f[0] == "requirement") && f[1][0] >= '0' && f[1][0] <= '9' {
 			num = f[1]
@@ -468,12 +417,12 @@ func (a *compAssembler) lineOf(s string) int {
 	return -1
 }
 
-// complProvisoRe: a condition closing a route: ", provided no other Group A or
-// B courses are being counted".
+// complProvisoRe matches a condition closing a route: ", provided no other
+// Group A or B courses are being counted".
 var complProvisoRe = regexp.MustCompile(`(?i),?\s+provided\s+(?:that\s+)?[^:.;]*`)
 
-// poolOrText reports whether n counts credits from a pool or has text: a
-// share of it can be replaced by other courses.
+// poolOrText reports whether n counts credits from a pool or has text: a share
+// of it can be replaced by other courses.
 func poolOrText(n *types.ReqNode) bool {
 	found := false
 	walkReq(n, func(x *types.ReqNode) {
@@ -482,11 +431,12 @@ func poolOrText(n *types.ReqNode) bool {
 	return found
 }
 
-// complGroupLettersRe: several groups named at once: "groups a and c", "groups
-// a, b or c".
+// complGroupLettersRe matches several groups named at once: "groups a, b or
+// c".
 var complGroupLettersRe = regexp.MustCompile(`\bgroups\s+[a-z](?:\s*(?:,|and/or|and|or)\s*[a-z]\b)+`)
 
-// complGroupLetterRe: one group's letter in a complGroupLettersRe phrase.
+// complGroupLetterRe matches one group's letter in a complGroupLettersRe
+// phrase.
 var complGroupLetterRe = regexp.MustCompile(`\b[a-z]\b`)
 
 // expandGroups writes "groups a and c" as "group a group c", so that "Group
@@ -499,15 +449,14 @@ func expandGroups(s string) string {
 	return strings.Join(out, " ")
 }
 
-// complAboveListRe: a route about the list just above it.
+// complAboveListRe matches a route about the list just above it: "in the
+// above list".
 var complAboveListRe = regexp.MustCompile(`(?i)\bin\s+the\s+above\s+(?:list|clusters?|groups?)\b`)
 
-// complSubstituteWithRe: the source of a substitution, before the requirement
-// it is drawn from: "substitute language courses with the equivalent number
-// of credits in".
+// complSubstituteWithRe matches a substitution's source before its row:
+// "substitute language courses with the equivalent number of credits in".
 var complSubstituteWithRe = regexp.MustCompile(`(?i)\bsubstitut\w*\b[^.]*\bwith\b[^.]*$`)
 
-// dedupeRows removes repeated rows, keeping order.
 func dedupeRows(rs []*compRow) []*compRow {
 	var out []*compRow
 	for _, r := range rs {
@@ -518,13 +467,11 @@ func dedupeRows(rs []*compRow) []*compRow {
 	return out
 }
 
-// topicRows returns the allocations (at most three) whose lead shares a
-// telling word with route s ("exceptions may be made ... regarding the
-// sequence of language courses" and "A two-year progressive sequence of
-// courses in a single language"), or nil.
+// topicRows returns the allocations, at most three, whose lead shares a
+// telling word with route s, or nil.
 func topicRows(s string, rows []*compRow) []*compRow {
-	// A word and its plural are one topic: "the sequence of language
-	// courses" concerns "1.0 credit from one of the following languages".
+	// A word and its plural are one topic: "the sequence of language courses"
+	// concerns "... one of the following languages".
 	singular := func(w string) string { return strings.TrimSuffix(strings.Trim(w, ".,;:()\"“”'’"), "s") }
 	words := map[string]bool{}
 	for _, w := range strings.Fields(strings.ToLower(codeRe.ReplaceAllString(s, " "))) {
@@ -549,8 +496,8 @@ func topicRows(s string, rows []*compRow) []*compRow {
 	return out
 }
 
-// sectionRows returns the rows whose section (the heading they are under,
-// "Compulsory Foundation Sciences") a route names, or nil.
+// sectionRows returns the rows whose section a route names, the longest named,
+// or nil.
 func sectionRows(s string, rows []*compRow) []*compRow {
 	lower := strings.ToLower(strings.Join(strings.Fields(s), " "))
 	var out []*compRow
@@ -561,8 +508,8 @@ func sectionRows(s string, rows []*compRow) []*compRow {
 		}
 	}
 	for _, r := range rows {
-		// "the Third/Fourth Year Requirement" names "Third/Fourth Year",
-		// not "Fourth Year" inside it.
+		// "the Third/Fourth Year Requirement" names "Third/Fourth Year", not
+		// "Fourth Year" inside it.
 		if longest != "" && strings.ToLower(r.r.Section) == longest {
 			out = append(out, r)
 		}
@@ -570,12 +517,12 @@ func sectionRows(s string, rows []*compRow) []*compRow {
 	return out
 }
 
-// complRouteTargetRe: the words that name what a route replaces or counts
-// toward: "in lieu of ...", "count towards ...".
+// complRouteTargetRe matches the words naming what a route replaces or counts
+// toward: "in lieu of ...". Group 1 is what follows.
 var complRouteTargetRe = regexp.MustCompile(`(?i)\b(?:in\s+lieu\s+of|instead\s+of|substitut\w*\s+for|counts?\s+towards?|used\s+towards?)\b(.*)$`)
 
-// routeRows returns the allocations a route may widen: each item with a
-// body, the parts of a group, and Req 1 when it has a pool of its own.
+// routeRows returns the allocations a route may widen: each item with a body,
+// the parts of a group, and Req 1 when it has a pool of its own.
 func (a *compAssembler) routeRows() []*compRow {
 	var out []*compRow
 	if t := a.total; t != nil && t.r.Req != nil && t.r.Req.Type == types.NodeCredits &&
@@ -598,11 +545,12 @@ func (a *compAssembler) routeRows() []*compRow {
 	return out
 }
 
-// complFootnoteMarkRe: a footnote's marker: "*A research project ...".
+// complFootnoteMarkRe matches a footnote's marker: "*A research project
+// ...".
 var complFootnoteMarkRe = regexp.MustCompile(`^\s*(\*+)`)
 
-// footnoteItems returns the items whose raw puts the footnote's marker after
-// a code ("HMB496Y1*" for "*A research project ..."), or nil.
+// footnoteItems returns the items whose raw puts the footnote's marker after a
+// code ("HMB496Y1*"), or nil.
 func (a *compAssembler) footnoteItems(s string) []*compRow {
 	m := complFootnoteMarkRe.FindStringSubmatch(s)
 	if m == nil {
@@ -619,14 +567,13 @@ func (a *compAssembler) footnoteItems(s string) []*compRow {
 }
 
 var (
-	// complRouteLevelRe: levels a route names: "300-level", "300+", "300/400
-	// level", "400-series".
+	// complRouteLevelRe matches levels a route names: "300/400 level".
 	complRouteLevelRe = regexp.MustCompile(`(?i)\b[1-4]00(?:\s*(?:-|/|or|and|,)\s*[1-4]00)*\s*(?:\+|-?\s*levels?\b|-series\b)(?:\s+or\s+(?:higher|above))?`)
-	// complRouteYearLevelRe: "at the third or fourth year levels".
+	// complRouteYearLevelRe matches "third or fourth year levels".
 	complRouteYearLevelRe = regexp.MustCompile(`(?i)\b((?:first|second|third|fourth)(?:\s*(?:,|or|and|/)\s*(?:first|second|third|fourth))*)[\s-]+years?[\s-]+levels?\b`)
 	complRouteOrdinalRe   = regexp.MustCompile(`(?i)first|second|third|fourth`)
-	// complRoutePoolRe: a route that speaks of credits or electives replaces a
-	// share of a pool, not a named course.
+	// complRoutePoolRe matches a route speaking of credits or electives, which
+	// replaces a share of a pool, not a named course: "0.5 credit".
 	complRoutePoolRe = regexp.MustCompile(`(?i)\bcredits?\b|\belectives?\b|\b\d\.\d\b`)
 )
 
@@ -640,28 +587,28 @@ var complSubjectWordRe = func() *regexp.Regexp {
 	return regexp.MustCompile(`\b(?:` + strings.Join(names, "|") + `)\b`)
 }()
 
-// complApproverRe: the person or office a route names.
+// complApproverRe matches the person or office a route names: "approval of
+// the Program Director".
 var complApproverRe = regexp.MustCompile(`(?i)\b(?:approval|permission|consent)\s+(?:of|from)\s+the\s+[^.;,]*?\b(?:director|coordinator|chair|office|advisor|department)\b`)
 
-// complAddressRe: an e-mail address or a web address.
+// complAddressRe matches an e-mail address or a web address.
 var complAddressRe = regexp.MustCompile(`\S+@\S+|https?://\S+|www\.\S+`)
 
-// complProgramDesigRe: a designator naming a program: "a RLG program".
+// complProgramDesigRe matches a designator naming a program: "RLG program".
 var complProgramDesigRe = regexp.MustCompile(`\b[A-Z]{3}\s+programs?\b`)
 
 // complSubjectWordCIRe matches the subject names of subjectDesignators in any
 // case: "Additional Philosophy courses".
 var complSubjectWordCIRe = regexp.MustCompile(`(?i)` + complSubjectWordRe.String())
 
-// routeFilters reads the designators (named, or a subject: "physics" is
-// PHY) and levels a route describes.
+// routeFilters reads the designators, named or by subject ("physics" is PHY),
+// and levels a route describes.
 func routeFilters(s string) (desigs []string, levels []int) {
 	t := codeRe.ReplaceAllString(s, " ")
-	// "a RLG program" names a program, not RLG courses; "UTM" is a campus;
-	// "religion.undergrad@utoronto.ca" is an address, not religion courses.
+	// "a RLG program" names a program, "UTM" is a campus, and an address such
+	// as "religion.undergrad@utoronto.ca" names no courses.
 	t = complProgramDesigRe.ReplaceAllString(complAddressRe.ReplaceAllString(t, " "), " ")
-	// "with approval of the Canadian Studies Program Director": who decides,
-	// not which courses.
+	// The approver says who decides, not which courses.
 	t = complApproverRe.ReplaceAllString(t, " ")
 	desigs = slices.DeleteFunc(desigRe.FindAllString(t, -1), func(d string) bool { return d == "UTM" })
 	for _, m := range complSubjectWordRe.FindAllString(strings.ToLower(t), -1) {
@@ -678,10 +625,9 @@ func routeFilters(s string) (desigs []string, levels []int) {
 	return dedupe(desigs), dedupe(levels)
 }
 
-// describedRows returns the rows whose courses match what route s
-// describes (routeFilters), or nil when it describes nothing or no row
-// matches. Among the matches it prefers pools when s speaks of credits or
-// electives, then rows all of whose courses fit the description.
+// describedRows returns the rows whose courses match what route s describes,
+// or nil. It prefers pools when s speaks of credits or electives, then rows
+// with a filter on the designators, then rows whose courses all fit.
 func describedRows(s string, rows []*compRow) []*compRow {
 	desigs, levels := routeFilters(s)
 	if desigs == nil && levels == nil {
@@ -705,9 +651,8 @@ func describedRows(s string, rows []*compRow) []*compRow {
 		}
 		for _, f := range filters {
 			if f.Lists != nil && f.Designators == nil && f.Levels == nil && f.Breadth == nil {
-				// A pool from named lists: their courses, not any course. A
-				// route describes them no better than before the lists were
-				// read, when the row was text.
+				// A pool from named lists describes their courses, not any
+				// course.
 				continue
 			}
 			ds = append(ds, f.Designators...)
@@ -741,16 +686,14 @@ func describedRows(s string, rows []*compRow) []*compRow {
 		}
 	}
 	if complRoutePoolRe.MatchString(s) {
-		// A route that speaks of credits or electives replaces a share of a
-		// pool: with no pool among the rows it fits, it names none.
+		// With no pool among the rows it fits, a pool route names none.
 		if !slices.ContainsFunc(fits, func(f fit) bool { return f.pool }) {
 			return nil
 		}
 		keep(func(f fit) bool { return f.pool })
 	}
-	// "will count toward the Department for the Study of Religion courses
-	// required": the pools of those designators, before rows of listed
-	// courses that happen to be all RLG.
+	// "count toward the Department for the Study of Religion courses": the
+	// pools of those designators, before rows of listed courses all RLG.
 	keep(func(f fit) bool { return f.filter })
 	keep(func(f fit) bool { return f.pure })
 	var out []*compRow
@@ -760,8 +703,7 @@ func describedRows(s string, rows []*compRow) []*compRow {
 	return out
 }
 
-// itemNaming returns the only item whose body names a course of s ("If the
-// FOR301H1 is not on offer, a student may use a substitute ..."), or nil.
+// itemNaming returns the only item whose body names a course of s, or nil.
 func (a *compAssembler) itemNaming(s string) *compRow {
 	var found *compRow
 	for _, code := range codeRe.FindAllString(s, -1) {
@@ -785,26 +727,13 @@ func (a *compAssembler) itemNaming(s string) *compRow {
 	return found
 }
 
-// complBoundPoolRe: an approval route that names the wider pool it may
-// let count (design 3.3): "Some offerings of other POL Special Topics
-// courses ...", "any 400-level finance-themed RSM special topics course as
-// determined by the Director", "any POL course with European content
-// approved by the Program Coordinator", "any marketing-themed RSM special
-// topics and RSM Summer Abroad courses", "any strategy, innovation and/or
-// entrepreneurship-themed RSM special topics ...". The theme is tried last,
-// so it never spans a designator's own pool ("any other POL courses and any
-// finance-themed RSM ...", constructed, reads POL; routePool then sees the
-// second pool and doesn't bound).
+// complBoundPoolRe matches a route naming its wider pool, "any POL course with
+// European content"; the lazy theme never spans a designator's own pool.
 var complBoundPoolRe = regexp.MustCompile(`(?i)^(?:some\s+offerings\s+of\s+)?(?:other\s+|any\s+(?:other\s+)?)(?:([1-4]00)-level\s+)?(?:[\w,/\s-]+?[-\s]themed\s+)??((?-i:[A-Z]{3}))\s+(?:special\s+topics\s+(?:and\s+(?-i:[A-Z]{3})\s+summer\s+abroad\s+)?)?courses?\b`)
 
-// boundRoutes bounds the approval routes that name their wider pool
-// (design 3.3): or(strict, text permission) on a pool becomes or(strict,
-// and(the same amount from the wider pool, text permission)), so a course
-// outside both pools is NotMet rather than Review. The wider pool keeps the
-// strict pool's courses: the student may count both. A route that names no
-// designator stays bare. A route over the designator's special-topics
-// courses is narrowed at Link to those the catalogue titles "Topics in …"
-// (linkOtherTopics): the parser can't see titles.
+// boundRoutes bounds the approval routes that name their wider pool:
+// or(strict, text) becomes or(strict, and(the amount from the wider pool,
+// text)), so a course outside both pools is NotMet rather than Review.
 func (a *compAssembler) boundRoutes() {
 	var walk func(rs []*compRow)
 	walk = func(rs []*compRow) {
@@ -825,12 +754,12 @@ func (a *compAssembler) boundRoutes() {
 	walk(a.items)
 }
 
-// complAnotherPoolRe: a second pool after the one complBoundPoolRe read: "...
-// courses and any finance-themed RSM special topics courses" (constructed).
+// complAnotherPoolRe matches a second pool after the one complBoundPoolRe
+// read: "and any finance-themed RSM special topics courses".
 var complAnotherPoolRe = regexp.MustCompile(`(?i)\b(?:and|or)\s+(?:any|other)\b`)
 
-// routePool returns the wider pool a permission route names (complBoundPoolRe)
-// for strict, or nil.
+// routePool returns the wider pool that permission route names for strict,
+// keeping strict's courses, or nil.
 func routePool(strict, route *types.ReqNode) *types.ReqNode {
 	if route.Type != types.NodeText || route.Kind != types.TextPermission {
 		return nil
@@ -838,7 +767,7 @@ func routePool(strict, route *types.ReqNode) *types.ReqNode {
 	t := strings.TrimSpace(route.Text)
 	m := complBoundPoolRe.FindStringSubmatch(t)
 	if m == nil || complAnotherPoolRe.MatchString(t[len(m[0]):]) {
-		return nil // a second pool after the first: bounded by one, the other would be NotMet
+		return nil // a second pool: bounded by one, the other would be NotMet
 	}
 	w := &types.ReqNode{Type: types.NodeCredits, Amount: strict.Amount, Designators: []string{m[2]}, Courses: slices.Clone(strict.Courses)}
 	if m[1] != "" {
@@ -857,21 +786,13 @@ func routePool(strict, route *types.ReqNode) *types.ReqNode {
 	return w
 }
 
-// complTopicContentRe: a unit's special-topics courses on a topic that count
-// toward the program: "Special Topics courses with Islam content (like
-// NMC277H1 or RLG412H1) will also count towards the program",
-// "Health-related Anthropology Special Topics courses at the 300 or 400
-// level, and health-related Independent Research courses at the 400-level,
-// will count towards program requirements".
+// complTopicContentRe matches special-topics courses on a topic: "Special
+// Topics courses with Islam content ... will also count towards the program".
 var complTopicContentRe = regexp.MustCompile(`(?i)^(?:[\w-]+\s+)*?special\s+topics\s+courses\b.*\bwill\s+(?:also\s+)?count\s+towards?\s+(?:the\s+)?program(?:\s+requirements)?$`)
 
-// topicContentRoutes places each complTopicContentRe note on the one row
-// whose course pools hold courses of every designator it names (a subject,
-// or its examples' designators) at the levels it names: each such pool,
-// credits{N, courses}, becomes or(pool, and(credits{N, courses, designators,
-// levels}, text{content})). The course's topic decides (D1), so a course of
-// the designators is Review and any other is NotMet. A note that matches no
-// row, or several, stays a note (S2-6, ASMAJ1359; ASMIN1778).
+// topicContentRoutes places each complTopicContentRe note on the one row whose
+// pools hold courses of every designator it names, at its levels: or(pool,
+// and(pool widened to them, text{content})). Otherwise it stays a note.
 func (a *compAssembler) topicContentRoutes() {
 	var keep []string
 	for _, s := range a.notes {
@@ -882,8 +803,8 @@ func (a *compAssembler) topicContentRoutes() {
 	a.notes = keep
 }
 
-// topicContentRoute places one complTopicContentRe note (topicContentRoutes)
-// and reports whether it did.
+// topicContentRoute places complTopicContentRe note s and reports whether it
+// did.
 func (a *compAssembler) topicContentRoute(s string) bool {
 	desigs, levels := routeFilters(s)
 	for _, c := range codeRe.FindAllString(s, -1) {
@@ -892,7 +813,7 @@ func (a *compAssembler) topicContentRoute(s string) bool {
 	if desigs == nil {
 		return false
 	}
-	// pools reports whether n is a pool of listed courses the route widens.
+	// pool reports whether n is a pool of listed courses the route widens.
 	pool := func(n *types.ReqNode) bool {
 		return n.Type == types.NodeCredits && n.Amount > 0 && n.Courses != nil && n.Designators == nil && n.Levels == nil &&
 			n.Lists == nil && n.MaxAmount == nil && n.Breadth == nil && n.Exclude == nil && n.Items == nil
@@ -935,8 +856,8 @@ func (a *compAssembler) topicContentRoute(s string) bool {
 		return n
 	}
 	target.r.Req = wrap(target.r.Req)
-	// A rule before may have left the sentence as a bare alternative of the
-	// row (upToByCourse, ASMIN1778): bounded now, it goes.
+	// An earlier rule may have left the sentence a bare alternative of the row:
+	// bounded now, it goes.
 	walkReq(target.r.Req, func(n *types.ReqNode) {
 		if n.Type == types.NodeOr && len(n.Items) > 2 {
 			n.Items = slices.DeleteFunc(n.Items, func(x *types.ReqNode) bool { return x.Type == types.NodeText && x.Text == s })
@@ -946,18 +867,9 @@ func (a *compAssembler) topicContentRoute(s string) bool {
 	return true
 }
 
-// dsrLanguagePools reads the Department for the Study of Religion's
-// language paragraph, "Up to two language courses totaling 1.0 credit in
-// Pali ( RLG264H1, RLG265H1), ... or Modern Hebrew ( MHB155H1, ...) will
-// count toward the Department for the Study of Religion courses required to
-// complete any Major Program in Religion. If a student wishes a different
-// language ... they should consult with the Associate Chair, Undergraduate"
-// (R13). The cap is a limit already (courseCountCap); the courses count as
-// the department's courses, so each pool of its designators (credits{RLG,
-// ...}) takes the codes of other designators at its levels, and an item of
-// listed courses whose floor is such a pool takes all of them. The
-// paragraph is then no route on any row, and the different language, which
-// names no pool, is a note.
+// dsrLanguagePools reads the Study of Religion language paragraph, a limit
+// already: its courses count as the department's, so each RLG pool takes them
+// at its levels. Its other sentences are notes.
 func (a *compAssembler) dsrLanguagePools() {
 	all := append(append(append([]*compRow{}, a.floors...), a.items...), a.program...)
 	if a.total != nil {
@@ -993,8 +905,8 @@ func (a *compAssembler) dsrLanguagePools() {
 		}
 		return n
 	}
-	// widen adds the codes n's levels allow that its designators and
-	// courses don't already hold, and reports whether n is such a pool.
+	// widen adds the codes n's levels allow that n doesn't hold already, and
+	// reports whether n is such a pool.
 	widen := func(n *types.ReqNode, all bool) bool {
 		if n == nil || n.Type != types.NodeCredits || n.Amount == 0 || n.Lists != nil || n.Breadth != nil {
 			return false
@@ -1032,24 +944,16 @@ func (a *compAssembler) dsrLanguagePools() {
 	}
 }
 
-// complUntargetedRouteRe: an approval route that names no course, pool or
-// requirement: "Alternative courses may be substituted with the prior
-// approval of the Director, Rotman Commerce", "Students can request
-// substitutions from the IRP Director", "Other courses from
-// UTM/UTSC/other Departments may be considered with permission", and the
-// program-wide "Students may be permitted to take an independent reading
-// course. A 0.5 credit of these courses may count towards program
-// requirements, where relevant (...)".
+// complUntargetedRouteRe matches a route naming no course, pool or row:
+// "Students can request substitutions from the IRP Director".
 var complUntargetedRouteRe = regexp.MustCompile(`(?i)^alternative\s+courses\s+may\s+be\s+substituted\s+with\s+the\s+(?:prior\s+)?approval\s+of\b` +
 	`|^students\s+can\s+request\s+substitutions\s+from\s+the\b` +
 	`|^other\s+courses\s+from\s+[\w/\s]+?\s+may\s+be\s+considered\s+with\s+permission\.?$` +
 	`|\bmay\s+count\s+towards?\s+(?:\w+\s+)?program\s+requirements,\s+where\s+relevant\b`)
 
-// untargetedRoutes moves the complUntargetedRouteRe alternatives of the
-// allocations to the notes (R11): a route that names no target is a note,
-// as an advisor records the substitution it allows; on a row it made the
-// row Review for a student short of it. A bounded form, and(pool,
-// text), and a route on a constraint ("as courses at the 400-level") stay.
+// untargetedRoutes moves the allocations' complUntargetedRouteRe alternatives
+// to the notes: on a row they made it Review for a student short of it. A
+// bounded and(pool, text), and a route on a constraint, stay.
 func (a *compAssembler) untargetedRoutes() {
 	all := append(append(append([]*compRow{}, a.floors...), a.items...), a.program...)
 	if a.total != nil {
@@ -1073,15 +977,9 @@ func (a *compAssembler) untargetedRoutes() {
 	})
 }
 
-// placedElsewhere drops a route placed on two rows from the one it fits
-// less (R11): a bare text alternative at the top of an allocation, when
-// another allocation reads the same sentence as structure (its raw holds
-// the sentence but no text node does: "Students taking one of these MAT
-// courses can have it count in lieu of a 0.5 300-level ECO course", a
-// substitute on the 300-level ECO pool), or holds it on the node of the
-// courses it replaces ("... towards the requirement to complete PCL472Y1/
-// PCL474Y1/ JPM400Y1", on or(PCL472Y1, PCL474Y1, JPM400Y1, text)) rather
-// than on a pool that happens to hold one of them.
+// placedElsewhere drops a bare top-level text alternative from an allocation
+// when another allocation holds the same sentence better: nested on the node
+// it replaces, or read into structure.
 func (a *compAssembler) placedElsewhere() {
 	var rows []*compRow
 	walkRows(a.items, func(r *compRow) {
@@ -1089,9 +987,9 @@ func (a *compAssembler) placedElsewhere() {
 			rows = append(rows, r)
 		}
 	})
-	// fits reports whether row r2 holds text t better than r does at its
-	// top: nested on a node of r2, or read into r2's alternatives (r2 an or
-	// with no text left, whose raw holds t).
+	// fits reports whether row r2 holds text t better than a top-level text:
+	// nested on a node of r2, or read into r2's alternatives (an or with no text
+	// left, whose raw holds t).
 	fits := func(r2 *compRow, t string) bool {
 		w := rawWords(a.clean(t))
 		text, nested := false, false
@@ -1130,82 +1028,58 @@ func (a *compAssembler) placedElsewhere() {
 	}
 }
 
-// complRouteCodesPat: codes in a route, "GGR493Y1", "GGR491Y1, GGR492H1, or
-// GGR499H1", "CSC494H1/ CSC495H1", "POL336H1; POL357H1; ... POL497H1".
+// complRouteCodesPat matches the codes in a route: "GGR491Y1, GGR492H1, or
+// GGR499H1".
 const complRouteCodesPat = `((?:` + codePat + `)(?:\s*(?:[/,;]|,?\s*(?:or|and))\s*` + codePat + `)*)`
 
 var (
-	// complSuitableCodesRe: "0.5 credit from GGR493Y1 can be used to meet
-	// this requirement, based on suitability of the placement ...", "Up to
-	// 1.0 credit can be used from GGR493Y1, based on suitability ...", "Up
-	// to 0.5 credit from GGR491Y1, ..., and GGR499H1 based on suitability
-	// ...". The groups: "up to" (a cap), the amount, the codes.
+	// complSuitableCodesRe matches "Up to 1.0 credit can be used from GGR493Y1,
+	// based on suitability". Group 1, "up to", makes it a cap.
 	complSuitableCodesRe = regexp.MustCompile(`(?i)^(up\s+to\s+)?(?:an?\s+|one\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:can\s+be\s+used\s+)?from\s+` + complRouteCodesPat + `,?\s+(?:can\s+be\s+used\s+to\s+meet\s+this\s+requirement,?\s+)?based\s+on\s+(?:the\s+)?suitability\b`)
-	// complRouteOfferingsRe (beside someOfferings' complSomeOfferingsRe,
-	// which reads commas only): "Some offerings of POL336H1; ...; POL497H1 may
-	// also count towards requirement 2 of this focus at the department's
-	// discretion".
+	// complRouteOfferingsRe matches "Some offerings of POL336H1; ...; POL497H1
+	// may also count towards", with any separator.
 	complRouteOfferingsRe = regexp.MustCompile(`(?i)^(?:note:\s*)?some\s+offerings\s+of\s+` + complRouteCodesPat + `\s+may\s+also\s+count\s+towards?\b`)
-	// complDiscretionRe: someone decides, in a route that names its courses.
+	// complDiscretionRe matches someone deciding, in a route that names its
+	// courses: "at the department's discretion".
 	complDiscretionRe = regexp.MustCompile(`(?i)\b(?:discretion|approv\w*|permission)\b`)
-	// complSubstituteForRe: "Note that students may substitute ARH495H1
-	// (Research Practicum) for 0.5 credit of this requirement ...". The
-	// groups: the code, the cap.
+	// complSubstituteForRe matches "students may substitute ARH495H1 (Research
+	// Practicum) for 0.5 credit of this requirement". Groups: the code, the cap.
 	complSubstituteForRe = regexp.MustCompile(`(?i)\bstudents\s+may\s+substitute\s+(` + codePat + `)(?:\s*\([^)]*\))?\s+for\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+this\s+requirement\b`)
-	// complSubstituteOneOfRe: "Students who complete an independent study
-	// project ( CSC494H1/ CSC495H1) ... may request to substitute one of
-	// CSC494H1/ CSC495H1 for one of the courses in list 2 above".
+	// complSubstituteOneOfRe matches "may request to substitute one of CSC494H1/
+	// CSC495H1 for one of the courses in list 2".
 	complSubstituteOneOfRe = regexp.MustCompile(`(?i)\bmay\s+request\s+to\s+substitute\s+one\s+of\s+` + complRouteCodesPat + `\s+for\s+one\s+of\s+the\s+courses\s+in\b`)
-	// complUnitTopicsRe: a unit's special-topics courses, named by subject:
-	// "Special Topics courses, Research Opportunity courses, and Research
-	// Excursion courses from Geography & Planning can be used to meet this
-	// requirement, based on suitability ... and approval by the department"
-	// (group 1: the subject), "Health related Anthropology Special Topics
-	// courses may be chosen when offered at the third or fourth year levels"
-	// (group 2: the subject).
+	// complUnitTopicsRe matches special-topics courses by subject: "Health
+	// related Anthropology Special Topics courses may be chosen when offered".
 	complUnitTopicsRe = regexp.MustCompile(`(?i)^(?:special\s+topics\s+courses,\s+research\s+opportunity\s+courses,\s+and\s+research\s+excursion\s+courses\s+from\s+([\w&\s]+?)\s+can\s+be\s+used\s+to\s+meet\s+this\s+requirement\b|([\w\s-]+?)\s+special\s+topics\s+courses\s+may\s+be\s+chosen\s+when\s+offered\s+at\s+the\s+[\w\s]+?\s+levels?$)`)
-	// complOtherLevelRe: any course at a level, "Other 400-level courses with
-	// a significant Digital Humanities practicum element can also be
-	// considered for fulfillment of the capstone requirement, if students
-	// receive written permission ...".
+	// complOtherLevelRe matches any course at a level: "Other 400-level courses
+	// ... can also be considered for fulfillment of".
 	complOtherLevelRe = regexp.MustCompile(`(?i)^other\s+([1-4]00)-level\s+courses\b.*\bcan\s+(?:also\s+)?be\s+considered\s+for\s+fulfil?lment\s+of\b`)
-	// complOneOutsideRe: one course off the lists, "Note: One 0.5 credit
-	// course at the 300- or 400-level not listed in the above clusters may
-	// count towards the elective requirement through a nomination process".
-	// Groups: the amount, the levels.
+	// complOneOutsideRe matches one course off the lists: "One 0.5 credit course
+	// at the 300- or 400-level not listed in the above clusters may count".
 	complOneOutsideRe = regexp.MustCompile(`(?i)^(?:note:\s*)?one\s+(\d+(?:\.\d+)?)\s+credit\s+course\s+at\s+the\s+([\w\s-]+?levels?)\s+not\s+listed\s+in\s+the\s+above\s+(?:clusters|lists|groups)\s+may\s+count\s+towards?\b`)
-	// complOtherProgramsRe: "Approved courses in other programs may be
-	// substituted for up to 1.0 FAH credit". The groups: the cap, the
-	// designator.
+	// complOtherProgramsRe matches "Approved courses in other programs may be
+	// substituted for up to 1.0 FAH credit". Groups: the cap, the designator.
 	complOtherProgramsRe = regexp.MustCompile(`(?i)^approved\s+courses\s+in\s+other\s+programs\s+may\s+be\s+substituted\s+for\s+up\s+to\s+(\d+(?:\.\d+)?)\s+((?-i:[A-Z]{3}))\s+credits?$`)
-	// complSubjectShareRe: courses of subjects up to a cap, "In consultation
-	// with the Undergraduate Coordinator, students may take 0.5 credit in
-	// history or political science courses corresponding to their chosen
-	// language area and taught outside the department", "... up to 1.0
-	// credit in ... their two chosen language areas (0.5 credit per language
-	// area) ...". The groups: the cap, the subjects, the cap per area.
+	// complSubjectShareRe matches subjects' courses up to a cap: "students may
+	// take 0.5 credit in history or political science courses corresponding".
 	complSubjectShareRe = regexp.MustCompile(`(?i)^in\s+consultation\s+with\s+the\s+undergraduate\s+coordinator,\s+students\s+may\s+take\s+(?:up\s+to\s+)?(\d+(?:\.\d+)?)\s+credits?\s+in\s+([\w\s]+?)\s+courses\s+corresponding\s+to\s+their\s+(?:two\s+)?chosen\s+language\s+areas?(?:\s+\((\d+(?:\.\d+)?)\s+credits?\s+per\s+language\s+area\))?\s+and\s+taught\s+outside\s+the\s+department$`)
-	// complSiblingSubstituteRe: the courses of the other part of an area,
-	// "In consultation with the Undergraduate Coordinator, and based on
-	// results in language placement tests, some students may substitute
-	// language courses with the equivalent number of credits in requirement
-	// 3 (below)".
+	// complSiblingSubstituteRe matches "some students may substitute language
+	// courses with the equivalent number of credits in requirement 3".
 	complSiblingSubstituteRe = regexp.MustCompile(`(?i)\bsome\s+students\s+may\s+substitute\s+language\s+courses\s+with\s+the\s+equivalent\s+number\s+of\s+credits\s+in\s+requirement\s+\d+\b`)
 )
 
 // compStrictPool is the strict reading of a row a named route widens: an
-// amount of courses (with designators and levels, or resolved from lists)
-// or one of some courses of the same weight; floors are the in-node floors
-// and(pool, floor) carries (complCountFloorRe, a "including at least" part).
+// amount of courses, or one of some courses of the same weight, with the
+// in-node floors and(pool, floor) carries.
 type compStrictPool struct {
-	pool   *types.ReqNode // credits: amount, courses, designators, levels
+	pool   *types.ReqNode
 	floors []*types.ReqNode
 	byName map[string]*types.CourseList
 }
 
-// strictPool reads the non-text alternatives of or node n (namedRoutes):
-// pools of the same amount, or courses of the same weight. ok is false for
-// any other strict reading.
+// strictPool reads the non-text alternatives of or node n: pools of the same
+// amount, or courses of the same weight. ok is false for any other strict
+// reading.
 func (a *compAssembler) strictPool(n *types.ReqNode, byName map[string]*types.CourseList) (sp compStrictPool, ok bool) {
 	plain := func(x *types.ReqNode) bool {
 		return x.Type == types.NodeCredits && x.Amount > 0 && x.MaxAmount == nil && x.Items == nil && x.Breadth == nil && x.Exclude == nil &&
@@ -1234,7 +1108,7 @@ func (a *compAssembler) strictPool(n *types.ReqNode, byName map[string]*types.Co
 						return sp, false
 					}
 					// Lists with filters stay a pool of lists, which only a
-					// route naming courses already on them widens (routeWider).
+					// route naming courses already on them widens.
 					if codes, ok := a.listCodes(it.Lists, byName); ok {
 						codes = slices.DeleteFunc(codes, func(c string) bool { return !levelMatches(it.Levels, c) })
 						p.Courses, p.Levels, p.Lists = codes, nil, nil
@@ -1264,41 +1138,9 @@ func (a *compAssembler) strictPool(n *types.ReqNode, byName map[string]*types.Co
 	return sp, p != nil
 }
 
-// namedRoutes bounds the approval routes that name their wider pool by
-// codes, a unit, subjects or levels, which boundRoutes' designator form
-// (complBoundPoolRe) doesn't read (R1, design 3.3): each such alternative
-// text{route} on or(strict, ...) becomes and(wider, text), wider being the
-// strict pool and the route's courses, so a course outside both is NotMet
-// rather than Review. The route caps its courses with a limit under the row
-// where it says so ("Up to 1.0 credit can be used from GGR493Y1, based on
-// suitability of placement ..."). The readers:
-//   - named codes (complSuitableCodesRe, complRouteOfferingsRe,
-//     complSubstituteForRe, complSubstituteOneOfRe): the strict pool's
-//     courses and the codes;
-//   - a unit's special-topics courses (complUnitTopicsRe): the pool and the
-//     subject's designator, at the levels named when every strict course
-//     is at them, else a list of the row's own (the pool's courses and the
-//     designator at the levels); kind content where no one approves ("may
-//     be chosen");
-//   - other courses at a level (complOtherLevelRe): any course at it, when
-//     every strict course is at it;
-//   - one course off the lists (complOneOutsideRe): the amount of any
-//     courses, the rest from the strict pool; at the levels it names, the
-//     amount from a list of the row's own (the pool, and any course at
-//     them);
-//   - courses of other programs for part of a designator's credits
-//     (complOtherProgramsRe): any course, with a limit on the other
-//     designators;
-//   - courses of subjects for part of a pool (complSubjectShareRe): the pool
-//     and the subjects' designators, with a limit on their courses off the
-//     pool;
-//   - the area's other part (complSiblingSubstituteRe): the pool and the
-//     courses of the one other allocation under the same parent.
-//
-// A pool of lists is read as the courses the lists hold (listCodes); an
-// in-node floor and(pool, floor) becomes a constraint under the row, so the
-// floor holds for the route too. A route the readers don't read, or whose
-// pool can't be widened this way, stays bare (D3).
+// namedRoutes bounds routes naming their wider pool by codes, a unit, subjects
+// or levels as and(wider, text), so a course outside both pools is NotMet
+// rather than Review. A route no reader reads stays bare.
 func (a *compAssembler) namedRoutes(lists []*types.CourseList) {
 	byName := map[string]*types.CourseList{}
 	for _, l := range lists {
@@ -1319,14 +1161,13 @@ func (a *compAssembler) namedRoutes(lists []*types.CourseList) {
 	walk(a.program, nil)
 }
 
-// namedRoute bounds the named routes of one row (namedRoutes).
+// namedRoute bounds the named routes of row r.
 func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.CourseList) {
 	n := r.r.Req
 	if r.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeOr || len(n.Items) < 2 {
 		return
 	}
-	// The constraints already under the row (its floors), before the limits
-	// a route adds.
+	// The row's floors, taken before the limits a route adds.
 	floors := slices.DeleteFunc(slices.Clone(r.children), func(c *compRow) bool { return c.r.Kind != types.RequirementConstraint || c.r.Req == nil })
 	sp, ok := a.strictPool(n, byName)
 	if !ok {
@@ -1335,8 +1176,8 @@ func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.
 	strict := sp.pool
 	bounded := false
 	for i, it := range n.Items {
-		// Kind other too: textKinds, which makes such a route permission,
-		// runs later; the readers are specific.
+		// Kind other too: textKinds, which makes such a route permission, runs
+		// later; the readers are specific.
 		if it.Type != types.NodeText || it.Kind != types.TextPermission && it.Kind != types.TextOther {
 			continue
 		}
@@ -1347,16 +1188,9 @@ func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.
 		text := cloneNode(it)
 		text.Kind = kind
 		n.Items[i] = andNode(wider, text)
-		// The floors already under the row: a floor on the row's courses
-		// holds the named courses too, as Review ("Note that students may
-		// substitute ARH495H1 ... for 0.5 credit of this requirement
-		// (assignment to Group A or B to be determined by Undergraduate
-		// Coordinator)", over floors on Groups A and B): or(floor, and(floor
-		// with the courses, text)). A floor on levels the named courses are
-		// all at stays; any other floor keeps the route as its Review
-		// alternative, or(floor, text), as markIncomplete marked it beside
-		// the bare route: the route's courses may count toward it ("the
-		// relevant cluster" of a nominated course).
+		// A floor on the row's courses gets or(floor, and(floor with the named
+		// courses, text)); a level floor they all pass stays; any other gets the
+		// route as its Review alternative.
 		var added []string
 		if wider.Type == types.NodeCredits && wider.Designators == nil && wider.Lists == nil && wider.Levels == nil {
 			added = slices.DeleteFunc(slices.Clone(wider.Courses), func(c string) bool { return slices.Contains(strict.Courses, c) })
@@ -1373,8 +1207,8 @@ func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.
 				c := cloneNode(spreadFloor(f.r.Req))
 				c.Count--
 				if c.Count == 1 {
-					// One part: a course on two lists can't count twice, so
-					// the strict spread's exclusions go.
+					// One part: a course on two lists can't count twice, so the
+					// strict spread's exclusions go.
 					for _, it := range c.Items {
 						it.Exclude = nil
 					}
@@ -1392,7 +1226,7 @@ func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.
 	if !bounded || sp.floors == nil {
 		return
 	}
-	// The in-node floor, a constraint under the row now that no route is
+	// The in-node floor becomes a constraint under the row, now that no route is
 	// bare beside it.
 	for k, it := range n.Items {
 		if it.Type == types.NodeAnd && !hasText(it) {
@@ -1404,14 +1238,13 @@ func (a *compAssembler) namedRoute(r, parent *compRow, byName map[string]*types.
 	}
 }
 
-// routeWider returns the wider pool route s names for strict (namedRoutes),
-// the kind of its text and the limits it states, or nil.
+// routeWider returns the wider pool route s names for the strict pool, the
+// kind of its text and the limits it states, or nil.
 func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compRow) (*types.ReqNode, types.TextKind, []*types.ReqNode) {
 	strict := sp.pool
 	wider := cloneNode(strict)
-	// withCodes widens wider by codes, which must be at the pool's levels. A
-	// pool of lists with filters (listCodes can't list it) takes only codes
-	// already on its lists: the route then adds no course, only its cap.
+	// withCodes widens wider by codes at the pool's levels. A pool of lists with
+	// filters takes only codes already on its lists: the route adds only its cap.
 	withCodes := func(codes []string) bool {
 		if slices.ContainsFunc(codes, func(c string) bool { return !levelMatches(strict.Levels, c) }) {
 			return false
@@ -1444,8 +1277,8 @@ func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compR
 		if !withCodes(codeRe.FindAllString(m[1], -1)) {
 			return nil, "", nil
 		}
-		// The offering's topic decides (D1, as someOfferings), unless
-		// someone does ("at the department's discretion").
+		// The offering's topic decides, unless someone does ("at the department's
+		// discretion").
 		if complDiscretionRe.MatchString(s) {
 			return wider, types.TextPermission, nil
 		}
@@ -1481,9 +1314,9 @@ func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compR
 		switch {
 		case levels != nil && strict.Designators == nil && strict.Lists == nil && strict.Courses != nil &&
 			slices.ContainsFunc(strict.Courses, func(c string) bool { return !levelMatches(levels, c) }):
-			// Some pool course below the levels ("ANT208H1" beside "at the
-			// third or fourth year levels"): a list of the row's own, the
-			// pool's courses and the designator's at the levels.
+			// A pool course below the levels ("ANT208H1" beside "at the third
+			// or fourth year levels"): a list of the row's own, the pool's
+			// courses and the designator's at the levels.
 			l := a.rowUnion(r, []*types.ReqNode{
 				{Type: types.NodeCredits, Courses: slices.Clone(strict.Courses)},
 				{Type: types.NodeCredits, Designators: desigs, Levels: levels},
@@ -1497,7 +1330,7 @@ func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compR
 		}
 		kind := types.TextPermission
 		if m[2] != "" {
-			kind = types.TextContent // the course's topic decides (D1)
+			kind = types.TextContent // the course's topic decides
 		}
 		return wider, kind, nil
 	}
@@ -1514,8 +1347,8 @@ func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compR
 		if v >= strict.Amount {
 			return nil, "", nil
 		}
-		// The amount of any courses, the rest from the strict pool as stated
-		// (its lists): and(credits{amount}, credits{amount − v, pool}).
+		// The amount of any courses, the rest from the strict pool as stated:
+		// and(credits{amount}, credits{amount − v, pool}).
 		w := cloneNode(r.r.Req.Items[0])
 		if w.Type != types.NodeCredits {
 			return nil, "", nil
@@ -1584,9 +1417,9 @@ func (a *compAssembler) routeWider(sp compStrictPool, s string, r, parent *compR
 	return nil, "", nil
 }
 
-// listHas reports whether code is on one of the lists names (byName): listed,
-// or matched by an item's designators and levels and not excluded. An item
-// with other filters (breadth, requirements) is read as not holding it.
+// listHas reports whether code is on one of the lists names: listed, or
+// matched by an item's designators and levels and not excluded. An item with
+// other filters is read as not holding it.
 func listHas(names []string, code string, byName map[string]*types.CourseList, depth int) bool {
 	if depth > 4 {
 		return false
@@ -1615,12 +1448,9 @@ func listHas(names []string, code string, byName map[string]*types.CourseList, d
 	return false
 }
 
-// floorWith returns floor n (a constraint under a row whose strict pool
-// lists courses) with the courses added to each pool of n that lists only
-// some of courses, or nil when n has no such pool or any other node but
-// and, or and text. A pool of lists only counts as the lists' codes less its
-// exclusions (a floor on Groups A and B of a row whose pool is the two
-// groups).
+// floorWith returns floor n with added joined to each of its pools listing
+// only some of courses, lists read as their codes. Nil when it has no such
+// pool or a node other than and, or and text.
 func (a *compAssembler) floorWith(n *types.ReqNode, courses, added []string, byName map[string]*types.CourseList) *types.ReqNode {
 	if n.Type == types.NodeOr {
 		for _, it := range n.Items {
@@ -1661,16 +1491,13 @@ func (a *compAssembler) floorWith(n *types.ReqNode, courses, added []string, byN
 	return w
 }
 
-// complExemptAtLevelRe: an exemption replaced by a designator's courses at a
-// level, worded after the course (exemptAny's complExemptAnyRe reads "any
-// FRE 200+ or FSL 300+ level course"): "Students exempted from FSL320H1/
-// FSL322H1 may replace it with any FRE course at the 300+ level". The
-// groups: the codes, the designator, the level.
+// complExemptAtLevelRe matches "Students exempted from FSL320H1/ FSL322H1 may
+// replace it with any FRE course at the 300+ level".
 var complExemptAtLevelRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+` + complRelaxCodesPat + `\s+may\s+replace\s+(?:it|them)\s+with\s+any\s+((?-i:[A-Z]{3}))\s+course\s+at\s+the\s+([1-4]00)\+\s+level$`)
 
-// exemptAtLevel bounds the complExemptAtLevelRe alternatives of the rows'
-// "or" nodes (R1): and(credits{the credits the exemption takes, DES, the
-// level and up}, text{placement}), as exemptAny does for its wording.
+// exemptAtLevel bounds the complExemptAtLevelRe alternatives of the rows' or
+// nodes: and(credits{the exempted credits, DES, the level and up},
+// text{placement}).
 func (a *compAssembler) exemptAtLevel() {
 	var walk func(n *types.ReqNode)
 	walk = func(n *types.ReqNode) {
@@ -1715,14 +1542,15 @@ func (a *compAssembler) exemptAtLevel() {
 	}
 }
 
-// levelFloor reports a floor on levels only: credits{amount, levels}.
+// levelFloor reports whether n is a floor on levels only: credits{amount,
+// levels}.
 func levelFloor(n *types.ReqNode) bool {
 	return n.Type == types.NodeCredits && n.Amount > 0 && n.Levels != nil && n.Courses == nil && n.Designators == nil && n.Lists == nil &&
 		n.Breadth == nil && n.Requirements == nil && n.Exclude == nil && n.Items == nil && n.MaxAmount == nil
 }
 
-// spreadFloor returns the choose node of a spread floor (choose{k ≥ 2, ...},
-// alone or as the strict alternative of an or), or nil.
+// spreadFloor returns the choose node of a spread floor, choose{k ≥ 2, ...},
+// alone or as the strict alternative of an or, or nil.
 func spreadFloor(n *types.ReqNode) *types.ReqNode {
 	if n.Type == types.NodeOr && len(n.Items) > 0 {
 		n = n.Items[0]
@@ -1733,14 +1561,9 @@ func spreadFloor(n *types.ReqNode) *types.ReqNode {
 	return nil
 }
 
-// otherProgramsFloors places a complOtherProgramsRe note ("Approved courses
-// in other programs may be substituted for up to 2.0 FAH credits") that no
-// row's pool took (namedRoutes reads it on a total of the designator's
-// credits) on the floor of the designator's credits, a constraint
-// credits{M, DES} (ASSPE0908, "At least 9.0 FAH credits"): or(floor,
-// and(credits{M − N, DES}, text{permission})). The substitutes count toward
-// the floor only, not the total, so no limit goes on the program: its other
-// credits (the languages) are not substitutes.
+// otherProgramsFloors places each complOtherProgramsRe note no row's pool took
+// on the one floor of the designator's credits: or(floor, and(credits{M − N,
+// DES}, text{permission})). It counts toward the floor only, not the total.
 func (a *compAssembler) otherProgramsFloors() {
 	var keep []string
 	for _, s := range a.notes {
@@ -1752,8 +1575,8 @@ func (a *compAssembler) otherProgramsFloors() {
 	a.notes = keep
 }
 
-// otherProgramsFloor places one note (otherProgramsFloors) and reports
-// whether it did: on the one floor that fits.
+// otherProgramsFloor places note s on the one floor that fits, and reports
+// whether it did.
 func (a *compAssembler) otherProgramsFloor(s string, m []string) bool {
 	v, _ := strconv.ParseFloat(m[1], 64)
 	var fit []*compRow

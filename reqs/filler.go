@@ -9,10 +9,8 @@ import (
 // requirement of its own.
 
 var (
-	// fillerRe matches a whole text node that is only connective wording
-	// left between structured nodes, e.g. "Students must have" / 10.0
-	// credits / "towards their degree", or 7.5 credits / "with" / 1.5 PHL
-	// credits. Real conditions never consist of these words alone.
+	// fillerRe matches a text node of only connective wording between structured
+	// nodes: "Students must have". Real conditions never consist of these alone.
 	fillerRe = regexp.MustCompile(`(?i)^(?:` + strings.Join([]string{
 		`(?:students\s+)?(?:must\s+)?(?:have|be)(?:\s+(?:completed|taken))?`, // "Students must have", "have taken", "must be"
 		`(?:successfully\s+)?(?:completed?|completion)(?:\s+(?:a\s+)?minimum)?(?:\s+of)?`,
@@ -25,10 +23,8 @@ var (
 		`as\s+stated\s+in\s+the\s+calendar(?:\s+description)?`,
 	}, "|") + `)$`)
 
-	// pointerRe matches a sentence or "; " segment that only points
-	// elsewhere or describes the course: "See the Department website for
-	// details", "Possible additional topic-specific prerequisites", "None",
-	// "Research positions are limited", "Application deadlines: ...".
+	// pointerRe matches a segment that only points elsewhere or describes the
+	// course: "See the Department website for details".
 	pointerRe = regexp.MustCompile(`(?i)^(?:please\s+)?(?:see|refer\s+to)\b|\bfor\s+(?:more\s+)?(?:details|information)$|\bare\s+posted\s+on\b|` +
 		`^possible\b.*requisites?$|^this\s+is\s+an?\b[^.]*\bcourse\s+and\s+will\b|^(?:none|n/?a)$|` +
 		`^any\s+(?:course\s+)?combination\b|\b(?:is|are)\s+limited$|\bdeadlines?\s*:|\bstart\s+date$`)
@@ -36,18 +32,16 @@ var (
 	// noneRe matches a field that says there is no requirement.
 	noneRe = regexp.MustCompile(`(?i)^(?:none|n/?a)$`)
 
-	// Campus tags after a code repeat what its suffix already says:
-	// "BIOC12H3(UTSC)", "BIOC13H3 [UTSC]".
+	// campusTagRe matches a campus tag that repeats a code's suffix: "BIOC12H3(UTSC)".
 	campusTagRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*(?:UTSC|UTM|UTSG)\s*\)`)
-	// "... to be eligible for 300-level Independent Research" states the
-	// purpose of the requirement, not a further condition.
+	// eligibleRe matches a purpose, not a further condition: " to be eligible for
+	// 300-level Independent Research".
 	eligibleRe = regexp.MustCompile(`(?i)[\s,]*\b(?:in\s+order\s+)?to\s+be\s+eligible\s+for\b[^.;]*`)
-	// "(must) have taken 10.0 credits" -> "completed 10.0 credits", which the
-	// credit phrase understands. "who have completed ..." is left alone.
+	// haveTakenRe matches "have taken 10.0 credits", rewritten to "completed 10.0
+	// credits" for the credit phrase; "who have completed ..." is left alone.
 	haveTakenRe = regexp.MustCompile(`(?i)(\bwho\s+)?\b(?:students\s+)?(?:must\s+)?have\s+(?:completed|taken)\s+((?:at\s+least\s+)?\d)`)
-	// A copula between a credit amount and its qualifiers: "of which 1.0 LIN
-	// credit must be at the 300+ level", "1.0 credit is from EEB/ BIO",
-	// "5.0 of which must be GGR/URB", "0.5 credit must be a BIO course".
+	// creditCopulaRe matches a copula between a credit amount and its qualifiers:
+	// "1.0 credit is from EEB/ BIO".
 	creditCopulaRe = regexp.MustCompile(`\b(\d+\.\d+(?:\s+[A-Z]{3})?(?:\s+(?i:credits?))?)(\s+(?i:of\s+which))?\s+(?i:is|are|(?:must|should|needs?\s+to)\s+be)\s+(?i:an?\s+)?`)
 )
 
@@ -98,5 +92,4 @@ func isPointer(seg string) bool {
 	return pointerRe.MatchString(seg) && !mandatoryRe.MatchString(seg)
 }
 
-// isFiller reports whether a text node is only connective wording.
 func isFiller(text string) bool { return fillerRe.MatchString(text) }

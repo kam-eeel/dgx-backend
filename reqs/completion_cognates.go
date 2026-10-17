@@ -9,35 +9,10 @@ import (
 	"degree-explorer/types"
 )
 
-// Cognate caps (10F2 item 2): a program's courses from other units, capped,
-// read as a union pool (design 3.2) with a limit on the other units' share.
+// Cognate caps: a program's courses from other units, capped, read as a union
+// pool with a limit on the other units' share.
 
-// cognates reads the cognate caps once the routes are placed and the lists
-// read (finish), and returns lists with the lists they add:
-//   - "Students complete 4.0 credits, of which up to 1.0 cognate credit may
-//     be taken in PRT. No other cognates are permitted for a Spanish Minor":
-//     the total's pool is the subject's designator and the cognate's, and
-//     the refusal joins the total (closedCognates);
-//   - "Up to 3.0 credits from approved courses ... taught by other
-//     departments, notably Art History and Philosophy, may be substituted
-//     for the 5.5 credits in CLA courses from Requirement 4" over lists of
-//     those departments' courses, and "Up to 2.0 credits in GRK or LAT may
-//     be substituted for ...": a union of the pool, the lists' courses and
-//     the designators, a limit on each share, and the approved courses the
-//     lists only exemplify kept as the item's route (substitutedShares);
-//   - "Additional 2.5 credits, of which a maximum 1.0 credit may be
-//     environmental courses offered by academic units other than the School
-//     of the Environment (from Group A below). The remainder must be
-//     selected from the following: ..." (remainderShares);
-//   - "3.0 credits from courses offered by the Canadian Studies Program,
-//     including additional courses from Requirements 1 and 2. Up to 1.0
-//     credit of this requirement can also be completed from HST211H1/
-//     PHS211H1, ..." (programShares);
-//   - "Up to 1.0 credit from Cognate Courses:" over the courses, an item
-//     that caps what the total draws on (cognateItem);
-//   - "1.0 credit may be courses on East Asia offered by other departments"
-//     under an item drawing on "Society-Culture Courses on East Asia
-//     Offered by Other Departments": a limit on that list (listCaps).
+// cognates reads the cognate caps and returns lists with the lists they add.
 func (a *compAssembler) cognates(lists []*types.CourseList) []*types.CourseList {
 	a.closedCognates()
 	for _, row := range a.allRows() {
@@ -50,19 +25,17 @@ func (a *compAssembler) cognates(lists []*types.CourseList) []*types.CourseList 
 	return lists
 }
 
-// cognateSubjects maps subject names a cognate rule is written with to the
-// designator of the subject's own courses (beside subjectDesignators).
+// cognateSubjects maps subject names a cognate rule uses to the subject's
+// designator, where subjectDesignators has none.
 var cognateSubjects = map[string]string{"spanish": "SPA"}
 
-// complNoOtherCognatesRe: "No other cognates are permitted for a Spanish
-// Minor". Group: the subject.
+// complNoOtherCognatesRe matches "No other cognates are permitted for a Spanish
+// Minor".
 var complNoOtherCognatesRe = regexp.MustCompile(`(?i)^no\s+other\s+cognates\s+are\s+permitted\s+for\s+an?\s+(\w+(?:\s+\w+)?)\s+(?:minor|major|specialist)(?:\s+program)?$`)
 
-// closedCognates reads a refusal of other cognates under the total
-// (complNoOtherCognatesRe) beside a cap on the one cognate allowed
-// (credits{designators, max_amount}): the total, a plain amount, draws on
-// the subject's designator and the cognate's, and the refusal's row goes.
-// The rule names every course that counts, so the total has no text.
+// closedCognates reads a refusal of other cognates beside a cap on the one
+// allowed: the plain total draws on the subject's and the cognate's
+// designators, and needs no text since the rule names every course.
 func (a *compAssembler) closedCognates() {
 	t := a.total
 	if t == nil || t.r.Req == nil || t.r.Req.Type != types.NodeCredits || t.r.Req.Designators != nil || t.r.Req.Levels != nil || t.r.Req.Courses != nil || t.r.Req.Lists != nil {
@@ -101,30 +74,24 @@ func (a *compAssembler) closedCognates() {
 }
 
 var (
-	// complSubstApprovedRe: "Up to 3.0 credits from approved courses
-	// involving the ancient Greek and Roman civilizations taught by other
-	// departments, notably Art History and Philosophy, may be substituted
-	// for the 5.5 credits in CLA courses from Requirement 4". Groups: the
-	// share, the departments named, the pool's amount, its designator, the
-	// requirement.
+	// complSubstApprovedRe matches approved courses substituted for a pool: "Up
+	// to 3.0 credits from approved courses ... taught by other departments,
+	// notably Art History, may be substituted for the 5.5 credits in CLA
+	// courses from Requirement 4".
 	complSubstApprovedRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+approved\s+courses\s+.+?\btaught\s+by\s+other\s+departments\s*,\s*notably\s+(.+?)\s*,\s*may\s+be\s+substituted\s+for\s+the\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
-	// complSubstDesigsRe: "Up to 2.0 credits in GRK or LAT may be
-	// substituted for the 5.5 credits in CLA courses from Requirement 4".
-	// Groups: the share, the designators, then as above.
+	// complSubstDesigsRe matches designators substituted for a pool: "Up to 2.0
+	// credits in GRK or LAT may be substituted for the 5.5 credits in CLA
+	// courses from Requirement 4".
 	complSubstDesigsRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+([A-Z]{3}(?:\s*(?:,|or|and)\s*[A-Z]{3})*)\s+may\s+be\s+substituted\s+for\s+the\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
-	// complTitledCodesRe: a note of a list by its title: "Art History:
-	// FAH206H1, FAH207H1, ...". Groups: the title, the members.
+	// complTitledCodesRe matches a note of a list by its title: "Art History:
+	// FAH206H1, FAH207H1".
 	complTitledCodesRe = regexp.MustCompile(`^([A-Z][\w&' -]*?):\s*(.+)$`)
 )
 
-// substitutedShares reads row's or(credits{amount, designators: [D]},
-// text{permission}, ...) whose texts substitute courses for the pool's
-// credits (complSubstApprovedRe, complSubstDesigsRe, naming the row's own
-// label, amount and designator): the row draws on a list of its own of
-// the pool, the courses of the departments' lists (notes whose titles the
-// sentence names) and the designators, at the pool's levels, with a limit
-// on each share. The approved courses the lists only exemplify ("notably")
-// stay the row's route.
+// substitutedShares makes a pool whose alternatives substitute courses for it
+// draw on a union of the pool, the named departments' lists and the
+// designators, with a limit on each share. The approved courses the lists only
+// exemplify ("notably") stay the row's route.
 func (a *compAssembler) substitutedShares(row *compRow, lists []*types.CourseList) []*types.CourseList {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || row.r.Label == "" || n == nil || n.Type != types.NodeOr || len(n.Items) != 3 {
@@ -176,14 +143,13 @@ func (a *compAssembler) substitutedShares(row *compRow, lists []*types.CourseLis
 	limits = append([]*types.Requirement{{Kind: types.RequirementLimit, Raw: strings.TrimSuffix(strings.TrimSpace(complClean(approved.Text)), "."),
 		Req: &types.ReqNode{Type: types.NodeCredits, Courses: slices.Clone(codes), MaxAmount: maxAmount(approvedShare)}}}, limits...)
 	own := &types.ReqNode{Type: types.NodeCredits, Designators: slices.Clone(pool.Designators), Levels: slices.Clone(pool.Levels)}
-	// The designators stand in for the pool's credits, so at its levels.
+	// the designators stand in for the pool's credits, so at its levels
 	others := &types.ReqNode{Type: types.NodeCredits, Designators: desigs, Levels: slices.Clone(pool.Levels)}
 	name := unionName(row, lists)
 	lists = append(lists, &types.CourseList{Name: name, Items: []*types.ReqNode{own, {Type: types.NodeCredits, Courses: codes}, others}})
 	row.r.Req = orNode(&types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount, Lists: []string{name}}, approved)
-	// "including 2.0 credits at the 300+-level": of the pool's courses, the
-	// strict reading; the route the row keeps marks the floor (markIncomplete),
-	// so a substitute at the level is Review.
+	// a level floor is on the pool's own courses, the strict reading; the route
+	// kept marks the floor, so a substitute at the level is Review
 	for _, c := range row.children {
 		if c.r.Kind != types.RequirementConstraint {
 			continue
@@ -225,11 +191,9 @@ func unionName(row *compRow, lists []*types.CourseList) string {
 	return name
 }
 
-// listCaps reads an allocation of text "1.0 credit may be courses on East
-// Asia offered by other departments" (complWidenOnRe) as a limit under the
-// total on the list titled as those courses ("Society-Culture Courses on
-// East Asia Offered by Other Departments") that another row draws on: the
-// courses count only through that row, so the sentence caps them.
+// listCaps makes an item "1.0 credit may be courses on East Asia offered by
+// other departments" a limit on the list of those courses that another row
+// draws on: the courses count only through that row.
 func (a *compAssembler) listCaps(lists []*types.CourseList) {
 	if a.total == nil {
 		return
@@ -276,29 +240,21 @@ func (a *compAssembler) drawsOn(r *compRow, name string) bool {
 }
 
 var (
-	// complMaxShareGroupRe: "Additional 2.5 credits, of which a maximum 1.0
-	// credit may be environmental courses offered by academic units other
-	// than the School of the Environment (from Group A below)". Groups: the
-	// amount, the share, the group.
+	// complMaxShareGroupRe matches an amount capping one group's share:
+	// "Additional 2.5 credits, of which a maximum 1.0 credit may be
+	// environmental courses (from Group A below)".
 	complMaxShareGroupRe = regexp.MustCompile(`(?i)^additional\s+(\d+(?:\.\d+)?)\s+credits\s*,\s*of\s+which\s+a\s+maximum\s+(?:of\s+)?(\d+(?:\.\d+)?)\s+credits?\s+may\s+be\s+.+?\s*\(\s*from\s+(group\s+[A-Z])\s+below\s*\)$`)
-	// complRemainderFromRe: "The remainder must be selected from the
-	// following: ENV261H1/ ENV360H1, ..., ENV411H1*, ...". Group: the
-	// members.
+	// complRemainderFromRe matches "The remainder must be selected from the
+	// following: ENV261H1/ ENV360H1".
 	complRemainderFromRe = regexp.MustCompile(`(?i)^the\s+remainder\s+must\s+be\s+selected\s+from\s+the\s+following:\s*(.+)$`)
-	// complOtherApprovedRe: a list's last member a unit decides: ", other
-	// courses approved by School of the Environment".
+	// complOtherApprovedRe matches a list's last member that a unit decides: ",
+	// other courses approved by School of the Environment".
 	complOtherApprovedRe = regexp.MustCompile(`(?i)\s*,\s*(other\s+courses\s+approved\s+by\s+.+)$`)
 )
 
-// remainderShares reads row's or(text{complMaxShareGroupRe}, text{the
-// footnote of starred courses, "*with permission of ..."}, routes...) over
-// its constraint of text "The remainder must be selected from the
-// following: ..." and the group's note ("Group A: ANT364H1, ..., other
-// courses approved by School of the Environment"): the row draws on a list
-// of its own, the remainder's courses (the starred ones a maybe item with
-// the footnote's permission) and the group's list, with a limit on the
-// group's share. A unit's approval of other group courses is the row's
-// route; the other routes stay.
+// remainderShares reads an item capping a group's share over its remainder: it
+// draws on a union of the remainder's courses, starred ones with the footnote's
+// permission, and the group's list, capping the group.
 func (a *compAssembler) remainderShares(row *compRow, lists []*types.CourseList) []*types.CourseList {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || row.r.Label == "" || n == nil || n.Type != types.NodeOr || len(row.children) != 1 || n.Items[0].Type != types.NodeText {
@@ -329,7 +285,7 @@ func (a *compAssembler) remainderShares(row *compRow, lists []*types.CourseList)
 			return lists
 		}
 		if strings.HasSuffix(strings.TrimSpace(part), "*") {
-			starred = append(starred, codes...) // "ENV421Y1/ ENV421H1*": the pair
+			starred = append(starred, codes...) // "ENV421Y1/ ENV421H1*": the star covers the pair
 		} else {
 			plain = append(plain, codes...)
 		}
@@ -363,10 +319,8 @@ func (a *compAssembler) remainderShares(row *compRow, lists []*types.CourseList)
 	return lists
 }
 
-// groupNote returns the list a note of the group's courses ("Group A:
-// ANT364H1, ..., other courses approved by School of the Environment")
-// holds, the note, and the approval of other courses its last member
-// gives, if any.
+// groupNote returns the list the note titled title holds, the note, and the
+// approval of other courses its last member gives, if any.
 func (a *compAssembler) groupNote(title string) (*types.CourseList, string, string, bool) {
 	for _, note := range a.notes {
 		g := complTitledCodesRe.FindStringSubmatch(note)
@@ -388,23 +342,18 @@ func (a *compAssembler) groupNote(title string) (*types.CourseList, string, stri
 }
 
 var (
-	// complProgramCoursesRe: "3.0 credits from courses offered by the
-	// Canadian Studies Program, including additional courses from
-	// Requirements 1 and 2". Groups: the amount, what offers the courses,
-	// the requirements.
+	// complProgramCoursesRe matches "3.0 credits from courses offered by the
+	// Canadian Studies Program, including additional courses from Requirements
+	// 1 and 2".
 	complProgramCoursesRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+from\s+courses\s+(offered\s+by\s+the\s+.+?\s+program)\s*,\s*including\s+additional\s+courses\s+from\s+requirements\s+(\d{1,2}(?:\s*(?:,|and|or)\s*\d{1,2})*)$`)
-	// complAlsoCompletedFromRe: "Up to 1.0 credit of this requirement can
-	// also be completed from HST211H1/ PHS211H1, INS200H1, ...". Groups: the
-	// share, the courses.
+	// complAlsoCompletedFromRe matches "Up to 1.0 credit of this requirement
+	// can also be completed from HST211H1/ PHS211H1".
 	complAlsoCompletedFromRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+this\s+requirement\s+can\s+also\s+be\s+completed\s+from\s*:?\s*(.+)$`)
 )
 
-// programShares reads row's or(text{complProgramCoursesRe},
-// text{complAlsoCompletedFromRe}, routes...): the row draws on a list of its
-// own, the program's courses (a content condition, D5: a maybe item
-// and(credits{}, text{content})), the rows it names (credits{requirements},
-// numbered later) and the courses, with a limit on the courses' share; the
-// routes stay.
+// programShares reads an item of a program's courses, part of which may come
+// from listed courses: it draws on a union of the program's courses (a content
+// condition), the rows it names and the listed ones, capping those.
 func (a *compAssembler) programShares(row *compRow, lists []*types.CourseList) []*types.CourseList {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || row.r.Label == "" || n == nil || n.Type != types.NodeOr || len(n.Items) < 2 || len(row.children) > 0 ||
@@ -446,20 +395,13 @@ func (a *compAssembler) programShares(row *compRow, lists []*types.CourseList) [
 	return lists
 }
 
-// complCognateItemRe: an item capping the cognate courses its note lists:
-// "Up to 1.0 credit from Cognate Courses:". Group: the share.
+// complCognateItemRe matches an item capping the cognate courses its note
+// lists: "Up to 1.0 credit from Cognate Courses:".
 var complCognateItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}\.\s+)?up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+cognate\s+courses\s*:?$`)
 
-// cognateItem reads an item of text complCognateItemRe whose note lists the
-// cognate courses ("SMC219Y1, ..., or another creativity-themed course
-// approved by the program coordinator"), under a total of a plain amount
-// whose other items are closed: the item is a cap, not an allocation (the
-// header: "Up to 1.0 credit may be chosen from approved courses offered by
-// other departments"). The total draws on a list of its own, the courses
-// the other items name and the cognates, with the item a limit on the
-// cognates, and the approval of another course the total's route. The
-// program's own courses the items don't name may count too: the route's
-// text makes the total Review short of the list.
+// cognateItem reads a complCognateItemRe item as a limit, when the other items
+// are closed: the plain total draws on their courses and the cognates, and the
+// route's text keeps it Review short of the list.
 func (a *compAssembler) cognateItem(lists []*types.CourseList) []*types.CourseList {
 	t := a.total
 	if t == nil || t.r.Req == nil || t.r.Req.Type != types.NodeCredits || t.r.Req.Designators != nil || t.r.Req.Levels != nil || t.r.Req.Courses != nil || t.r.Req.Lists != nil {

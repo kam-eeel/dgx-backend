@@ -10,62 +10,52 @@ import (
 	"degree-explorer/types"
 )
 
-// Binding notes (Task 10, last round): notes the corpus report reads as
-// rules (complBindingNotes). Each one is advice (the classifier sees it), a
-// restatement of what the rows encode (it leaves the notes for the raw of
-// the rows that say it, or a list definition whose every course the rows
-// name leaves the notes), a rule the node language can say (encoded here),
-// or one it can't (a text node of the right kind on its row, Review rather
-// than a note). bindingNotes runs in finish once the rows, routes and caps
-// are placed, before the bodies are checked and marked.
+// Binding notes: notes that read as rules, either joined to the raw of the
+// rows that restate them, encoded as rows, or made text alternatives.
 
 var (
-	// complNotFulfilRe: "(Note: this does not fulfil the 400-level
-	// requirement as described in #5 above.)" under an item whose courses
-	// item 5's pool doesn't hold. The group: the item.
+	// complNotFulfilRe matches a note that an item doesn't count toward another:
+	// "this does not fulfil the 400-level requirement as described in #5 above".
 	complNotFulfilRe = regexp.MustCompile(`(?i)^this\s+does\s+not\s+fulfil+\s+the\s+[1-4]00-level\s+requirement\s+as\s+described\s+in\s+#(\d+)\s+above$`)
-	// complCategoryNoteRe: a category label in brackets after a list of an
-	// item's pool, "(History & Society courses)", kept by stripAsides.
+	// complCategoryNoteRe matches a bracketed category label after an item's
+	// pool: "History & Society courses".
 	complCategoryNoteRe = regexp.MustCompile(`^[A-Z][\w&,\s]*\bcourses$`)
-	// complAnnouncedRe: "An Integrative, Inquiry-Based Activity Requirement
-	// must be satisfied." before the sentence that states it. The group: the
-	// requirement's first word.
+	// complAnnouncedRe matches a requirement announced before the sentence that
+	// states it: "An Integrative, Inquiry-Based Activity Requirement must be
+	// satisfied".
 	complAnnouncedRe = regexp.MustCompile(`(?i)^an?\s+(\w+)[\w,\s-]*\s+requirement\s+must\s+be\s+satisfied$`)
-	// complMayCountUpToRe: "Students may count up to 1.0 credits from a
-	// biochemistry research project course taken in 3rd or 4th year to
-	// fulfill the program requirements", a cap the line's next sentence
-	// says again. The group: the amount.
+	// complMayCountUpToRe matches a cap the line's next sentence restates:
+	// "Students may count up to 1.0 credits from a biochemistry research project
+	// course".
 	complMayCountUpToRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+an?\s+[\w\s-]+\s+course\b`)
-	// complHalfMarkRe: "The HIS courses listed with (.50) indicate that they
-	// fulfill half of the Temporal Requirement". The group: the list.
+	// complHalfMarkRe matches what a list's half-credit mark means: "The HIS
+	// courses listed with (.50) indicate that they fulfill half of the Temporal
+	// Requirement". The group is the list's name.
 	complHalfMarkRe = regexp.MustCompile(`(?i)^(?:the\s+)?[A-Z]{3}\s+courses\s+listed\s+with\s+\(\.50\)\s+indicate\s+that\s+they\s+fulfil+\s+half\s+of\s+the\s+(.+)$`)
-	// complMayCountEitherRe: "Students may count either CHM395Y1 or
-	// CHM499Y1 towards Chemistry Major requirements": one of the two
-	// counts. The groups: the courses.
+	// complMayCountEitherRe matches a note that one of two courses counts:
+	// "Students may count either CHM395Y1 or CHM499Y1 towards".
 	complMayCountEitherRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+either\s+(` + codePat + `)\s+or\s+(` + codePat + `)\s+towards?\b`)
-	// complSeekApprovalRe: "Other 300+ level courses with American content
-	// may be allowed; students should seek early approval of program
-	// credit for such courses".
+	// complSeekApprovalRe matches an approval route for other courses: "Other
+	// 300+ level courses with American content may be allowed; students should
+	// seek early approval".
 	complSeekApprovalRe = regexp.MustCompile(`(?i)^other\s+[1-4]00\+\s+level\s+courses\s+with\s+.+\bmay\s+be\s+allowed;\s+students\s+should\s+seek\s+(?:early\s+)?approval\b`)
-	// complNotExhaustiveRe: the Review alternative openLists gives a pool of
-	// lists a note calls not exhaustive.
+	// complNotExhaustiveRe matches the Review alternative openLists gives a
+	// non-exhaustive list: "This list of eligible courses is not exhaustive".
 	complNotExhaustiveRe = regexp.MustCompile(`(?i)^this\s+list\s+of\s+eligible\s+courses\s+is\s+not\s+exhaustive\b`)
-	// complAlreadyChosenRe: a distribution summary's bullet, "An additional
-	// 1.0 credit in the single language already chosen, or 1.0 credit in
-	// non-language courses related to your chosen language of study". The
-	// group: the amount.
+	// complAlreadyChosenRe matches a distribution bullet for a third language
+	// credit: "An additional 1.0 credit in the single language already chosen, or
+	// 1.0 credit in non-language courses".
 	complAlreadyChosenRe = regexp.MustCompile(`(?i)^an\s+additional\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+the\s+single\s+language\s+already\s+chosen,\s+or\s+\d+(?:\.\d+)?\s+credits?\s+in\s+non-language\s+courses\b`)
-	// complRemainingListRe: a summary's bullet, "The remaining 1.5 credits
-	// in elective courses chosen from a list of eligible electives or any
-	// course with European content approved by the Program Coordinator".
-	// The group: the amount.
+	// complRemainingListRe matches a distribution bullet for credits from a
+	// list: "The remaining 1.5 credits in elective courses chosen from a list".
 	complRemainingListRe = regexp.MustCompile(`(?i)^the\s+remaining\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+elective\s+courses\s+chosen\s+from\s+a\s+list\b`)
-	// complMistypedCodeRe: a token shaped like a code that isn't one,
-	// "CAR32H1", "HIS49SH1".
+	// complMistypedCodeRe matches a token shaped like a code, which may not be
+	// one: "CAR32H1".
 	complMistypedCodeRe = regexp.MustCompile(`\b[A-Z]{3}[0-9][0-9A-Z]{0,3}[HY][0-9]\b`)
 )
 
-// bindingNotes reads the notes above (see the file comment).
+// bindingNotes encodes or drops the binding notes left once the rows, routes
+// and caps are placed.
 func (a *compAssembler) bindingNotes(lists []*types.CourseList) []*types.CourseList {
 	a.mistypedMembers()
 	lists = a.restatedListDefs(lists)
@@ -74,7 +64,6 @@ func (a *compAssembler) bindingNotes(lists []*types.CourseList) []*types.CourseL
 	a.eitherCounts()
 	a.noteRoutes()
 	a.distributionBullets()
-	// completion_restated.go
 	a.restatedOmission()
 	a.cognateRouteTotal()
 	a.enrolledException()
@@ -117,10 +106,8 @@ func namedCodes(n *types.ReqNode) []string {
 	return out
 }
 
-// mistypedMembers reads a list definition kept as a note because a member
-// is a code the calendar mistyped ("Caribbean Studies: CAR120Y1/ ... /
-// CAR32H1/ ...", followingCodes): its row's pool has the other codes, and
-// the line is a text alternative of the row, so a student who took the
+// mistypedMembers makes a list definition kept as a note because a member is
+// mistyped ("CAR32H1") a text alternative of its row: a student who took the
 // course meant is Review, not NotMet.
 func (a *compAssembler) mistypedMembers() {
 	for _, d := range a.listDefs {
@@ -132,21 +119,10 @@ func (a *compAssembler) mistypedMembers() {
 	}
 }
 
-// restatedListDefs reads the definitions (binding by their wording: advice
-// stays a note) of lists no row uses by name:
-//   - whose courses the rows name all the same (a group's codes in a pool
-//     and a cap, orElse; required courses; a language's courses in an
-//     item's or): the definition is dropped, its courses are in the rows;
-//   - whose members at a pool's levels are exactly that pool's courses,
-//     where the pool's row names the list ("Language Courses" in "an
-//     appropriate language course ... or a higher level language course"):
-//     the pool draws on the list at those levels, which joins the lists.
-//
-// Any other stays a note as written: a list no row names in a program whose
-// items fill the total can add no course (ASMIN1058's "Core Courses", the
-// Major's and Specialist's), and the corpus report reads it so.
-//
-// It returns the lists with any it adds.
+// restatedListDefs drops the binding definitions of lists no row uses by
+// name whose courses the rows already name, and makes a pool whose courses
+// are the list's members at its levels draw on the list instead. Any other
+// stays a note as written. It returns the lists with any it adds.
 func (a *compAssembler) restatedListDefs(lists []*types.CourseList) []*types.CourseList {
 	named := map[string]bool{}
 	var texts []string
@@ -196,10 +172,9 @@ func (a *compAssembler) restatedListDefs(lists []*types.CourseList) []*types.Cou
 	return lists
 }
 
-// listPool finds the pool of an item whose raw names the list (stem) and
-// whose courses are the list's members (codes) at the pool's levels, and
-// makes it draw on the list (named name, or the title) at those levels: the
-// list it returns. Nil when there is none.
+// listPool makes the pool of an item whose raw names the list (stem), and
+// whose courses are the list's members at the pool's levels, draw on the list.
+// It returns that list, or nil.
 func (a *compAssembler) listPool(d *compListDef, codes []string, stem, name string) *types.CourseList {
 	if name == "" {
 		name = strings.TrimSpace(d.title)
@@ -230,17 +205,15 @@ func (a *compAssembler) listPool(d *compListDef, codes []string, stem, name stri
 	return nil
 }
 
-// restatedRowNotes drops a row's notes that its raw holds and its rows
-// say: a category label in brackets ("(History & Society courses)"),
-// which names part of the row's pool; "this does not fulfil the 400-level
-// requirement as described in #5 above", when item 5's pool holds none of
-// the row's courses or its lists' (each course counts toward one row).
+// restatedRowNotes drops a row's notes that its raw holds and its rows say: a
+// bracketed category label, or "this does not fulfil ... #5 above" when item
+// 5's pool holds none of the row's courses.
 func (a *compAssembler) restatedRowNotes(lists []*types.CourseList) {
 	byName := map[string]*types.CourseList{}
 	for _, l := range lists {
 		byName[l.Name] = l
 	}
-	// The courses n names, its pools' lists' courses too; all is false when
+	// codes returns the courses n names, its pools' lists' too; all is false when
 	// a pool takes courses it doesn't name (a designator's, any courses).
 	codes := func(n *types.ReqNode) (out []string, all bool) {
 		out, all = namedCodes(n), true
@@ -279,11 +252,7 @@ func (a *compAssembler) restatedRowNotes(lists []*types.CourseList) {
 }
 
 // restatedProgramNotes joins to their rows' raw the program notes that
-// restate them: a requirement announced before the sentence that states it
-// ("An Integrative, Inquiry-Based Activity Requirement must be satisfied");
-// a cap the line's next sentence says again, which is the row
-// (complMayCountUpToRe); what the half-credit mark of a list means, which
-// the list's weights say (complHalfMarkRe).
+// restate them: complAnnouncedRe, complMayCountUpToRe and complHalfMarkRe.
 func (a *compAssembler) restatedProgramNotes(lists []*types.CourseList) {
 	rows := a.allRows()
 	a.notes = slices.DeleteFunc(a.notes, func(n string) bool {
@@ -334,9 +303,8 @@ func (a *compAssembler) restatedProgramNotes(lists []*types.CourseList) {
 	})
 }
 
-// eitherCounts reads complMayCountEitherRe: at most one of the two courses
-// counts, a limit of one's weight under the total ("Either MUS120Y1 or
-// MUS220Y1 can be counted", listBelowMissing).
+// eitherCounts reads complMayCountEitherRe as a limit of one course's weight
+// on the two, under the total.
 func (a *compAssembler) eitherCounts() {
 	if a.total == nil {
 		return
@@ -352,11 +320,8 @@ func (a *compAssembler) eitherCounts() {
 	})
 }
 
-// noteRoutes places approval routes left as notes where they widen a pool:
-// other courses of the program's content a student may seek approval for
-// (complSeekApprovalRe) sit beside every Review alternative that calls the
-// eligible courses' list not exhaustive (openLists), which they explain.
-// (Approved cognate courses toward the total are cognateRouteTotal's.)
+// noteRoutes adds a complSeekApprovalRe note as a permission alternative
+// beside every not-exhaustive Review alternative, which it explains.
 func (a *compAssembler) noteRoutes() {
 	a.notes = slices.DeleteFunc(a.notes, func(n string) bool {
 		t := a.clean(n)
@@ -379,16 +344,10 @@ func (a *compAssembler) noteRoutes() {
 	})
 }
 
-// distributionBullets reads the bullets under a distribution summary that
-// distributionSummary made notes ("The distribution of the 7.0 credits is as
-// follows:" over "- EUR498H1 - Special Topics in European Affairs: European
-// Union, worth 0.5 credit"): a bullet whose courses the items name, or
-// whose remaining credits an item draws from a list, joins those items'
-// raw. "An additional 1.0 credit in the single language already chosen, or
-// 1.0 credit in non-language courses related to your chosen language of
-// study" (complAlreadyChosenRe) adds a rule: the third language item is in
-// the language of the first two (progressiveSequence), a constraint
-// or(and(first, second, third) per language, text{content: the bullet}).
+// distributionBullets reads the bullets under a distribution summary: one
+// whose courses the items name, or whose remaining credits an item draws from
+// a list, joins those items' raw; complAlreadyChosenRe adds a same-language
+// constraint (sameLanguage).
 func (a *compAssembler) distributionBullets() {
 	lead := slices.IndexFunc(a.lines, func(l string) bool { return complDistributionRe.MatchString(complClean(strings.TrimSpace(l))) })
 	if lead < 0 {
@@ -448,13 +407,9 @@ func (a *compAssembler) distributionBullets() {
 	}
 }
 
-// sameLanguage builds the constraint of complAlreadyChosenRe: the first two
-// years' language blocks (languageBlocks) and the third, the item whose
-// head is the third block's lead, an or with one alternative per language
-// line and the non-language alternative last (oneLanguage). Each language
-// with all three is and(its first, its second, its third alternative); the
-// bullet is the content alternative. Nil when the blocks or the item don't
-// line up.
+// sameLanguage builds the constraint of complAlreadyChosenRe: an or with, per
+// language, and(its first, second and third year alternatives), and the
+// bullet as content text. Nil when the blocks or the third item don't line up.
 func (a *compAssembler) sameLanguage(amount, bullet string) *types.ReqNode {
 	blocks := a.languageBlocks(3)
 	if len(blocks) < 3 || fmtAmount(blocks[2].amount) != amount {

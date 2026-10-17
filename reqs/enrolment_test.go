@@ -417,13 +417,9 @@ func TestLinkEnrolmentCatalog(t *testing.T) {
 	}
 }
 
-// TestLinkEnrolmentCompletion reads an enrolment average over "credits
-// that count toward the program" (ASMAJ1618, shortened) as an average over
-// the program's completion rows that claim courses: not the total, which
-// has no pool of its own. While one of those rows is text (here "4.0
-// credits from Groups A-D ..." without the groups), it is or(average, the
-// sentence): Review, not NotMet. Without completion rows it stays text. In
-// the corpus every row of ASMAJ1618 is read, and the average is bare.
+// TestLinkEnrolmentCompletion reads an average over "credits that count toward
+// the program" (ASMAJ1618, shortened) as one over the completion rows that claim
+// courses: or(average, sentence) while one is text; text with no rows.
 func TestLinkEnrolmentCompletion(t *testing.T) {
 	enrol := limitedLead + "**For students who have completed 9.0 credits:**\n" +
 		"• A minimum grade average of 77% in 3.0 credits that count toward the program, including 1.0 credit from: ETH201H1, ETH210H1, ETH220H1, ETH230H1, PHL265H1, PHL271H1, PHL275H1, and POL200Y1."
@@ -557,7 +553,7 @@ func TestVariableText(t *testing.T) {
 	}
 }
 
-// Fixes from the 2026-10-14 audit, one case each.
+// One-off fixes, one case each.
 func TestEnrolmentAuditFixes(t *testing.T) {
 	tests := []struct{ name, raw, want string }{
 		{"a cap inside a pool is a share of it",
@@ -675,8 +671,8 @@ func TestLinkEnrolmentAuditFixes(t *testing.T) {
 	assertJSON(t, german.Enrolment.Req, jAnd(jCr(4), jOr(`{"type":"not","items":[`+jP("Specialist, Major, or Minor in German", "ASMIN1163")+`]}`,
 		jT("ambiguity", `"Specialist, Major, or Minor in German" may also cover the Al and Malka Green Yiddish Program Minor`))))
 
-	// Second pass: equivalents reach pools and campus-tagged exclusions, and
-	// a shared equivalent can't fill both halves of a pair.
+	// Equivalents reach pools and campus-tagged exclusions, and a shared
+	// equivalent can't fill both halves of a pair.
 	eq := &types.Program{Code: "ASSPE2575", Type: "Specialist", Title: "Neuroscience Specialist (Science Program)",
 		Enrolment: ParseEnrolment(limitedLead + "_Completed Courses_\nThe following courses or their equivalents must be completed:\n" +
 			"- BCH210H1\n- ( MAT135H1, MAT136H1)\n- 0.5 credit from BIO220H1, PSL300H1")}

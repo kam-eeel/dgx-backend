@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleLeftovers checks the leftover readings
-// (completion_leftovers.go).
+// TestCompletionRuleLeftovers checks the leftover readings.
 func TestCompletionRuleLeftovers(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a lead naming the courses on lines of one course and its title: their pool; one line of all courses at a level: that pool (ASMAJ1240, shortened)",

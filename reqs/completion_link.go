@@ -12,19 +12,11 @@ import (
 	"degree-explorer/types"
 )
 
-// Linking program completion (docs/schema.md, "How completion is produced",
-// step 2): the steps that need the catalogue.
+// Linking program completion: the steps that need the catalogue.
 
-// linkCompletionDesignators keeps in completion filters only designators
-// the catalogue has, or that the program's own text names as a course's
-// prefix ("PCJ-coded courses" beside PCJ210H1): "CSC/ECE courses" counts
-// CSC courses; "RLG, JAR, JCR, ..." drops JAR, which no course in the
-// catalogue has, from the designators a pool counts or excludes. The row
-// notes the designators it dropped. A pool left with
-// no designator and no listed course would count any course, so it becomes
-// text (Review), and the Review markers are set again on the counts it is
-// part of (markIncomplete). A limit left with none keeps them: a limit must
-// stay a credits node, and a cap on courses that don't exist caps nothing.
+// linkCompletionDesignators keeps in completion filters only designators the
+// catalogue has or the program's text names as a prefix, noting those dropped.
+// A pool left with nothing becomes text (Review); a limit keeps its credits node.
 func linkCompletionDesignators(courses []*types.Course, programs []*types.Program) {
 	known := map[string]bool{}
 	for _, c := range courses {
@@ -53,7 +45,6 @@ func linkCompletionDesignators(courses []*types.Course, programs []*types.Progra
 					n.Items[i] = fix(it)
 				}
 				if n.ExcludeDesignators != nil {
-					// Excluding a designator no course has excludes nothing.
 					keep := slices.DeleteFunc(slices.Clone(n.ExcludeDesignators), func(d string) bool { return !known[d] && !named[d] })
 					for _, d := range n.ExcludeDesignators {
 						if !slices.Contains(keep, d) {
@@ -102,8 +93,8 @@ func linkCompletionDesignators(courses []*types.Course, programs []*types.Progra
 	}
 }
 
-// completionTotal reports whether row 1 is a header total: an allocation at
-// the top with a credits body and child allocations.
+// completionTotal reports whether row 1 is a header total: a top allocation
+// with a credits body and child allocations.
 func completionTotal(c *types.Completion) bool {
 	if len(c.Requirements) == 0 {
 		return false
@@ -118,26 +109,16 @@ func completionTotal(c *types.Completion) bool {
 // ---- Code repair ----
 
 var (
-	// A code missing its campus digit: "CDN307H", "HIS283Y (.50)". Not
+	// complNoCampusRe matches a code missing its campus digit: "CDN307H". Not
 	// "CSC300H-level".
 	complNoCampusRe = regexp.MustCompile(`\b([A-Z]{3}\d{3}[HY])\b(?:[^-+]|$)`)
-	// A code with a two-letter designator: "HS324H1" (HIS324H1).
+	// complShortDesigRe matches a code with a two-letter designator: "HS324H1".
 	complShortDesigRe = regexp.MustCompile(`\b([A-Z]{2})(\d{3}[HY]\d)\b`)
 )
 
 // repairCompletion repairs catalogue-confirmed codes in the raw text, as for
-// requisites and enrolment, and parses it again, keeping Raw:
-//   - a code without its campus digit is the St. George course when the
-//     catalogue has it ("CDN307H" is CDN307H1; "BIO150Y" stays, as no
-//     BIO150Y1 exists);
-//   - a code without H/Y and campus digit is the one course that matches
-//     ("ITA340," is ITA340H1; repairCatalogCodes);
-//   - a two-letter designator is the catalogue code it is one letter short
-//     of, when exactly one such code has a designator another code on the
-//     same line has: "HS324H1" among HIS codes is HIS324H1 (HPS324H1 also
-//     exists, but no HPS course is on that line).
-//
-// Uncatalogued codes ("CSB332H") and graduate codes ("GLA2050H1") are kept.
+// requisites and enrolment, and parses it again, keeping Raw. Uncatalogued
+// ("CSB332H") and graduate codes are kept.
 func repairCompletion(c *types.Completion, known map[string]bool) *types.Completion {
 	if c == nil {
 		return nil
@@ -151,8 +132,8 @@ func repairCompletion(c *types.Completion, known map[string]bool) *types.Complet
 	return r
 }
 
-// repairCompletionCodes returns s with the repairs repairCompletion makes,
-// and whether there were any.
+// repairCompletionCodes returns s with repairCompletion's repairs, and whether
+// there were any.
 func repairCompletionCodes(s string, known map[string]bool) (string, bool) {
 	changed := false
 	lines := strings.Split(s, "\n")
@@ -199,11 +180,9 @@ func repairCompletionCodes(s string, known map[string]bool) (string, bool) {
 
 // ---- Single-topic special-topics courses ----
 
-// linkCodeRanges keeps, of the codes a range in a row's raw spans
-// (codeRange: "( SOC317H1 – SOC354H1; ...)"), those the catalogue has and
-// the ends, in each pool that holds the whole span. The Review markers
-// don't change (remark would take a cap's own permission sentence, the
-// row's raw, for one).
+// linkCodeRanges keeps, of the codes a range in a row's raw spans, those the
+// catalogue has and the ends, in each pool holding the whole span. The Review
+// markers stay: remark would take a cap's permission sentence for one.
 func linkCodeRanges(c *types.Completion, titles map[string]string) {
 	for _, m := range complCodeRangeRe.FindAllStringSubmatch(completionRaws(c), -1) {
 		span, ends := codeRange(m[1], m[2]), m[1:3]
@@ -224,7 +203,7 @@ func linkCodeRanges(c *types.Completion, titles map[string]string) {
 	}
 }
 
-// completionRaws returns the raw of c's rows, one distinct raw a line.
+// completionRaws returns the distinct raws of c's rows, one a line.
 func completionRaws(c *types.Completion) string {
 	var raws []string
 	for _, r := range c.Requirements {
@@ -235,36 +214,17 @@ func completionRaws(c *types.Completion) string {
 	return strings.Join(raws, "\n")
 }
 
-// complTopicsTitleRe is a catalogue title of a special-topics course, whose
-// content changes with each offering: "Topics in History", "Special Topics
-// in Anthropology", "Selected Topics in International Studies", "Advanced
-// Topics in Canadian History". "Research Topic in Astronomy" isn't one.
+// complTopicsTitleRe matches a catalogue title of a special-topics course,
+// whose content changes with each offering: "Topics in History".
 var complTopicsTitleRe = regexp.MustCompile(`(?i)^(?:(?:advanced|selected|special|open|current)\s+)*topics\b`)
 
-// linkTopics makes a special-topics course listed with one topic a "maybe"
-// (design 3.2), as the parser does for a course listed with two or more
-// (topicCodes): "HIS389H1 (Hungarian History)", where the catalogue titles
-// HIS389H1 "Topics in History", counts only in an offering on that topic,
-// which the transcript doesn't show. A pool becomes or(the pool without
-// it, and(the pool, text)); a required course, and(course, text). Only the
-// catalogue tells a topic from a description: "EEB365H1 (applied
-// conservation biology)" restates its title, "Topics in Applied
-// Conservation Biology", and stays a course. A pool that can't make its
-// amount without the course is left alone. It reports whether a row
-// changed.
-//
-// A special-topics course on a named list whose membership depends on the
-// topic is the parser's: "ANT390H1 may not be available in Course Group B,
-// depending on the topic" (ASMAJ1510) makes it the list's maybe item
-// and(credits{courses: [it]}, text) (namedLists, topicMember). ASSPE0652's
-// "HIS389H1*****" with "Some “Topics in History” ... Various topics each
-// year" is the parser's too: a maybe item of the Methodology Courses list
-// (starredTopics).
+// linkTopics makes a special-topics course listed with one topic a maybe, as
+// the parser does for two or more: or(pool without it, and(pool, text)), or
+// and(course, text). It reports whether a row changed.
 func linkTopics(c *types.Completion, titles map[string]string) bool {
 	changed := false
 	for _, r := range c.Requirements {
-		// A limit stays a credits node: a course it caps is capped whatever
-		// its topic.
+		// a limit caps a course whatever its topic
 		if r.Req == nil || r.Kind == types.RequirementLimit {
 			continue
 		}
@@ -278,9 +238,7 @@ func linkTopics(c *types.Completion, titles map[string]string) bool {
 		for code, ms := range mentions {
 			topic := strings.TrimSpace(complTopicParenRe.FindStringSubmatch(ms[0])[2])
 			title := titles[code]
-			// Two or more topics are the parser's (topicCodes); a title that
-			// isn't a topics course's, or a bracket that isn't a topic, leaves
-			// the course as it is.
+			// two or more topics are the parser's
 			if len(ms) != 1 || !complTopicsTitleRe.MatchString(title) || !isTopic(topic, title) {
 				continue
 			}
@@ -299,9 +257,7 @@ func linkTopics(c *types.Completion, titles map[string]string) bool {
 }
 
 // isTopic reports whether a bracket after a special-topics course names a
-// topic: words starting with a capital ("Hungarian History"), not the
-// course's own title or the part after "Topics in" ("Topics in Critical
-// Zone Processes", "applied conservation biology").
+// topic, not the course's own title: "Hungarian History".
 func isTopic(topic, title string) bool {
 	if topic == "" || !complTitleWordsRe.MatchString(topic) || topic[0] < 'A' || topic[0] > 'Z' {
 		return false
@@ -310,8 +266,8 @@ func isTopic(topic, title string) bool {
 	return !strings.Contains(" "+t+" ", " "+n+" ")
 }
 
-// poolsWithout reports whether every pool in n that lists code can still
-// make its amount without it.
+// poolsWithout reports whether every pool in n listing code can still make its
+// amount without it.
 func poolsWithout(n *types.ReqNode, code string) bool {
 	ok := true
 	walkReq(n, func(p *types.ReqNode) {
@@ -331,33 +287,19 @@ func poolsWithout(n *types.ReqNode, code string) bool {
 	return ok
 }
 
-// complOtherTopicsRe: "Some offerings of other POL Special Topics courses
-// (that cover Canadian politics) may also be eligible as determined by the
-// department" (ASMAJ2015), a permission route on a plain pool.
+// complOtherTopicsRe matches a permission over a designator's other topics
+// courses: "Some offerings of other POL Special Topics courses ... may also be
+// eligible".
 var complOtherTopicsRe = regexp.MustCompile(`(?i)\bother\s+([A-Z]{3})\s+(?:special\s+)?topics\s+courses\b.*\bmay\s+also\s+be\s+eligible\b`)
 
-// complTopicsRouteRe: a permission route the parser bounded by its
-// designator (boundRoutes) that names only that designator's special-topics
-// courses: "Some offerings of other POL Special Topics courses ...", "any
-// 400-level finance-themed RSM special topics course as determined by the
-// Director", "any accounting themed RSM special topics course ...". Not
-// "any marketing-themed RSM special topics and RSM Summer Abroad courses":
-// the catalogue doesn't mark summer-abroad courses, so that route keeps the
-// designator bound.
+// complTopicsRouteRe matches a designator's special-topics courses in a route:
+// "RSM special topics course". Not "RSM special topics and RSM Summer Abroad
+// courses": the catalogue doesn't mark summer-abroad courses.
 var complTopicsRouteRe = regexp.MustCompile(`(?i)\b((?-i:[A-Z]{3}))\s+(?:special\s+)?topics\s+courses?\b`)
 
-// linkOtherTopics bounds a permission that names a designator's
-// special-topics courses (design 3.3, its own example) by the courses the
-// catalogue titles "Topics in …" (complTopicsTitleRe), which the parser
-// can't see:
-//   - or(pool, text{permission}) becomes or(pool, and(the pool plus the
-//     designator's special-topics courses, text));
-//   - the parser's designator bound (boundRoutes) or(pool, and(credits{DES,
-//     levels, the pool's courses}, text)) narrows to and(the pool plus DES's
-//     special-topics courses at those levels, text).
-//
-// A student with none of them is NotMet, not Review. It reports whether a
-// row changed.
+// linkOtherTopics bounds a permission naming a designator's special-topics
+// courses by the courses the catalogue titles "Topics in": and(the pool plus
+// those courses, text). It reports whether a row changed.
 func linkOtherTopics(c *types.Completion, byDesignator map[string][]string) bool {
 	changed := false
 	for _, r := range c.Requirements {
@@ -411,18 +353,9 @@ func linkOtherTopics(c *types.Completion, byDesignator map[string][]string) bool
 
 // ---- List members the catalogue doesn't have ----
 
-// linkListCodes checks the codes p's named lists hold against the catalogue
-// (titles). A code whose designator no course has ("GGE372H1" in
-// ASMIN1252's Group A) is a typo when exactly one catalogued code is one
-// character away (GGR372H1), this list doesn't already hold it, and a
-// program of p's area lists it on a list of the same name (the Major's
-// Group A has GGR372H1): the member becomes that code, as in code repair,
-// in the rows' pools too that copied the list's codes (a bounded route's
-// wider pool), and the program notes the reading (the raw keeps the typo).
-// Otherwise the code stays (an old or another faculty's course: "ECE419H1",
-// "HST211H1") and the program notes that the calendar doesn't have it. A
-// code with a known designator that the catalogue lacks (a retired course)
-// is left alone. It reports whether p changed.
+// linkListCodes fixes a list code with an unknown designator when one
+// catalogued code is a character away and a same-area program's same-named
+// list has it; otherwise it notes the code is missing. It reports a change.
 func linkListCodes(p *types.Program, programs []*types.Program, titles map[string]string) bool {
 	c := p.Completion
 	if c.Lists == nil {
@@ -504,24 +437,8 @@ func oneApart(a, b string) bool {
 // ---- Equivalents ----
 
 // linkCompletionEquivalents reads the catalogue's equivalents, as enrolment
-// does (enrolCatalog.linkEquivalents):
-//   - "X or equivalent" is X or one of the courses X excludes
-//     (linkEquivalent);
-//   - "Successful completion of the following four courses (or their
-//     equivalents):" gives each course of the rows after it its exclusions
-//     as alternatives (withEquivalents), and joins their raw instead of
-//     being a note; a text alternative saying a designator's "course
-//     equivalents" count ("... would be able to use any completed RSM course
-//     equivalents ...") is then encoded, and goes (the row's raw holds it);
-//   - "We will accept equivalent/exclusion statistics courses from UTM/UTSC
-//     in lieu of PSY201H1. Please contact us to verify ...", an
-//     alternative on the row requiring PSY201H1, becomes PSY201H1's UTM and
-//     UTSC exclusions, which the department confirms: or(PSY201H1,
-//     and(or(PSY201H5, ...), text{permission})). The sentence's text
-//     alternative goes when every course it names in the row got some;
-//     otherwise it stays.
-//
-// It reports whether a row changed.
+// does: "X or equivalent", "(or their equivalents)" leads, and accepted
+// UTM/UTSC equivalents. It reports whether a row changed.
 func (cat *enrolCatalog) linkCompletionEquivalents(c *types.Completion) bool {
 	changed, applied := false, false
 	theirs := theirEquivalentsRe.FindStringIndex(c.Raw)
@@ -535,13 +452,10 @@ func (cat *enrolCatalog) linkCompletionEquivalents(c *types.Completion) bool {
 			if at := strings.Index(c.Raw, rawHead(r)); at > theirs[1] {
 				r.Req = cat.withEquivalents(r.Req, nil, nil, false)
 				applied = true
-				// The lead is the sentence the row's alternatives come from.
 				lead := c.Raw[strings.LastIndex(c.Raw[:theirs[0]], "\n")+1:]
 				lead, _, _ = strings.Cut(lead, "\n")
 				r.Raw += "\n" + strings.TrimSpace(lead)
-				// "... would be able to use any completed RSM course
-				// equivalents ..." says what the equivalents now encode: not
-				// a text alternative (Review), and the row's raw holds it.
+				// the text alternative is encoded now, and the row's raw holds it
 				codes := nodeCodes(r.Req)
 				r.Req = tidy(dropText(r.Req, func(t *types.ReqNode) bool {
 					m := complDesigEquivalentsRe.FindStringSubmatch(t.Text)
@@ -587,7 +501,7 @@ func (cat *enrolCatalog) linkCompletionEquivalents(c *types.Completion) bool {
 		}
 	}
 	if applied {
-		// The lead is encoded now: not a note any more.
+		// the lead is encoded now: not a note any more
 		c.Notes = slices.DeleteFunc(c.Notes, theirEquivalentsRe.MatchString)
 		if len(c.Notes) == 0 {
 			c.Notes = nil
@@ -596,10 +510,8 @@ func (cat *enrolCatalog) linkCompletionEquivalents(c *types.Completion) bool {
 	return changed
 }
 
-// halfEquivalents makes a full-year course among the confirmed equivalents
-// of a half course (ECO220Y5 for PSY201H1) count 0.5 of its weight, as the
-// parser reads a Y course that stands for an H course (credits{0.5,
-// [ECO220Y1], weight 0.5}): the rest of it can count elsewhere.
+// halfEquivalents makes a full-year course among a half course's confirmed
+// equivalents count 0.5 of its weight: the rest of it can count elsewhere.
 func halfEquivalents(n *types.ReqNode) {
 	walkReq(n, func(a *types.ReqNode) {
 		if a.Type != types.NodeAnd || !slices.ContainsFunc(a.Items, func(t *types.ReqNode) bool {
@@ -624,13 +536,8 @@ func halfEquivalents(n *types.ReqNode) {
 	})
 }
 
-// halfSubstitutes gives the full-year courses beside the half course code
-// in an or that code's catalogue exclusions name a weight of 0.5, as
-// halfEquivalents gives its campus equivalents: in "PSY201H1 (or one of
-// ECO220Y1/ EEB225H1/ ...)", where ECO220Y5 stands in for PSY201H1 as 0.5
-// credit, so does ECO220Y1 (ASMAJ1160, ASMIN1160; the parser already splits
-// it where it stands in for two half courses, splitYAlternatives). The rest
-// of the course can count elsewhere (design 2, weight).
+// halfSubstitutes gives the full-year courses beside half course code in an or
+// a weight of 0.5 when code's catalogue exclusions name them.
 func (cat *enrolCatalog) halfSubstitutes(n *types.ReqNode, code string) {
 	excl := cat.exclusions[code]
 	if excl == nil {
@@ -654,9 +561,8 @@ func (cat *enrolCatalog) halfSubstitutes(n *types.ReqNode, code string) {
 	})
 }
 
-// complDesigEquivalentsRe: "Students who move from the Rotman Commerce
-// program (BCOM) ... would be able to use any completed RSM course
-// equivalents towards the completion of the Certificate" (ASCER2400).
+// complDesigEquivalentsRe matches "would be able to use any completed RSM
+// course equivalents".
 var complDesigEquivalentsRe = regexp.MustCompile(`(?i)\bwould\s+be\s+able\s+to\s+use\s+any\s+completed\s+([A-Z]{3})\s+course\s+equivalents\b`)
 
 // dropText removes from n's or nodes the text alternatives drop matches.
@@ -681,12 +587,8 @@ func complNodeKey(n *types.ReqNode) string {
 
 // ---- Review markers again ----
 
-// remark sets the Review markers of c again after Link changed its bodies
-// (markIncomplete): a text alternative Link encoded (a bounded "maybe", a
-// copied row) may leave a count it marked complete, and a pool it turned
-// into text leaves one incomplete. It takes the markers off first: the
-// header text on the total, and the raw text on a constraint, each the
-// second item of an or (markIncomplete's mark).
+// remark sets c's Review markers again after Link changed its bodies, taking
+// markIncomplete's old markers off first.
 func remark(c *types.Completion) {
 	total := completionTotal(c)
 	for _, r := range c.Requirements {
@@ -702,24 +604,9 @@ func remark(c *types.Completion) {
 
 // ---- The completion steps of Link, in order ----
 
-// linkCompletions runs the completion steps of Link that read the catalogue
-// or the other programs, after code repair (repairCompletion) and the
-// designator check (linkCompletionDesignators):
-//  1. single-topic special-topics courses (linkTopics) and a permission over
-//     a designator's special-topics courses (linkOtherTopics, which also
-//     narrows the parser's designator bound, boundRoutes);
-//  2. equivalents (linkCompletionEquivalents), and the focuses a row names
-//     without their code, by title (linkFocusPrograms);
-//
-// then, each step for every program before the next:
-//  3. a pool widened by another program's (linkOtherProgramPool), and a
-//     pool of another program's list (linkProgramList);
-//  4. inheritance (linkInheritance), copying rows the steps above finished;
-//  5. requirement, list and overlap references (checkRequirementRefs);
-//
-// and sets the Review markers again on the programs it changed (remark).
-// Link resolves program names in the exclusions (linkCompletionExclusions)
-// after the enrolment step, which tells it the programs enrolment requires.
+// linkCompletions runs the completion steps of Link that read the catalogue or
+// other programs. Each loop runs for every program before the next: inheritance
+// copies rows the steps above finished. Changed programs are remarked.
 func linkCompletions(courses []*types.Course, programs []*types.Program, titleIdx titleIndex, cat *enrolCatalog) {
 	titles := map[string]string{}
 	topics := map[string][]string{} // designator -> its special-topics courses
@@ -769,13 +656,8 @@ func linkCompletions(courses []*types.Course, programs []*types.Program, titleId
 }
 
 // slashWarnings returns a warning for each "/" cap whose courses don't all
-// exclude each other in the catalogue, then one line with the count: the
-// parser caps a slash group in a pool at its larger weight ("CSC438H1/
-// MAT309H1": only one counts), which a pair of exclusions confirms; where
-// the catalogue doesn't, the "/" may be a plain "or" and the cap is worth a
-// look. A "/" cap is a limit with only courses (two or more) and
-// max_amount their larger weight. The lines follow the programs' order, so
-// two runs print the same.
+// exclude each other in the catalogue, where the "/" may be a plain "or",
+// then a count. Programs' order keeps the output stable.
 func (cat *enrolCatalog) slashWarnings(programs []*types.Program) []string {
 	var out []string
 	caps := 0
@@ -807,8 +689,8 @@ func (cat *enrolCatalog) slashWarnings(programs []*types.Program) []string {
 	return out
 }
 
-// notExclusive returns the first two of codes neither of which lists the
-// other as an exclusion, or nil when every two exclude each other.
+// notExclusive returns the first two of codes neither of which lists the other
+// as an exclusion, or nil.
 func (cat *enrolCatalog) notExclusive(codes []string) []string {
 	excludes := func(a, b string) bool {
 		e := cat.exclusions[a]
@@ -826,13 +708,9 @@ func (cat *enrolCatalog) notExclusive(codes []string) []string {
 
 // ---- Program names ----
 
-// linkFocusPrograms resolves, by title, the program nodes of c's rows that
-// name a focus of the program (self, its title) without its code
-// (focusChoices: "Immunology" is "Focus in Immunology (Specialist in
-// Statistical Science: Methods and Practice)"). Only the rows under a
-// heading of focuses are read. A name no program has stays membership text
-// (Review): the focus's line in the row's raw ("Immunology (3.0 Credits) -
-// BIO130H1 (70%), ..."), else its name.
+// linkFocusPrograms resolves by title the program nodes of rows under a heading
+// of focuses that name a focus of self without its code. A name no program has
+// stays membership text (Review).
 func (idx titleIndex) linkFocusPrograms(c *types.Completion, self string) bool {
 	changed := false
 	for _, r := range c.Requirements {
@@ -861,53 +739,27 @@ func (idx titleIndex) linkFocusPrograms(c *types.Completion, self string) bool {
 }
 
 var (
-	// "any other Human Biology Program managed major program": the majors
-	// of the Human Biology area.
+	// complManagedRe matches "any other Human Biology Program managed major
+	// program": the area's majors.
 	complManagedRe = regexp.MustCompile(`(?i)^(any\s+other\s+)?(.+?)\s+program\s+managed\s+(.+)$`)
-	// "Students may enrol in only one Rotman Commerce Specialist": the
-	// area's other specialists.
+	// complOnlyOneRe matches "may enrol in only one Rotman Commerce Specialist":
+	// the area's other specialists.
 	complOnlyOneRe = regexp.MustCompile(`(?i)\bmay\s+(?:only\s+)?enrol(?:l)?\s+in\s+only\s+one\s+(.+?)\.?$`)
-	// "Specialist of Major": a misprint of "Specialist or Major".
+	// complTypeOfTypeRe matches "Specialist of Major", a misprint of "or".
 	complTypeOfTypeRe = regexp.MustCompile(`(?i)\b(specialist|major|minor)\s+of\s+(specialist|major|minor)\b`)
-	// "the Major Program in Toxicology": the one Major whose title names
-	// Toxicology (the Biomedical Toxicology Major).
+	// complTypeInRe matches "the Major Program in Toxicology": the one Major
+	// whose title names it.
 	complTypeInRe = regexp.MustCompile(`(?i)^(?:the\s+|a\s+)?(specialist|major|minor)\s+program\s+in\s+(.+)$`)
 )
 
 // linkCompletionExclusions resolves the program names in c's exclusions as
-// enrolment does (resolveExclusions): by title, by subject and type, by
-// subject area. Completion text also has:
-//   - "Students are not allowed to enroll concurrently in A and B", written
-//     in both programs' text and in programs that are neither: it excludes
-//     B from A and A from B, and is a note elsewhere (the Biomedical
-//     Toxicology Major's "... the Major Program in Pharmacology and a
-//     Specialist Program in Toxicology");
-//   - "any other X Program managed major program": X's area's majors;
-//   - "Students may enrol in only one Rotman Commerce Specialist": the
-//     area's other specialists;
-//   - "the Major Program in Toxicology": the one Major whose title names
-//     Toxicology. When several do ("a Specialist Program in Toxicology":
-//     three Specialists), it is those of this program's area, and the
-//     others are the maybe below;
-//   - "German Studies Specialist of Major Program": "of" misprinted for
-//     "or", when both programs exist.
-//
-// They never include the program itself or a program a requirement needs,
-// in completion or to enrol (enrolReq: a focus's parent); a node left with
-// no program goes. A name that resolves to nothing stays membership text
-// (Review). A subject phrase that may also cover other programs (enrolment's
-// rule, splitExclusions: those outside the subject's area whose title names
-// it, and the area's programs whose title doesn't; "any other Economics
-// program": the Finance and Economics Specialist?) keeps the programs it
-// surely names, and the others are an item of their own after it, as in
-// enrolment's req: or(not(program[...]), text{ambiguity}), Review only for
-// a student in one of them.
+// enrolment does, plus completion's phrasings. It never excludes the program or
+// one a requirement needs; programs a phrase may also cover are a Review item.
 func (idx titleIndex) linkCompletionExclusions(c *types.Completion, self string, enrolReq *types.ReqNode, programs []*types.Program, progs *ProgramIndex, areas areaIndex) {
 	if c.Exclusions == nil {
 		return
 	}
-	// Programs a requirement needs, in completion or to enrol (a focus's
-	// parent), are never excluded.
+	// a focus's parent is never excluded
 	required := requiredPrograms(enrolReq)
 	for _, r := range c.Requirements {
 		for code := range requiredPrograms(r.Req) {
@@ -940,10 +792,8 @@ func (idx titleIndex) linkCompletionExclusions(c *types.Completion, self string,
 	var notes []string
 	c.Exclusions, notes = idx.resolveExclusions(c.Exclusions, self, required, progs, areas)
 	c.Notes = dedupe(append(c.Notes, notes...))
-	// The programs a subject phrase may also cover are enrolment's
-	// or(not(program[...]), text{ambiguity}) (ambiguousExclusion), an item
-	// of its own after the phrase's: Review only for a student in one of
-	// them.
+	// the programs a phrase may also cover: or(not(program[...]), text), an item
+	// of its own
 	for _, s := range idx.splitExclusions(c.Exclusions, self, programs, required, areas) {
 		s.node.Programs = s.sure
 		i := slices.Index(c.Exclusions, s.node)
@@ -951,17 +801,15 @@ func (idx titleIndex) linkCompletionExclusions(c *types.Completion, self string,
 	}
 }
 
-// completionProgram resolves a phrase naming programs: as enrolment does
-// (resolveNode), or by the completion phrasings linkCompletionExclusions
-// lists.
+// completionProgram resolves a phrase naming programs as enrolment does, or by
+// completion's phrasings.
 func (idx titleIndex) completionProgram(phrase, selfArea string, programs []*types.Program, progs *ProgramIndex, areas areaIndex) ([]string, bool) {
 	n := &types.ReqNode{Type: types.NodeProgram, Text: phrase}
 	if idx.resolveNode(n, progs, areas); n.Type == types.NodeProgram {
 		return n.Programs, true
 	}
 	if fixed := complTypeOfTypeRe.ReplaceAllString(phrase, "$1 or $2"); fixed != phrase {
-		// "German Studies Specialist of Major Program": "of" for "or" when
-		// the programs exist.
+		// "of" misprinted for "or", when the programs exist
 		if codes, ok := idx.lookupTitle(fixed); ok {
 			return codes, true
 		}
@@ -979,11 +827,8 @@ func (idx titleIndex) completionProgram(phrase, selfArea string, programs []*typ
 		if len(hits) == 1 {
 			return hits, true
 		}
-		// Several: those of this program's area ("a Specialist Program in
-		// Toxicology" in the Pharmacology Major: the Biomedical Toxicology
-		// Specialist and the Specialist in Pharmacology and Biomedical
-		// Toxicology); splitExclusions adds the others (the Environment &
-		// Toxicology Specialist) as maybe, as enrolment does.
+		// several: those of this program's area; splitExclusions adds the others as
+		// maybe
 		var mine []string
 		for _, code := range hits {
 			for _, p := range programs {
@@ -999,12 +844,9 @@ func (idx titleIndex) completionProgram(phrase, selfArea string, programs []*typ
 	return nil, false
 }
 
-// concurrentExclusions reads "Students are not allowed to enroll
-// concurrently in A and B" (complConcurrentRe) for this program: the
-// parser excluded both A and B; when one is this program, the other is the
-// exclusion, and when neither is, the sentence restricts other programs'
-// students, so its exclusions go and it is a note. A phrase that doesn't
-// resolve leaves the sentence as the parser read it.
+// concurrentExclusions reads "not allowed to enroll concurrently in A and B"
+// for this program: the other program is the exclusion; when neither is this
+// one, the sentence restricts others' students and is a note.
 func (idx titleIndex) concurrentExclusions(c *types.Completion, self, selfArea string, programs []*types.Program, progs *ProgramIndex, areas areaIndex) {
 	keep, drop := map[string]bool{}, map[string]bool{}
 	selfType := ""
@@ -1026,8 +868,7 @@ func (idx titleIndex) concurrentExclusions(c *types.Completion, self, selfArea s
 			for i, nodes := range sides {
 				for _, n := range nodes {
 					codes, ok := idx.completionProgram(n.Text, selfArea, programs, progs, areas)
-					// A phrase naming only other types of program isn't this
-					// one ("a Specialist Program in Toxicology" in a Major).
+					// a phrase naming only other program types isn't this one
 					known = known && (ok || otherTypes(n.Text, selfType))
 					in[i] = in[i] || slices.Contains(codes, self)
 				}
@@ -1062,18 +903,9 @@ func otherTypes(phrase, t string) bool {
 
 // ---- References ----
 
-// checkRequirementRefs makes a node whose requirements filter names a row c
-// doesn't have, or whose lists filter names a list c doesn't have, the text
-// of its row (Review): a reference to nothing would match no course, and
-// dropping it would match any. The row notes the number ("No requirement 9
-// in this program."), or, for complNoRow, that it refers to a requirement
-// of the program it was copied from, or the list ("No list \"Group D\" in
-// this program."). A list item naming a list c doesn't have loses the name
-// and becomes a maybe, and(the rest of its filter, text), noted on the
-// program. An overlap with a row c doesn't have, or that the other row
-// doesn't list back, goes: overlaps only join two rows that exist. The
-// parser never leaves such a reference (the corpus invariants check it);
-// this is the guard for what Link changes. It reports whether c changed.
+// checkRequirementRefs makes a node referring to a row or list c doesn't have
+// the text of its row (Review), and drops overlaps with missing or one-way
+// rows. The parser never leaves these; this guards Link's changes.
 func checkRequirementRefs(c *types.Completion) bool {
 	byNum := map[int]*types.Requirement{}
 	for _, r := range c.Requirements {
@@ -1142,12 +974,9 @@ func checkRequirementRefs(c *types.Completion) bool {
 	return changed
 }
 
-// checkListRefs checks the references in c's list items: a name of a list
-// c doesn't have, or a requirements number that names no row (complNoRow,
-// or a number c doesn't have), goes from the item, which becomes and(the
-// rest of its filter, text), a maybe (an item with no filter left matches
-// any course, as a maybe only), and the program notes the name or number.
-// It reports whether c changed.
+// checkListRefs drops from c's list items names of missing lists and numbers of
+// missing rows, making the item a maybe and noting the name or number. It
+// reports whether c changed.
 func checkListRefs(c *types.Completion) bool {
 	known := map[string]bool{}
 	for _, l := range c.Lists {

@@ -8,35 +8,24 @@ import (
 	"degree-explorer/types"
 )
 
-// Program requirements ("Enrolment in ASMAJ1618", "Specialist or Major in
-// Drama", "Limited to students enrolled in the Bioethics Specialist or
-// Bioethics Major programs") become program nodes in two steps:
-//
-//  1. Parsing stays pure: a membership phrase that does nothing but name
-//     programs becomes a program node that keeps the phrase in Text. Explicit
-//     codes go straight into Programs.
-//  2. ProgramIndex.Resolve fills in Programs by matching the subject names
-//     and program types in Text against the scraped catalogue. A node it
-//     can't resolve with confidence goes back to membership text (Review), so
-//     a resolved tree never has a program node without Programs.
-//
-// A program node is Met when the student is in any of its Programs and NotMet
-// otherwise. A wrong resolution therefore produces a false NotMet, which is
-// worse than Review, so every rule here prefers leaving text over guessing.
+// Program requirements ("Specialist or Major in Drama"): parsing turns a phrase
+// that only names programs into a program node, and ProgramIndex.Resolve fills
+// in its codes. A wrong resolution is a false NotMet, worse than Review, so
+// every rule here leaves text rather than guess.
 
 const (
 	progCodePat = `AS(?:SPE|MAJ|MIN|FOC|CER)\d{4}[A-Z]?\b`
 	progVerbPat = `(?i:enrol(?:l)?(?:ed|ment)|registered|active)\s+in\s+` // "enrolled in", "Enrolment in"
 )
 
-// typeWordPat is a program type word; typesPat is a list of them:
-// "Major, Specialist or Minor", "major or specialist".
+// typeWordPat is a program type word; typesPat is a list of them: "Major,
+// Specialist or Minor".
 const (
 	typeWordPat = `(?i:specialists?|majors?|minors?|certificates?|focus)\b`
 	typesPat    = typeWordPat + `(?:(?:\s*,\s*(?i:or\s+|and\s+)?|\s*/\s*|\s+(?i:or|and)\s+)` + typeWordPat + `)*`
 
-	// Capitalized forms for phrases without a lead-in, which the lexer must
-	// not confuse with ordinary words.
+	// capitalized forms for phrases without a lead-in, which the lexer must not
+	// confuse with ordinary words
 	capTypePat  = `(?:Specialist|Major|Minor|Certificate)s?\b`
 	capTypesPat = capTypePat + `(?:(?:\s*,\s*(?:or\s+)?|\s*/\s*|\s+or\s+)` + capTypePat + `)*`
 	capNamePat  = `[A-Z][A-Za-z'-]*(?:\s+(?:(?:and|of)\s+|&\s+)?[A-Z][A-Za-z'-]*)*`
@@ -49,18 +38,19 @@ var (
 
 	// ---- lexer ----
 
-	// "enrolled in", "Enrolment in", "registered in any one of",
-	// "enrolled in at least one of the following programs:". The empty group
-	// marks an announced list, whose items may be separated by ";".
+	// progLeadRe matches a lead-in: "registered in any one of". The empty group
+	// marks an announced list ("... of the following programs:"), whose items may
+	// be separated by ";".
 	progLeadRe = regexp.MustCompile(`^` + progVerbPat +
 		`(?:(?i:any\s+one|at\s+least\s+one)\s+of\s+(?:(?i:the\s+following\s+programs?)\s*:\s*())?)?`)
-	// "Specialist or Major in Drama", "Certificate in Sustainability"
+	// progTypesInNameRe matches "Specialist or Major in Drama".
 	progTypesInNameRe = regexp.MustCompile(`^` + capTypesPat + `\s+in\s+(?:the\s+)?` + capNamePat)
-	// "Drama Major, Specialist or Minor" (two or more types)
+	// progNameTypesRe matches two or more types after a name: "Drama Major,
+	// Specialist or Minor".
 	progNameTypesRe = regexp.MustCompile(`^` + capNamePat + `\s+` + capTypePat +
 		`(?:(?:\s*,\s*(?:or\s+)?|\s*/\s*|\s+or\s+)` + capTypePat + `)+(?:\s+[Pp]rograms?\b)?`)
 
-	// Words that end a program list in the lexer, and words that make what's
+	// progStopWords end a program list in the lexer; progEndWords make what's
 	// before them a complete program reference.
 	progStopWords = wordSet(`permission approval consent instructor department departmental coordinator
 		who which that this with have has having must will should may only if by plus including
@@ -88,8 +78,8 @@ var (
 	progNameRe      = regexp.MustCompile(`^[A-Za-z][A-Za-z&'’,/\s-]*$`)
 	typeWordRe      = regexp.MustCompile(typeWordPat)
 
-	// Phrases that aren't a plain "is in program X" requirement, or name
-	// something that isn't a catalogue program.
+	// progRejectRe matches phrases that aren't a plain "is in program X"
+	// requirement, or name something that isn't a catalogue program.
 	progRejectRe = regexp.MustCompile(`(?i)\b(?:non|not|except|unless|preference|priority|consideration|may|refer|website|` +
 		`recommended|encouraged|years?|status|only|if|invitation|admission|admitted|accepted|guaranteed|requirements?|` +
 		`streams?|faculty|college|school|campus|rotman|commerce|engineering|utm|utsc|courses?|credits?|completion|` +
@@ -97,10 +87,8 @@ var (
 	progOnlyIfRe = regexp.MustCompile(`^(.+?)\s+(only\s+if\s+.+)$`)
 	progOneRe    = regexp.MustCompile(`\b[A-Z]\w+\s+One\b`) // "Vic One"
 
-	// A bare "in the X program" is enrolment only right after "student" or
-	// "status": "enrolled as a Year 4 student in the Pharmaceutical Chemistry
-	// program", not "1.0 additional credit in the Digital Humanities Minor
-	// program".
+	// progAfterStudentRe matches "student" or "status" before a bare "in the X
+	// program", which is enrolment only there: "enrolled as a Year 4 student".
 	progAfterStudentRe = regexp.MustCompile(`(?i)\b(?:students?|status)\s*$`)
 
 	// ---- titles ----
@@ -131,11 +119,9 @@ func wordSet(s string) map[string]bool {
 
 // ---- lexer ----
 
-// matchProgram keeps a program reference together as one text token, so the
-// commas, "or"s and "/"s inside it aren't read as operators: "enrolled in the
-// MST minor, major, or Specialist program", "registered in any one of
-// ASMAJ0365, ASSPE0365", "Drama Major, Specialist or Minor". The token is
-// plain text; ParseRequisite decides afterwards whether it is a program node.
+// matchProgram keeps a program reference together as one text token, so its
+// commas, "or"s and "/"s aren't operators: "Drama Major, Specialist or
+// Minor". ParseRequisite decides afterwards whether it is a program node.
 func matchProgram(s string) (token, bool) {
 	if m := progLeadRe.FindStringSubmatchIndex(s); m != nil {
 		if n := scanProgramList(s[m[1]:], m[2] >= 0); n > 0 {
@@ -151,11 +137,9 @@ func matchProgram(s string) (token, bool) {
 	return token{}, false
 }
 
-// scanProgramList returns the length of the program list at the start of s:
-// words, ",", "/", program codes and bracketed codes, up to the last word that
-// can end a program reference ("Major", "program", a code). It stops at a
-// stop word, a digit or punctuation; ";" separates items only in an announced
-// list. It returns 0 if there is no such word or the brackets don't balance.
+// scanProgramList returns the length of the program list at the start of s, up
+// to the last word that can end a reference. ";" separates items only in an
+// announced list. It returns 0 if there is none or the brackets don't balance.
 func scanProgramList(s string, semis bool) int {
 	end, last, depth, endDepth := 0, 0, 0, 0
 	for i := 0; i < len(s); {
@@ -212,8 +196,8 @@ func isWordByte(c byte) bool {
 
 // ---- phrase grammar ----
 
-// nameRef is one subject name with the program types it asks for: "History
-// or Political Science" + [Major Specialist]. No types means any type.
+// nameRef is one subject name with the program types it asks for: "History or
+// Political Science" + [Major Specialist]. No types means any type.
 type nameRef struct {
 	name  string
 	types []string
@@ -254,9 +238,8 @@ func (r programRef) accepts(ctx refContext) bool {
 }
 
 // parseProgramRef parses a phrase that does nothing but name programs. It
-// fails on anything else, e.g. a qualifier ("only if enrolling in the
-// Fall/Winter session"), a non-catalogue program (Rotman Commerce, Vic One,
-// Engineering, "admission to ...") or a list it can't split cleanly.
+// fails on anything else: a qualifier, a non-catalogue program ("Vic One",
+// Engineering), or a list it can't split cleanly.
 func parseProgramRef(text string) (programRef, bool) {
 	var ref programRef
 	s := progTrailWithRe.ReplaceAllString(strings.TrimSpace(text), "")
@@ -301,8 +284,8 @@ func parseProgramRef(text string) (programRef, bool) {
 }
 
 // parseCodeList returns the codes of a list where every item has a code:
-// "ASMAJ1254/ASMIN1254", "American Studies Major (ASMAJ0135); ...". Items are
-// separated by ";" if there are any, else by "," "/" and "or".
+// "ASMAJ1254/ASMIN1254". Items are separated by ";" if there are any, else by
+// ",", "/" and "or".
 func parseCodeList(s string) []string {
 	items := strings.Split(s, ";")
 	if len(items) == 1 {
@@ -325,8 +308,7 @@ func parseCodeList(s string) []string {
 
 // parseNameTypes parses one alternative: "Specialist or Major in Drama",
 // "Drama Major, Specialist or Minor", "Bioethics Specialist or Bioethics
-// Major" or a bare name ("Sociology"). strong is true for the first two
-// shapes, which are unmistakable even without a lead-in.
+// Major" or a bare name. strong is true for the first two shapes.
 func parseNameTypes(s string) (refs []nameRef, strong, ok bool) {
 	if m := progForm1Re.FindStringSubmatch(s); m != nil {
 		return []nameRef{{m[2], typeList(m[1])}}, true, validName(m[2])
@@ -336,7 +318,7 @@ func parseNameTypes(s string) (refs []nameRef, strong, ok bool) {
 			types := typeList(m[2])
 			return []nameRef{{m[1], types}}, len(types) > 1, true
 		}
-		// "Bioethics Specialist or Bioethics Major": each piece has its own type.
+		// "Bioethics Specialist or Bioethics Major": each piece has its own type
 		for _, piece := range progPieceSepRe.Split(s, -1) {
 			pm := progForm2Re.FindStringSubmatch(piece)
 			if pm == nil || !validName(pm[1]) {
@@ -387,8 +369,8 @@ func (p *parser) programNodes(n *types.ReqNode) *types.ReqNode {
 	if ref, ok := parseProgramRef(n.Text); ok && ref.accepts(ctx) {
 		*n = types.ReqNode{Type: types.NodeProgram, Text: n.Text, Programs: ref.codes}
 	} else if m := progOnlyIfRe.FindStringSubmatch(n.Text); m != nil {
-		// "Active in ASMAJ1618 only if enrolling in the Fall/Winter
-		// session": the program, or else the condition may not apply.
+		// "... only if enrolling in the Fall/Winter session": the program, or else
+		// the condition may not apply
 		if ref, ok := parseProgramRef(m[1]); ok && ref.accepts(ctx) {
 			*n = types.ReqNode{Type: types.NodeOr, Items: []*types.ReqNode{
 				{Type: types.NodeProgram, Text: m[1], Programs: ref.codes},
@@ -407,9 +389,9 @@ type ProgramIndex struct {
 	bySubject map[string]map[string][]string // normalized subject → type → codes
 }
 
-// NewProgramIndex indexes programs by the subject in their title:
-// "Cognitive Science Major - Arts (Thinking and Reasoning Stream) (Arts
-// Program)" is subject "cognitive science", type Major.
+// NewProgramIndex indexes programs by the subject in their title: "Cognitive
+// Science Major - Arts (... Stream) (Arts Program)" is subject "cognitive
+// science", type Major.
 func NewProgramIndex(programs []*types.Program) *ProgramIndex {
 	idx := &ProgramIndex{bySubject: map[string]map[string][]string{}}
 	for _, p := range programs {
@@ -457,8 +439,8 @@ func (idx *ProgramIndex) resolveNode(n *types.ReqNode) {
 	n.Type, n.Kind = types.NodeText, types.TextMembership
 }
 
-// lookupRef resolves every name in ref; if any name fails, the whole phrase
-// fails, since a partial list would turn the missing programs into NotMet.
+// lookupRef resolves every name in ref; if any fails, the whole phrase fails,
+// as a partial list would make the missing programs NotMet.
 func (idx *ProgramIndex) lookupRef(ref programRef) ([]string, bool) {
 	var codes []string
 	for _, nr := range ref.names {
@@ -485,16 +467,9 @@ func (idx *ProgramIndex) lookupRef(ref programRef) ([]string, bool) {
 	return codes, len(codes) > 0
 }
 
-// lookup finds the programs of one subject. It refuses when the name is also
-// the start of another subject the phrase might mean too:
-//   - with no type, any longer subject: "a Psychology program" could be the
-//     Psychology Research Specialist, "a Music program" Music History & Culture;
-//   - with types, a longer subject of one of those types that isn't a
-//     separate "X and Y" subject: "Psychology Specialist" could be the
-//     Psychology Research Specialist, but "History Major" isn't the History
-//     and Philosophy of Science and Technology Major.
-//
-// Every type asked for must exist.
+// lookup finds the programs of one subject; every type asked for must exist.
+// It refuses when a longer subject starts with the name: with no type, any;
+// with types, one of those types that isn't a separate "X and Y" subject.
 func (idx *ProgramIndex) lookup(name string, types []string) ([]string, bool) {
 	key := normSubject(name)
 	byType, ok := idx.bySubject[key]
@@ -528,11 +503,8 @@ func (idx *ProgramIndex) lookup(name string, types []string) ([]string, bool) {
 }
 
 // titleSubject extracts the subject from a program title, dropping the type
-// word and variants: trailing brackets ("(Science Program)", "(General)",
-// "(Thinking and Reasoning Stream)"), streams and foci after the type word
-// ("Major- Stream in Creative Writing", "Specialist: Genetics Stream") and
-// ": ..." after a leading type ("Specialist in Statistical Science: Theory
-// and Methods").
+// word, trailing brackets, streams and foci after the type word, and ": ..."
+// after a leading type.
 func titleSubject(title, typ string) string {
 	t := title
 	for {
@@ -558,9 +530,8 @@ func titleSubject(title, typ string) string {
 	return strings.Trim(subj, " -:")
 }
 
-// normSubject makes names comparable: "Peace, Conflict and Justice" and
-// "peace conflict and justice", "Cell & Molecular Biology" and "Cell and
-// Molecular Biology".
+// normSubject makes names comparable: "Cell & Molecular Biology" and "cell
+// and molecular biology".
 func normSubject(s string) string {
 	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
 	s = strings.TrimSpace(nonAlnumRe.ReplaceAllString(s, " "))

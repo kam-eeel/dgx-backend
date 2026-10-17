@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestParseCompletionCross checks the rules that tie rows together
-// (crossRules, additionalLists, reqRefAlloc, the omit case), one per case, on
-// real snippets (shortened where marked).
+// TestParseCompletionCross checks the rules that tie rows together, one per
+// case, on real snippets (shortened where marked).
 func TestParseCompletionCross(t *testing.T) {
 	tests := []struct {
 		name, raw string

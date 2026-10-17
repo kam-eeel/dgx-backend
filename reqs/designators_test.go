@@ -2,10 +2,9 @@ package reqs
 
 import "testing"
 
-// Goldens for credit phrases that name designators or levels in places the
-// credit matchers used to miss: "and/or" lists, designators or a level before
-// the amount, topic words before "course", and a subject spelled out as
-// designators in parentheses.
+// Goldens for credit phrases naming designators or levels in harder places:
+// "and/or" lists, before the amount, topic words before "course", and a subject
+// spelled out as designators in brackets.
 var designatorGoldens = []struct{ name, raw, want string }{
 	{"and/or list", "Completion of 1.0 credit from MUN, PPG, and/or PCJ courses at the 200+ levels.",
 		`{"type":"credits","amount":1,"designators":["MUN","PPG","PCJ"],"levels":[200,300,400]}`},

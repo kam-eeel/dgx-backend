@@ -2,7 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleResidue checks the readings of completion_residue.go.
+// TestCompletionRuleResidue checks the residue readings.
 func TestCompletionRuleResidue(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"the Faculty's breadth rule unless a course is completed: a constraint over the transcript (ASMAJ0908, shortened)",

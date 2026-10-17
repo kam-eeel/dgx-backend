@@ -11,26 +11,22 @@ import (
 	"degree-explorer/types"
 )
 
-// Sentences into rows: what each role does with a sentence, the body of an
-// item and the rules written in it (floors, caps, CR/NCR and transfer
-// rules, approval routes, alternatives), exclusions, and the checks that
-// keep a reading the grammar can't be sure of as text.
+// Sentences into rows: what each role does with a sentence, an item's body
+// and the rules written in it.
 
-// sentence places one sentence of an item (row, nil at the program level)
-// and returns the advice to note on it. A first requirement sentence is
-// row's body.
+// sentence places one sentence of item row (nil at the program level) and
+// returns the notes on it. The first requirement sentence is row's body.
 func (a *compAssembler) sentence(s string, row *compRow, ctx compCtx) (notes []string) {
 	defer func() { a.lastSentence = s }()
 	return a.sentenceAs(a.role(s), s, row, ctx)
 }
 
-// complThisRequirementRe: an alternative that points at the rule just stated:
-// "Students who complete the ASIP stream will also meet this requirement".
+// complThisRequirementRe matches an alternative pointing at the rule just
+// stated: "will also meet this requirement".
 var complThisRequirementRe = regexp.MustCompile(`(?i)\bwill\s+also\s+meet\s+this\s+requirement\b`)
 
-// lastRule returns the rule row the sentence before s made under row (a
-// constraint of text: "The choices in 3 must satisfy the requirement for an
-// integrative, inquiry-based activity by including one of ..."), or nil.
+// lastRule returns the constraint row the previous sentence added under row,
+// or nil.
 func (a *compAssembler) lastRule(row *compRow) *compRow {
 	if row == nil || len(row.children) == 0 {
 		return nil
@@ -42,18 +38,16 @@ func (a *compAssembler) lastRule(row *compRow) *compRow {
 	return k
 }
 
-// sentenceAs places a sentence with the given role (sentence).
+// sentenceAs is sentence with the role already decided.
 func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ctx compCtx) (notes []string) {
-	// The row the sentence's rules apply to: the item it is written in once
-	// that has a body, else the item around it, else the program.
+	// rules go on the item once it has a body, else on the item around it
 	target := ctx.owner
 	bodied := row != nil && (row.r.Req != nil || len(row.children) > 0)
 	if bodied {
 		target = row
 	}
 	if r := courseCountCap(a.clean(s)); r != nil {
-		// A cap counted in courses, besides what else the sentence says
-		// (completion_limits.go): the program's.
+		// a cap counted in courses is the program's, whatever else s says
 		r.Raw = s
 		a.rowUnder(nil, r)
 	}
@@ -71,13 +65,11 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 			return nil
 		}
 		if complBindingWordRe.MatchString(a.clean(s)) {
-			// "The remainder must be selected from the following: ...": a
-			// rule over a list, not just the list; Review, not a note.
+			// "The remainder must be selected from ...": a rule, not just a list
 			a.textRow(target, s)
 			return nil
 		}
-		// A named list ("Group A: CRI300H1/ ..."): a note, unless an item
-		// refers to it (namedLists).
+		// a named list is a note, unless an item refers to it
 		note := cleanNote(s)
 		if title, members, ok := strings.Cut(a.clean(s), ":"); ok {
 			a.listDefs = append(a.listDefs, &compListDef{title: title, members: members, note: note})
@@ -100,19 +92,14 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 		capped := sync.OnceValue(func() *types.Requirement { return capRow(s) }) // read only if a case asks
 		switch {
 		case isRelaxation(s) && !(complOmitRe.MatchString(s) && a.omitCovered(s)):
-			// "CSC108H1 is waived for students who complete CSC148H1 first":
-			// an alternative on the rows requiring CSC108H1 (relax).
+			// "CSC108H1 is waived for students who ...": an alternative on its rows
 			a.relaxations = append(a.relaxations, s)
 		case a.satisfiesAndCounts(s):
-			// "PHY479Y1 ... satisfies Requirement 3 in Third or Fourth Year
-			// and counts as a 0.5 credit at the PHY 400-level for Requirement
-			// 4 in Third or Fourth Year".
+			// "PHY479Y1 ... satisfies Requirement 3 ... and counts as ..."
 		case ctx.advice && !a.isApproval(s):
 			return []string{cleanNote(s)}
 		case complEquivalentsRe.MatchString(a.clean(s)):
-			// "... would be able to use any completed RSM course equivalents
-			// ... (e.g. RSM100H1 would be deemed equivalent to MGT100H1, etc)":
-			// an alternative on each row requiring a MGT course.
+			// "... any completed RSM course equivalents": an alternative on each row
 			rs, replaced := a.relaxedRows(s)
 			if rs == nil {
 				return []string{cleanNote(s)}
@@ -122,16 +109,12 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 				addRaw(r, s)
 			}
 		case !bodied && ref != nil && a.isApproval(s):
-			// "Notes 1. Additional courses with significant Canadian content
-			// may be considered for approval for Requirement 7 by the Program
-			// Director": a route on requirement 7, not an item.
+			// "... may be considered for approval for Requirement 7": a route on it
 			for _, r := range ref {
 				a.approval(r, s)
 			}
 		case !bodied && row != nil && a.isApproval(s) && (complCodeLeadRe.MatchString(a.clean(s)) || isComplAllocLead(a.clean(s))):
-			// "4. CHM395Y1/ CHM499Y1/ PHC489Y1 and/or CHM397H0/ CHM398H0 ...
-			// with prior approval by the Department": an item that needs an
-			// approval.
+			// "4. CHM395Y1/ ... with prior approval": an item needing approval
 			body, rows, notes := a.itemBody(s)
 			row.r.Req = body
 			for _, r := range rows {
@@ -139,82 +122,60 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 			}
 			return notes
 		case bodied && a.substitutedFrom(row, s):
-			// "A maximum of 0.5 credit may be substituted from the following
-			// first-year courses: POL191H1, ...".
+			// "A maximum of 0.5 credit may be substituted from the following ..."
 		case complNotSubstituteRe.MatchString(a.clean(s)) && capped() != nil:
-			// "MAT133Y1 is not a suitable substitute for ( MAT130H1/ ...)": it
-			// doesn't count toward the requirement it names.
+			// "MAT133Y1 is not a suitable substitute for ...": it doesn't count there
 			t := target
 			if r := a.itemNaming(s[complNotSubstituteRe.FindStringIndex(s)[1]:]); r != nil && !bodied {
 				t = r
 			}
 			a.rowUnder(t, capped())
 		case !bodied && ref != nil && a.isAlternative(s):
-			// "Some offerings of POL336H1; ... may also count towards
-			// requirement 2 of this focus at the department's discretion",
-			// "Students may also satisfy requirements (4) and (5) through
-			// completion of a senior essay ( FRE490Y1)".
+			// "... may also count towards requirement 2 ...": an alternative on it
 			for _, r := range ref {
 				a.alternative(r, s)
 			}
 		case complCapLeadRe.MatchString(a.clean(s)) && capped() != nil:
-			// "Up to 1.0 credit in HPS courses at the 100-level will be
-			// counted towards the minor": a cap.
+			// "Up to 1.0 credit in HPS courses at the 100-level ...": a cap
 			a.rowUnder(target, capped())
 		case complOmitRe.MatchString(s) && a.omitCovered(s):
-			// "Students with a strong background in ... may omit CSC108H1
-			// and proceed directly with CSC148H1": the item already offers
-			// routes without CSC108H1.
+			// "... may omit CSC108H1": the item already offers routes without it
 		case complCampusRe.MatchString(a.clean(s)) && a.campusRule(s):
 		case a.isApproval(s):
 			a.approval(target, s)
 		case bodied && a.isAlternative(s) && complThisRequirementRe.MatchString(s) && a.lastRule(row) != nil:
-			// The ASIP route of the integrative requirement stated just before
-			// it, not of the item.
+			// the route belongs to the rule stated just before, not to the item
 			k := a.lastRule(row)
 			k.r.Req = orNode(k.r.Req, textNode(altKind(s), s))
 			addRaw(k, s)
 		case bodied && a.isAlternative(s):
 			a.alternative(row, s)
 		case !bodied && complWidenRe.MatchString(a.clean(s)):
-			// "Up to 1.0 credit may be from other departments": the pool of
-			// the item around it, or the program's.
+			// "Up to 1.0 credit may be from other departments": the owner's pool
 			a.alternative(ctx.owner, s)
 		case !bodied && (ctx.notes || row == nil) && a.isAlternative(s):
-			// "Students may count ECO210H1 towards the Specialist program in
-			// lieu of a 0.5 credit 300-level ECO elective".
+			// "Students may count ECO210H1 ... in lieu of a 0.5 credit ... elective"
 			a.alternative(ctx.owner, s)
 		case row == nil || ctx.notes && !bodied:
-			// A requirement that isn't an item, or written as a note: a row
-			// of text, unless it only permits or defines (looseSentence).
+			// not an item, or a note: text, unless it only permits or defines
 			a.looseSentence(target, s)
 		case !bodied && a.appliedTo(s):
-			// "*Students admitted to the program with ECO101H1/ ...: The
-			// course will be applied to Requirement #3 (Higher Years)": a
-			// note on that row (completion_limits.go).
+			// "The course will be applied to Requirement #3": a note on that row
 		case !bodied && !ctx.numbered && looseMain(s):
-			// An unnumbered line that only permits: "2.0 credits may be taken
-			// from courses offered by other departments, pending approval",
-			// not an item.
+			// an unnumbered line that only permits is not an item
 			a.looseSentence(ctx.owner, s)
 		case !bodied:
 			body, rows, notes := a.itemBody(s)
 			if t := a.clean(s); body != nil && body.Type == types.NodeText && !ctx.numbered && !codeRe.MatchString(t) && !complAmountRe.MatchString(t) &&
 				!complInheritRe.MatchString(t) {
-				// An unnumbered line of prose that names no course or amount
-				// ("Permission to count courses towards the Minor ... will be
-				// granted on a case-by-case basis", "An Integrative,
-				// Inquiry-Based Activity Requirement must be satisfied.") is
-				// no allocation: a route, a rule of text or a note.
+				// prose naming no course or amount: a route, a rule or a note
 				switch {
 				case body.Kind == types.TextPermission:
 					a.approval(nil, s)
 				case complRequirementLeadRe.MatchString(t):
 					return []string{cleanNote(s)}
 				case a.isAlternative(s):
-					// "Health-related Anthropology Special Topics courses at
-					// the 300 or 400 level ... will count towards program
-					// requirements": a route onto the rows it describes.
+					// "... will count towards program requirements": a route
 					a.programRoutes = append(a.programRoutes, s)
 				default:
 					a.looseSentence(ctx.owner, s)
@@ -227,18 +188,12 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 			}
 			return notes
 		default:
-			// Another requirement in the item: its "and", as a sentence
-			// break is everywhere, unless the grammar can't read all of it;
-			// a sentence that only permits or advises is no part of the and
-			// ("Either MUS120Y1 or MUS220Y1 can be counted towards the 2.5
-			// credits", "The 1.5 credits can be chosen to reflect ...").
+			// another requirement joins the item's and, unless it permits or advises
 			if a.conditionalExtra(row, s) {
 				return nil
 			}
 			if t := a.clean(s); complCapLeadRe.MatchString(t) && (a.isApproval(s) || complApprovalWordRe.MatchString(t)) {
-				// "Up to 0.5 credit from GGR491Y1, ... based on suitability of
-				// research topic for this program, and approval by department":
-				// a route into the item, not part of it.
+				// "Up to 0.5 credit from GGR491Y1, ... and approval": a route
 				a.alternative(row, s)
 				return nil
 			}
@@ -261,29 +216,24 @@ func (a *compAssembler) sentenceAs(role sentenceRole, s string, row *compRow, ct
 }
 
 var (
-	// A list marker glued to a bracket, which the block reader leaves in the
-	// text: "4.( CHM220H1/ CHM222H1 is strongly recommended.)".
+	// complGluedMarkerRe matches a list marker glued to a bracket, which the
+	// block reader leaves in the text: "4.(".
 	complGluedMarkerRe = regexp.MustCompile(`^\d{1,2}[.)]\s*\(`)
-	// Brackets that are a remark on the item, not part of its requirement:
-	// "( CHM135H1 and CHM136H1)/ CHM151Y1 (Only transfer credits that carry
-	// exclusions to CHM136H1 and/or CHM135H1 will be accepted)", "(
-	// PSL300H1, PSL301H1) (NOTE: PSL201Y1 is not acceptable)".
+	// complRemarkParenRe matches a bracketed remark on the item, not part of its
+	// requirement: "(NOTE: PSL201Y1 is not acceptable)".
 	complRemarkParenRe = regexp.MustCompile(`\s*\(((?:[A-Za-z]+:\s*)?[A-Z][^()]*\s[^()]*\s[^()]*)\)`)
 )
 
-// itemBody parses an item's first requirement sentence into its body, and
-// the rows written inside it: a floor in brackets after the amount ("1.5
-// credits (at least 0.5 credit at the 400-level) from: ..."), a course in
-// brackets that doesn't count ("(NOTE: PSL201Y1 is not acceptable)"). Other
-// remarks in brackets that are advice are notes.
+// itemBody parses an item's first requirement sentence into its body and the
+// rows written inside it, such as a bracketed floor or a course that doesn't
+// count. Bracketed advice becomes notes.
 func (a *compAssembler) itemBody(s string) (body *types.ReqNode, rows []*types.Requirement, notes []string) {
 	if n, rs, ok := floorFromDesignator(s); ok {
 		return n, rs, nil
 	}
 	body, rows, notes = a.grammarBody(s)
 	if body == nil || hasText(body) {
-		// A remark in brackets, a clause on courses already used
-		// (completion_remarks.go).
+		// a bracketed remark, or a clause on courses already used
 		if n, rs, ns, ok := a.remarkItem(s); ok {
 			return n, rs, ns
 		}
@@ -294,22 +244,18 @@ func (a *compAssembler) itemBody(s string) (body *types.ReqNode, rows []*types.R
 // grammarBody is itemBody without remarkItem.
 func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*types.Requirement, notes []string) {
 	s = complGluedMarkerRe.ReplaceAllString(strings.TrimSpace(s), "(")
-	// Before the floors are taken out (splitQualified): one-off wordings
-	// (completion_fixes.go), as rewriteCompletion reads them.
+	// one-off wordings, as rewriteCompletion reads them, before floors come out
 	s = rewriteOneOffs(s)
 	if n := profileBody(s); n != nil {
-		// A learning community, a language proficiency (completion_limits.go).
+		// a learning community or a language proficiency
 		return n, nil, nil
 	}
 	if n, rows, notes, ok := a.pairPool(s); ok {
-		// Single courses and pairs the item grammar leaves as text
-		// (completion_limits.go).
+		// single courses and pairs the item grammar leaves as text
 		return n, rows, notes
 	}
 	if m := complRequiredSentenceRe.FindStringSubmatch(s); m != nil && !complOnlySomeRe.MatchString(m[1]) && !complOnlySomeRe.MatchString(s[len(m[0]):]) {
-		// "PHL271H1, TRN203H1, and TRN204H1 are required courses that
-		// students are recommended to take in second year (...)": the
-		// courses, and the sentence as advice.
+		// "A, B, and C are required courses that ...": the courses; the rest advice
 		if n, _ := parseCompletionText(m[1]); n != nil && fixedCourses(n) {
 			if advice := strings.TrimSpace(complThatRe.ReplaceAllString(s[len(m[0]):], "")); advice != "" && advice != "." {
 				notes = []string{cleanNote(advice)}
@@ -317,10 +263,8 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 			return n, nil, notes
 		}
 	}
-	// widen: "; up to 0.5 credit of this requirement can be satisfied by
-	// taking one of the following ethics courses: ...": more courses for the
-	// pool, capped (widenPool). When the pool doesn't take them, the item is
-	// text.
+	// widen: clauses adding capped courses to the pool; if the pool can't take
+	// them, the item is text
 	var widen []string
 	s0 := s
 	defer func() {
@@ -336,9 +280,7 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		}
 	}()
 	if parts := splitTop(s, ';'); len(parts) > 1 {
-		// "0.5 credit from any HPS 100-level courses; up to 1.0 credit at
-		// the 100 level will count towards the major": a cap clause is the
-		// item's own limit.
+		// "...; up to 1.0 credit at the 100 level will count ...": the item's cap
 		var keep []string
 		for i, p := range parts {
 			if r := capRow(strings.TrimSpace(p)); i > 0 && r != nil && complCapLeadRe.MatchString(strings.TrimSpace(p)) {
@@ -353,16 +295,14 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		}
 		s = strings.Join(keep, ";")
 	}
-	// "1.5 credits of any of the following (at least a 0.5 credit must be
-	// from LIN): A/ B/ ...": the pool, and its floor in brackets.
+	// "1.5 credits of any of the following (at least ...)": pool and floor
 	s = complOfAnyFollowingRe.ReplaceAllString(s, "$1 $2 from:")
 	if m := complItemFloorParenRe.FindStringSubmatch(s); m != nil {
 		s = strings.TrimSpace(m[1] + " " + m[3])
 		rows = append(rows, a.floorRows(m[2])...)
 	}
 	s = complLowerRemarkRe.ReplaceAllStringFunc(s, func(p string) string {
-		// "MAT223H1/ MAT240H1 (should be taken in first year, enforced as a
-		// prerequisite for MAT237Y1)": advice on when to take it.
+		// "(should be taken in first year, ...)": advice on when to take it
 		inner := complLowerRemarkRe.FindStringSubmatch(p)[1]
 		if len(strings.Fields(inner)) < 3 || a.role(inner) != roleAdvisory && !complTimingRe.MatchString(inner) {
 			return p
@@ -376,13 +316,10 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		inner := complRemarkParenRe.FindStringSubmatch(p)[1]
 		switch role := a.role(inner); {
 		case complAlsoAcceptRe.MatchString(a.clean(inner)) && alsoAccepted(a.clean(inner)) != nil:
-			// "PSY100H1 (NOTE: We will also accept PSY100Y5 from UTM, or both
-			// of PSYA01H3 and PSYA02H3 together from UTSC, in place of
-			// PSY100H1 for this requirement)": the courses it names.
+			// "(NOTE: We will also accept PSY100Y5 ...)": the courses it names
 			courseAlts = append(courseAlts, alsoAccepted(a.clean(inner)))
 		case role == roleRequirement && a.isAlternative(inner) && !complNegationRe.MatchString(inner):
-			// "PSY100H1 (NOTE: We will also accept PSY100Y5 from UTM, ...)":
-			// another way to meet the item.
+			// another way to meet the item
 			alts = append(alts, cleanNote(inner))
 		case role == roleAdvisory:
 			notes = append(notes, cleanNote(inner))
@@ -398,22 +335,19 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		return ""
 	})
 	if m := complAndOrApprovalRe.FindStringSubmatch(strings.TrimSuffix(s, ".")); m != nil {
-		// "CHM395Y1/ CHM499Y1/ PHC489Y1 and/or CHM397H0/ CHM398H0 in areas
-		// relevant to the program with prior approval by the Department": the
-		// approval is for the courses after "and/or".
+		// "A/ B and/or C/ D ... with prior approval by the Department": the
+		// approval is for the courses after "and/or"
 		strict, _ := parseCompletionText(m[1])
 		approved, _ := parseCompletionText(m[2])
 		return orNode(strict, andNode(approved, textNode(types.TextPermission, m[3]))), rows, notes
 	}
 	if m := complPermListRe.FindStringSubmatch(strings.TrimSpace(s)); m != nil {
-		// "1.0 credit from: AFR353H1/ ... RLG309H1 or with permission of the
-		// Director: HIS304H1/ ... TRN377Y1": the list, or with permission the
-		// same amount from both lists (design 3.3, bounded).
+		// "1.0 credit from: A/ B or with permission of the Director: C/ D": the
+		// list, or with permission the same amount from both lists
 		return permissionList(m), rows, notes
 	}
 	if m := complWithAverageRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(s), ".")); m != nil {
-		// "( ACT240H1 and ACT245H1 and ACT247H1) with an average grade of
-		// 63%": the courses, and their average.
+		// "( A and B and C) with an average grade of 63%": courses and average
 		codes := codeRe.FindAllString(m[1], -1)
 		grade, _ := strconv.Atoi(m[2])
 		var items []*types.ReqNode
@@ -424,11 +358,9 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		return andNode(items...), rows, notes
 	}
 	if m := complAnyRemainingRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(s), ".")); m != nil {
-		// "1.0 credit from ACT351H1/ ..., CSC343H1, or any remaining 300+
-		// level STA courses not used toward other program requirements -
-		// STA304H1, ..., STA496H1/ STA497H1 ( STA399H1 and STA399Y1 may be
-		// considered ... with the approval of ...)": the listed courses are
-		// all the pool's; only the bracketed ones need approval.
+		// "1.0 credit from ..., or any remaining 300+ level STA courses ... - <codes>
+		// (<codes> may be considered ... with the approval of ...)": the listed
+		// courses are all the pool's; only the bracketed ones need approval
 		pool, _ := parseCompletionText(m[1] + ", " + m[2])
 		pool, caps := poolCaps(checkedBody(pool, m[1]+", "+m[2]))
 		if isPool(pool) && pool.Designators == nil {
@@ -444,9 +376,8 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		}
 	}
 	if m := complOrEquivalentRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(s), ".")); m != nil {
-		// "0.5 LAS credit at the 400-level, or an equivalent 0.5 credit at
-		// the 400-level, approved by the Associate Chair ...": bounded
-		// (design 3.3).
+		// "0.5 LAS credit at the 400-level, or an equivalent 0.5 credit ...,
+		// approved by ...": the strict pool, or the wider one with approval
 		strict, _ := parseCompletionText(m[1])
 		wide, _ := parseCompletionText(m[2])
 		if strict = checkedBody(strict, m[1]); strict != nil && wide != nil && !hasText(strict) && !hasText(wide) {
@@ -454,10 +385,8 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		}
 	}
 	if m := complOrAnotherRe.FindStringSubmatchIndex(s); m != nil {
-		// "AST310H1/ ENV222H1/ ..., or another course with a significant
-		// emphasis on Social and Ethical Responsibility approved by the
-		// Undergraduate Chair": the listed courses, or one a person approves
-		// (design 3.3, a route that names no pool).
+		// "A/ B/ ..., or another course with ... approved by the Undergraduate
+		// Chair": the listed courses, or one a person approves
 		head, more := parseCompletionText(s[:m[0]])
 		head = checkedBody(head, s[:m[0]])
 		if head != nil && head.Type == types.NodeAnd && !slices.ContainsFunc(head.Items, func(n *types.ReqNode) bool { return n.Type != types.NodeCourse }) {
@@ -467,20 +396,16 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 		return orNode(head, alt), rows, append(notes, more...)
 	}
 	if m := complUpToFromListRe.FindStringSubmatchIndex(s); m != nil {
-		// "Any 4 courses (2.0 credits) from GGR201H1/ JEG201H1, ..., up to
-		// one half course from Group H.": a capped share from a list, which
-		// widens the pool; until lists are read, an alternative (Review).
+		// "Any 4 courses (2.0 credits) from ..., up to one half course from Group
+		// H.": a capped share from a list, an alternative until lists are read
 		alts = append(alts, strings.TrimSpace(s[m[2]:m[3]]))
 		s = strings.TrimSpace(s[:m[0]])
 	}
 	n, more := parseCompletionText(s)
 	n = topicMembers(checkedBody(n, s), topicCodes(s))
 	if hasText(n) {
-		// "AMS200H1, AMS201H1, AMS300H1 (total of 1.5 credit)", "POL101H1
-		// (formerly POL101Y1), ...", "... (see NOTE 2)", "(Note: this does
-		// not fulfil the 400-level requirement as described in #5 above.)":
-		// an aside in brackets kills the reading; without it the item reads,
-		// and the aside is its note.
+		// "AMS200H1, ... (total of 1.5 credit)": a bracketed aside spoils the
+		// reading; without it the item reads, and the aside is its note
 		if t, asides := stripAsides(s); asides != nil {
 			if m, mo := parseCompletionText(t); m != nil && !hasText(checkedBody(m, t)) {
 				m = checkedBody(m, t)
@@ -511,22 +436,20 @@ func (a *compAssembler) grammarBody(s string) (body *types.ReqNode, rows []*type
 }
 
 var (
-	// complAlsoAcceptRe: named courses accepted for the item: "We will also
-	// accept PSY100Y5 from UTM, or both of PSYA01H3 and PSYA02H3 together
-	// from UTSC, in place of PSY100H1 for this requirement".
+	// complAlsoAcceptRe matches courses accepted in place of the item's: "We will
+	// also accept PSY100Y5 from UTM ... in place of PSY100H1 for this requirement".
 	complAlsoAcceptRe = regexp.MustCompile(`(?i)^we\s+will\s+also\s+accept\s+(.+?)(?:,?\s+in\s+place\s+of\s+` + codePat + `\b.*)?$`)
-	// complAlsoAcceptNoiseRe: the words around the codes that say where and
-	// how.
+	// complAlsoAcceptNoiseRe matches the words around the codes that say where
+	// and how: " from UTM".
 	complAlsoAcceptNoiseRe = regexp.MustCompile(`(?i)\s*\bfrom\s+(?:UTM|UTSC)\b|\bboth\s+of\s+|\s+together\b`)
-	// complAlsoAcceptOrRe: what separates the alternatives a complAlsoAcceptRe
-	// sentence accepts.
+	// complAlsoAcceptOrRe matches what separates the alternatives: ", or ".
 	complAlsoAcceptOrRe = regexp.MustCompile(`(?i),?\s+or\s+`)
-	// complAlsoAcceptAndRe: what may join the codes of one alternative.
+	// complAlsoAcceptAndRe matches what may join one alternative's codes: "and".
 	complAlsoAcceptAndRe = regexp.MustCompile(`(?i)\band\b|[,\s]`)
 )
 
-// alsoAccepted reads a complAlsoAcceptRe sentence into the courses it accepts:
-// alternatives joined by "or", each a course or courses joined by "and";
+// alsoAccepted reads a complAlsoAcceptRe sentence into the courses it
+// accepts: alternatives joined by "or", each courses joined by "and". It is
 // nil when they don't read as courses alone.
 func alsoAccepted(t string) *types.ReqNode {
 	m := complAlsoAcceptRe.FindStringSubmatch(t)
@@ -549,11 +472,9 @@ func alsoAccepted(t string) *types.ReqNode {
 	return orNode(alts...)
 }
 
-// orToPool reads "0.5 credit from the following set of 100-level courses:
-// BIO120H1/ ... ( MAT158H1, MAT159H1/ MAT157Y1)/ ..." as the pool it says,
-// credits{0.5, every course}, when the grammar made it alternatives and one
-// of them weighs more than the amount: and(MAT158H1, MAT159H1) for 0.5
-// credit would fail a student who took MAT158H1 alone.
+// orToPool reads alternatives under a lead amount as the pool it names,
+// credits{amount, every course}, when one alternative weighs more than the
+// amount: and(MAT158H1, MAT159H1) for 0.5 credit would fail MAT158H1 alone.
 func orToPool(n *types.ReqNode, s string) *types.ReqNode {
 	m := complLeadAmountRe.FindStringSubmatch(s)
 	if n == nil || n.Type != types.NodeOr || m == nil {
@@ -585,20 +506,16 @@ func orToPool(n *types.ReqNode, s string) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeCredits, Amount: amount, Courses: dedupe(codes)}
 }
 
-// complDepartmentGroupRe: a list of ";" groups of one department each, after an
-// amount: "1.0 credit from ECO220Y1, ECO227Y1; GGR270H1, GGR271H1;
-// STA220H1, STA221H1".
+// complDepartmentGroupRe matches an amount over ";" groups: "1.0 credit from
+// ECO220Y1, ECO227Y1; GGR270H1, GGR271H1; STA220H1, STA221H1".
 var complDepartmentGroupRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from:?\s+(.+)$`)
 
-// complCommaSpaceRe: what may join a group's codes (departmentGroups).
+// complCommaSpaceRe matches what may join a group's codes: ",".
 var complCommaSpaceRe = regexp.MustCompile(`[,\s]`)
 
-// departmentGroups reads a complDepartmentGroupRe pool as the or of its groups,
-// each a department's sequence: the courses that make up the amount
-// together (GGR270H1 and GGR271H1), or each course that does alone
-// (ECO220Y1 or ECO227Y1). Nil unless there are three or more groups, each of
-// one designator, each reading one of those ways: the union of all their
-// courses would count GGR270H1 with STA220H1.
+// departmentGroups reads a complDepartmentGroupRe pool as the or of its 3+
+// groups, each one department's courses making up the amount together or each
+// alone, or nil. A union of their courses would count GGR270H1 with STA220H1.
 func departmentGroups(s string) *types.ReqNode {
 	m := complDepartmentGroupRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(s), "."))
 	if m == nil {
@@ -637,12 +554,12 @@ func departmentGroups(s string) *types.ReqNode {
 	return orNode(alts...)
 }
 
-// complBracketPairRe: a bracketed group of alternatives inside a "/" list:
-// "ENV221H1/ ENV222H1/ ( EEB240H1/ ENV234H1)/ ENV337H1".
+// complBracketPairRe matches bracketed alternatives inside a "/" list:
+// "( EEB240H1/ ENV234H1)".
 var complBracketPairRe = regexp.MustCompile(`\(\s*(` + codePat + `(?:\s*/\s*` + codePat + `)+)\s*\)`)
 
-// bracketPairCaps caps a bracketed group of alternatives flattened into pool
-// n at its heaviest course, as pairCaps does for a "/" pair (design 3.2).
+// bracketPairCaps caps each bracketed group of alternatives flattened into
+// pool n at its heaviest course, as pairCaps does for a "/" pair.
 func bracketPairCaps(n *types.ReqNode, s string) *types.ReqNode {
 	pool, caps := poolCaps(n)
 	if !isPool(pool) || pool.Courses == nil {
@@ -661,26 +578,21 @@ func bracketPairCaps(n *types.ReqNode, s string) *types.ReqNode {
 }
 
 var (
-	// complAsideParenRe: brackets that remark on an item rather than require:
-	// "(Note: ...)", "(formerly POL101Y1)", "(see NOTE 2)", "(if taking
-	// AST425Y1, ...)", "(total of 1.5 credit)", "(3.0 credits in total)",
-	// "(The courses ... are recommended.)", "(History & Society courses)",
-	// "(These MIE courses address Human Factors ...)", "(note: some of these
-	// courses have prerequisites)".
+	// complAsideParenRe matches brackets that remark on an item rather than
+	// require: "(formerly POL101Y1)".
 	complAsideParenRe = regexp.MustCompile(`\(\s*_?((?i:note|nb)\s*:[^()]*|(?i:formerly)\s+[^()]*|(?i:see)\s+(?i:note)[^()]*|(?i:if\s+taking)\b[^()]*|(?i:total\s+of)\s+\d[^()]*|\d+(?:\.\d+)?\s+credits?\s+in\s+total|(?i:the|these)\s+[^()]*\b(?:are|is)\s+(?:recommended|suggested|encouraged)\.?|(?i:these)\s+[A-Z]{3}\s+courses\s+[^()]*|[A-Z][\w&,\s]*\bcourses)_?\s*\)`)
-	// complAppositiveRe: a descriptor closing a list of alternatives: ", a
+	// complAppositiveRe matches a descriptor closing a list of alternatives: ", a
 	// capstone integrative course".
 	complAppositiveRe = regexp.MustCompile(`,\s+an?\s+[a-z][a-z\s-]*\bcourse\.?$`)
 )
 
-// complCategoryAndRe: a category label between two lists of one pool: "(History
-// & Society courses) and".
+// complCategoryAndRe matches a category label between two lists of one pool:
+// "(History & Society courses) and ".
 var complCategoryAndRe = regexp.MustCompile(`\(\s*([A-Z][\w&,\s]*\bcourses)\s*\)\s*,?\s*and\s+`)
 
-// formerlyAlternatives gives each course of n that s writes with its old
-// code ("POL101H1 (formerly POL101Y1)") the old code too, as a list does
-// (remarkItem): a course node becomes or(course, old), a pool takes the
-// old code. It returns the asides without the "formerly" ones it read.
+// formerlyAlternatives also accepts the old code of each course of n that s
+// writes as "POL101H1 (formerly POL101Y1)": a course becomes or(course, old)
+// and a pool takes the old code. It returns asides minus those it read.
 func formerlyAlternatives(n *types.ReqNode, s string, asides []string) []string {
 	for _, m := range complCodeFormerlyRe.FindAllStringSubmatch(s, -1) {
 		cur, old := m[1], m[2]
@@ -704,13 +616,11 @@ func formerlyAlternatives(n *types.ReqNode, s string, asides []string) []string 
 	return asides
 }
 
-// stripAsides removes the asides from item text s (complAsideParenRe,
-// complAppositiveRe) and returns them as notes; nil when it has none.
+// stripAsides removes the asides from item text s and returns them as notes,
+// or nil when it has none.
 func stripAsides(s string) (string, []string) {
 	var notes []string
-	// "3.0 credits from <codes> (History & Society courses) and <codes>
-	// (Religion & Thought courses)": the labels name parts of one pool, so
-	// the lists join.
+	// "<codes> (History & Society courses) and <codes> (...)": one pool
 	s = complCategoryAndRe.ReplaceAllStringFunc(s, func(p string) string {
 		notes = append(notes, cleanNote(strings.TrimSpace(complCategoryAndRe.FindStringSubmatch(p)[1])))
 		return ", "
@@ -731,17 +641,16 @@ func stripAsides(s string) (string, []string) {
 	return strings.TrimSpace(strings.Join(strings.Fields(t), " ")), notes
 }
 
-// complOfAnyFollowingRe: "1.5 credits of any of the following (...):".
+// complOfAnyFollowingRe matches "1.5 credits of any of the following (...):".
 var complOfAnyFollowingRe = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?\s+credits?)\s+of\s+any\s+of\s+the\s+following\s*(\([^()]*\))?\s*:`)
 
-// complTopicParenRe: a course and the bracket after it.
+// complTopicParenRe matches a course and the bracket after it: "TRN409H1
+// (Nuclear Weapons and International Politics)".
 var complTopicParenRe = regexp.MustCompile(`(` + codePat + `)\s*\(([^()]+)\)`)
 
-// topicCodes returns the courses s lists with two or more different
-// topics: "TRN409H1 (Canadian Defense Policy since the end of the Cold
-// War), TRN409H1 (Nuclear Weapons and International Politics)" is a
-// special-topics course that counts only on those topics. Each maps to its
-// mentions.
+// topicCodes returns the courses s lists with two or more different topics,
+// each mapped to its mentions: a special-topics course counts only on those
+// topics.
 func topicCodes(s string) map[string][]string {
 	topics := map[string][]string{}
 	for _, m := range complTopicParenRe.FindAllStringSubmatch(s, -1) {
@@ -757,10 +666,9 @@ func topicCodes(s string) map[string][]string {
 	return topics
 }
 
-// topicMembers makes a special-topics course (topicCodes) a "maybe" (design
-// 3.2): a course node is and(course, text naming its topics); a pool is
-// or(the pool without it, and(the pool, text)), so the course counts only
-// as Review. The text is content (design D1): the offering's topic decides.
+// topicMembers makes a special-topics course a maybe: a course becomes
+// and(course, topic text), a pool or(pool without it, and(pool, text)). The
+// text is content: the offering's topic decides.
 func topicMembers(n *types.ReqNode, topics map[string][]string) *types.ReqNode {
 	if n == nil || len(topics) == 0 {
 		return n
@@ -798,15 +706,12 @@ func topicMembers(n *types.ReqNode, topics map[string][]string) *types.ReqNode {
 	return n
 }
 
-// complIeLeadRe: the "i.e.," before a restatement.
+// complIeLeadRe matches the "i.e.," before a restatement.
 var complIeLeadRe = regexp.MustCompile(`(?i)^i\.e\.,?\s*`)
 
-// restatedLevels narrows the pool of body n to the levels its restatement
-// gives: "3.0 SOC credits, which includes at least 1.0 SOC credit at the
-// 300-level, i.e., 2.0 SOC credits at the 200 OR 300-level and 1.0 SOC
-// credit at the 300-level" counts SOC courses at the 200 and 300 levels
-// only. The restatement must split the pool's amount into parts of its
-// designators, each with levels.
+// restatedLevels narrows the pool of body n to the levels its "i.e."
+// restatement gives, when the restatement splits the pool's amount into parts
+// of its designators, each with levels.
 func restatedLevels(n *types.ReqNode, restated string) {
 	var pool *types.ReqNode
 	switch {
@@ -850,13 +755,13 @@ func restatedLevels(n *types.ReqNode, restated string) {
 	pool.Levels = levels
 }
 
-// complPermListRe: an amount from a list, or with permission from a second
-// list: "1.0 credit from: A/ B or with permission of the Director: C/ D".
+// complPermListRe matches an amount from a list, or with permission from a
+// second list: "1.0 credit from: A/ B or with permission of the Director: C/ D".
 var complPermListRe = regexp.MustCompile(`(?i)^(.*?\bfrom:?\s+)((?:` + codePat + `\s*[/,;]?\s*)*` + codePat + `)\s*,?\s+or\s+((?:with|by)\s+(?:the\s+)?(?:prior\s+)?(?:written\s+)?(?:permission|approval)\s+(?:of|from)\s+[^:]+?)\s*:\s*((?:` + codePat + `\s*[/,;]?\s*)*` + codePat + `)\.?$`)
 
-// permissionList builds a complPermListRe match: or(credits{amount, list},
-// and(credits{amount, list and list2}, text permission)). A strict part the
-// grammar doesn't read as a pool of courses makes the whole sentence text.
+// permissionList builds or(credits{amount, list}, and(credits{amount, both
+// lists}, permission text)) from a complPermListRe match. A strict part that
+// isn't a plain pool of courses makes the whole sentence text.
 func permissionList(m []string) *types.ReqNode {
 	strict, _ := parseCompletionText(m[1] + m[2])
 	if !isPool(strict) || strict.Courses == nil || strict.Designators != nil || strict.Levels != nil || strict.MaxAmount != nil {
@@ -867,47 +772,35 @@ func permissionList(m []string) *types.ReqNode {
 	return orNode(strict, andNode(wide, textNode(types.TextPermission, m[3])))
 }
 
-// complWithAverageRe: "( A and B and C) with an average grade of 63%".
+// complWithAverageRe matches "( A and B and C) with an average grade of 63%".
 var complWithAverageRe = regexp.MustCompile(`(?i)^\(?\s*((?:` + codePat + `\s*(?:,|and)?\s*)+)\)?\s+with\s+an\s+average\s+(?:grade\s+)?of\s+(?:at\s+least\s+)?(\d{2})\s*%$`)
 
-// complAnyRemainingRe: "<pool>, or any remaining <filter> not used toward other
-// program requirements - <codes> (<approval for more codes>)".
+// complAnyRemainingRe matches "<pool>, or any remaining <filter> not used
+// toward other program requirements - <codes> (<approval for more codes>)".
 var complAnyRemainingRe = regexp.MustCompile(`(?i)^(.+?),?\s+or\s+any\s+remaining\s+[^-–]+?\s+[-–]\s+((?:\(?\s*` + codePat + `\s*\)?\s*[,/]?\s*)+)\s*(?:\((.*)\))?$`)
 
-// complOrEquivalentRe: "<strict>, or an equivalent <wider>, approved by
+// complOrEquivalentRe matches "<strict>, or an equivalent <wider>, approved by
 // <whom>".
 var complOrEquivalentRe = regexp.MustCompile(`(?i)^(.+?),?\s+or\s+an\s+equivalent\s+(.+?),\s+((?:approved\s+by|with\s+(?:the\s+)?approval\s+of)\s+.+)$`)
 
 var (
-	// complLowerRemarkRe: a remark in brackets that starts in lowercase with
-	// advice or timing: "(should be taken in first year, ...)".
+	// complLowerRemarkRe matches a lowercase bracketed remark of advice or
+	// timing: "(should be taken in first year)".
 	complLowerRemarkRe = regexp.MustCompile(`\s*\(((?:should|ideally|normally|preferably|recommended|strongly|highly|best|to\s+be\s+taken)\b[^()]*)\)`)
-	// complTimingRe: when to take a course.
+	// complTimingRe matches when to take a course: "in first year".
 	complTimingRe = regexp.MustCompile(`(?i)\b(?:should|to)\s+be\s+taken\b|\bin\s+(?:the\s+)?(?:first|second|third|fourth)\s+year\b`)
 )
 
-// complAndOrApprovalRe: "A/ B and/or C/ D <qualified, with approval>".
+// complAndOrApprovalRe matches "A/ B and/or C/ D <qualified, with approval>".
 var complAndOrApprovalRe = regexp.MustCompile(`^((?:` + codePat + `\s*/\s*)*` + codePat + `)\s+and/or\s+((?:` + codePat + `\s*/\s*)*` + codePat + `)\s+([^;]*\b(?:approval|permission)\b[^;]*)$`)
 
-// complOrAnotherRe: an approved alternative closing an item's list: ", or
-// another course ... approved by the Undergraduate Chair", ", or any research
-// course (such as ...), by permission of the Undergraduate Chair".
+// complOrAnotherRe matches an approved alternative closing an item's list:
+// ", or another course ... approved by the Undergraduate Chair".
 var complOrAnotherRe = regexp.MustCompile(`(?i),?\s+(?:or|and)\s+((?:another|any)\s+[^;]*?\b(?:approved\s+by|by\s+permission|with\s+(?:the\s+)?(?:prior\s+)?(?:approval|permission)|at\s+the\s+discretion\s+of|as\s+determined\s+by)\b[^;]*?)\.?$`)
 
-// checkedBody returns n, or the sentence as one text node where the
-// grammar's reading can't be trusted (a wrong structure is worse than text):
-//   - a union pool of courses and filters (namedLists makes it a named list
-//     when it can: unionList, listUnion);
-//   - text that swallowed a course code, so the codes after it read as
-//     required ("Some offerings of POL336H1; POL357H1; ...");
-//   - in an "and": an amount of any credits next to courses or text, a pool
-//     the grammar didn't recognise ("1.5 credits ... from: BIO, CSB
-//     (excluding ...)"); a sentence about courses ("Students should note
-//     that completing ( ECO231H1 and ECO232H1) limits ..."); a cap that lost
-//     what it caps; a pool cut short by a remark, its last members read as
-//     required;
-//   - an empty credits node, a phrase the grammar half read;
-//   - three fragments of text, or nothing but text.
+// checkedBody returns n, or s as one text node when the grammar's reading
+// can't be trusted, since a wrong structure is worse than text: a union pool,
+// text that swallowed a code, and the misreadings marked below.
 func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 	if n == nil {
 		return nil
@@ -932,14 +825,12 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 		case slices.ContainsFunc(x.Items, hasCourses) && slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool {
 			return y.Type == types.NodeText && y.Kind == types.TextOther && complProseRe.MatchString(y.Text)
 		}):
-			// "Students should note that completing ( ECO231H1 and
-			// ECO232H1) limits ...": courses named in a sentence, not
-			// required by it.
+			// "Students should note that completing ( A and B) ...": not required
 			bad = true
 		case slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool {
 			return y.Type == types.NodeCredits && y.MaxAmount != nil && y.Courses == nil && y.Designators == nil && y.Levels == nil
 		}):
-			// A cap that lost what it caps.
+			// a cap that lost what it caps
 			bad = true
 		case slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool { return y.Type == types.NodeCourse }) &&
 			slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool {
@@ -947,39 +838,32 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 					return z.Type == types.NodeText && z.Kind == types.TextPermission
 				})
 			}):
-			// A route the grammar cut a list at: "1.0 credit from: A/ B or
-			// with permission of the Director: C/ D" read as (A/ B or
-			// permission) and C, which one 0.5 course would meet.
+			// "1.0 credit from: A/ B or with permission ...: C/ D" cut into (A/ B or
+			// permission) and C, which one 0.5 course would meet
 			bad = true
 		case len(x.Items) >= 3 && isPool(x.Items[0]) && x.Items[0].Courses != nil && x.Items[0].Designators == nil &&
 			!slices.ContainsFunc(x.Items[1:], func(y *types.ReqNode) bool { return y.Type != types.NodeCourse }) &&
 			len(complAmountRe.FindAllString(s, -1)) == 1:
-			// "2.0 credits from <codes> and <codes>" read as the first list's
-			// pool and every course of the second required: one pool.
+			// "2.0 credits from <codes> and <codes>" read as a pool and required ones
 			bad = true
 		case slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool { return y.Type == types.NodeCredits && y.Courses != nil }) &&
 			slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool { return y.Type == types.NodeText }) &&
 			len(slices.DeleteFunc(slices.Clone(x.Items), func(y *types.ReqNode) bool { return y.Type != types.NodeCourse })) >= 2:
-			// A pool cut short by a remark: "1.0 credit from: A/ B (...), C,
-			// D" read as the pool and then C and D required.
+			// a pool cut short by a remark, its last members read as required
 			bad = true
 		}
 	})
 	walkReq(n, func(x *types.ReqNode) {
-		// An empty credits node: a phrase the grammar half read ("normally
-		// taken in first year").
+		// an empty credits node: a phrase half read ("normally taken in first year")
 		bad = bad || x.Type == types.NodeCredits && x.Amount == 0 && x.MaxAmount == nil && x.Items == nil && x.Courses == nil &&
 			x.Designators == nil && x.Levels == nil && x.Breadth == nil && x.Lists == nil
 	})
 	walkReq(n, func(x *types.ReqNode) {
-		// "1.0 credit in ONE other discipline": a word in capitals, not a
-		// designator.
+		// "1.0 credit in ONE other discipline": a word in capitals, not a designator
 		bad = bad || x.Type == types.NodeCredits && slices.ContainsFunc(x.Designators, func(d string) bool { return complCapsWords[d] })
 	})
 	walkReq(n, func(x *types.ReqNode) {
-		// "3.5 credits of ESS core courses", "1.0 credit in courses from the
-		// Linguistics concentration below": the designator (or subject)
-		// names a list, which may hold other designators, not a filter.
+		// "3.5 credits of ESS core courses": the designator names a list
 		if x.Type != types.NodeAnd {
 			return
 		}
@@ -990,8 +874,7 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 		})
 	})
 	walkReq(n, func(x *types.ReqNode) {
-		// "1.5 credits from PHL271H1 / PHL275H1 / Group 2": listed courses
-		// alone that can't make up the amount; the rest is a list or text.
+		// listed courses alone can't make up the amount: the rest is a list or text
 		if x.Type == types.NodeCredits && x.Amount > 0 && x.Courses != nil && x.Designators == nil && x.Levels == nil &&
 			x.Lists == nil && x.Breadth == nil && x.Items == nil && x.Requirements == nil {
 			sum := 0.0
@@ -1002,25 +885,22 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 		}
 	})
 	if complCapLeadRe.MatchString(strings.TrimSpace(s)) {
-		// "Up to 1.0 credit may be taken from list 2: ..." read as a body: a
-		// cap is no requirement of its own.
+		// "Up to 1.0 credit may be taken from list 2": a cap is no body
 		bad = true
 	}
 	walkReq(n, func(x *types.ReqNode) {
-		// "0.5 credits at the 400-level; fulfilled by any 400-level courses
-		// listed in ...": fragments of a sentence the grammar cut up.
+		// "...; fulfilled by any 400-level courses listed in ...": fragments
 		bad = bad || x.Type == types.NodeText && x.Kind == types.TextOther && complFragmentRe.MatchString(x.Text)
 	})
 	if complWordSlashRe.MatchString(s) {
-		// "1.0 credit from the History disciplinary/thematic cluster": "/"
-		// between words joins them; it offers no alternatives.
+		// "disciplinary/thematic": a "/" between words offers no alternatives
 		walkReq(n, func(x *types.ReqNode) {
 			bad = bad || x.Type == types.NodeOr && slices.ContainsFunc(x.Items, func(y *types.ReqNode) bool { return y.Type == types.NodeText })
 		})
 	}
 	if m := complLeadAmountRe.FindStringSubmatch(s); m != nil && n.Type == types.NodeAnd &&
 		!slices.ContainsFunc(n.Items, func(y *types.ReqNode) bool { return y.Type != types.NodeCourse }) {
-		// "1.0 credit: A, B, C" read as three required courses worth 1.5.
+		// "1.0 credit: A, B, C" read as three required courses worth 1.5
 		amount, _ := strconv.ParseFloat(m[1], 64)
 		sum := 0.0
 		for _, it := range n.Items {
@@ -1030,15 +910,13 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 	}
 	if m := complDesigAtLevelOrRe.FindStringSubmatch(s); m != nil &&
 		!sameSet(parseLevels(m[2]), parseLevels(m[4])) && !sameSet(desigRe.FindAllString(m[1], -1), desigRe.FindAllString(m[3], -1)) {
-		// "FRE at the 200+ level or FSL at the 300+ level": two filters.
+		// "FRE at the 200+ level or FSL at the 300+ level": two filters
 		bad = true
 	}
 	if m := complFilterOrFilterRe.FindStringSubmatch(s); m != nil &&
 		!sameSet(parseLevels(m[1]), parseLevels(m[3])) && !sameSet(desigRe.FindAllString(m[2], -1), desigRe.FindAllString(m[4], -1)) {
-		// "2.0 credits of 100- or 200-level ESS courses or 200-level JEG
-		// courses": a union of two filters, which one filter can't hold
-		// (namedLists makes it a list: filterUnion). Merged, it would count
-		// JEG100H1.
+		// "100- or 200-level ESS courses or 200-level JEG courses": a union one
+		// filter can't hold; merged, it would count JEG100H1
 		bad = true
 	}
 	texts := 0
@@ -1049,7 +927,7 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 	})
 	switch {
 	case bad || texts >= 3:
-		// Three fragments of text: the grammar read a sentence, not a list.
+		// three fragments of text: the grammar read a sentence, not a list
 		return textNode(types.TextOther, s)
 	case !read && (n.Type == types.NodeAnd || n.Type == types.NodeOr):
 		return textNode(classify(cleanNote(s)), s)
@@ -1057,53 +935,52 @@ func checkedBody(n *types.ReqNode, s string) *types.ReqNode {
 	return n
 }
 
-// complWordSlashRe: two lowercase words joined by "/": "disciplinary/thematic".
+// complWordSlashRe matches two lowercase words joined by "/":
+// "disciplinary/thematic".
 var complWordSlashRe = regexp.MustCompile(`\b[a-z]{3,}/[a-z]{3,}\b`)
 
-// complFragmentRe: text the grammar cut from a sentence, not a condition of its
-// own: "fulfilled by", "listed in the Centre for Jewish Studies ...", "both
-// of", "D-level courses", "plus".
+// complFragmentRe matches text the grammar cut from a sentence, not a
+// condition of its own: "fulfilled by".
 var complFragmentRe = regexp.MustCompile(`(?i)^(?:fulfilled\s+by|listed\s+(?:in|below|above)\b|both\s+of\b|one\s+or\s+both\b|plus\b|[A-D]-level\b|on\s+the\b|disciplinary/thematic\b)`)
 
-// complLeadAmountRe: the amount a requirement starts with.
+// complLeadAmountRe matches the amount a requirement starts with: "1.0 credit".
 var complLeadAmountRe = regexp.MustCompile(`(?i)^(?:[^:]{0,60}:\s*)?(\d+(?:\.\d+)?)\s+credits?\b`)
 
-// complCapsWords: words written in capitals that aren't designators.
+// complCapsWords are words written in capitals that aren't designators.
 var complCapsWords = map[string]bool{"ONE": true, "TWO": true, "ALL": true, "ANY": true, "AND": true, "THE": true, "NOT": true,
 	"FOR": true, "BUT": true, "MAY": true, "OUT": true, "SIX": true, "TEN": true, "PER": true, "TBA": true}
 
-// complListNounRe: text that names a list beside a designator: "core courses",
-// "concentration below", "other discipline offered within ...".
+// complListNounRe matches text that names a list beside a designator: "core
+// courses".
 var complListNounRe = regexp.MustCompile(`(?i)^(?:other\s+)?(?:[a-z&-]+\s+){0,3}(?:courses?|concentrations?|disciplines?|streams?|areas?|groups?|lists?)\b`)
 
-// complFilterOrFilterRe: "<levels> <designators> courses or <levels>
-// <designators> courses".
+// complFilterOrFilterRe matches "<levels> <designators> courses or <levels>
+// <designators> courses": "200-level ESS courses or 300-level JEG courses".
 var complFilterOrFilterRe = regexp.MustCompile(`(?i)\b([1-4]00(?:\s*[-/,]?\s*(?:or|and)?\s*[1-4]00)*[-+]?)\s*-?\s*levels?\s+((?-i:[A-Z]{3})(?:\s*(?:/|,|or|and)\s*(?-i:[A-Z]{3}))*)\s+courses?\s+or\s+([1-4]00(?:\s*[-/,]?\s*(?:or|and)?\s*[1-4]00)*[-+]?)\s*-?\s*levels?\s+((?-i:[A-Z]{3})(?:\s*(?:/|,|or|and)\s*(?-i:[A-Z]{3}))*)\s+courses?\b`)
 
-// complDesigAtLevelOrRe: "<designators> at the <levels> or <designators> at the
-// <levels>".
+// complDesigAtLevelOrRe matches "<designators> at the <levels> or
+// <designators> at the <levels>": "FRE at the 200 level or FSL at the 300 level".
 var complDesigAtLevelOrRe = regexp.MustCompile(`\b((?:[A-Z]{3})(?:\s*/\s*[A-Z]{3})*)\s+(?:(?i:courses?|credits?)\s+)?(?i:at\s+the)\s+([1-4]00[-+/\s\d]*(?i:levels?)?)\s+(?i:or)\s+((?:[A-Z]{3})(?:\s*/\s*[A-Z]{3})*)\s+(?:(?i:courses?|credits?)\s+)?(?i:at\s+the)\s+([1-4]00[-+/\s\d]*(?i:levels?)?)`)
 
-// hasCourses reports whether n names a course or credits.
 func hasCourses(n *types.ReqNode) bool {
 	found := false
 	walkReq(n, func(x *types.ReqNode) { found = found || x.Type == types.NodeCourse || x.Type == types.NodeCredits })
 	return found
 }
 
-// complProseRe: a verb, which makes text around courses a sentence about them.
+// complProseRe matches a verb, which makes text around courses a sentence
+// about them: "should".
 var complProseRe = regexp.MustCompile(`(?i)\b(?:should|must|may|can|will|note|limits?|is|are|was|were|have|has)\b`)
 
-// isAnyCredits reports a credits node with an amount and no filter: any
-// credits at all.
+// isAnyCredits reports whether n is an amount of any credits, with no filter.
 func isAnyCredits(n *types.ReqNode) bool {
 	return n.Type == types.NodeCredits && n.Amount > 0 && n.Courses == nil && n.Designators == nil && n.Levels == nil &&
 		n.Breadth == nil && n.Lists == nil && n.Requirements == nil && !n.Transfer && !n.CrNcr && n.ExcludeDesignators == nil && n.MaxCourseAmount == 0
 }
 
-// itemLabel is the calendar's label for an item: its number ("4", "Higher
-// Years 2"), or a labelled line's name ("Methods Courses"); not a year,
-// which is the section, nor a note's label.
+// itemLabel is the calendar's label for an item: its number ("Higher Years
+// 2") or a labelled line's name; not a year, which is the section, nor a
+// note's label.
 func itemLabel(b *compBlock) string {
 	switch {
 	case b.kind == blockItem:
@@ -1111,14 +988,12 @@ func itemLabel(b *compBlock) string {
 	case b.kind == blockLabelled && !blkStartsSection(b) && !blkNoteLabelRe.MatchString(b.label):
 		return b.label
 	case b.kind == blockLabelled && sectionLabel(b.label):
-		// "Fourth Year Courses: Any 2 courses (1.0 credit) from ...": the
-		// year is its section, and the label names it (completion_limits.go).
+		// "Fourth Year Courses: Any 2 courses ...": the label names its section
 		return b.label
 	}
 	return ""
 }
 
-// allAdvice reports whether every sentence of s is advice.
 func (a *compAssembler) allAdvice(s string) bool {
 	for _, sent := range splitComplSentences(s) {
 		if a.role(sent) != roleAdvisory {
@@ -1128,7 +1003,7 @@ func (a *compAssembler) allAdvice(s string) bool {
 	return true
 }
 
-// notesTo adds notes to row, or to the program's.
+// notesTo adds notes to row, or to the program when row is nil.
 func (a *compAssembler) notesTo(row *compRow, notes []string) {
 	if row != nil {
 		row.r.Notes = append(row.r.Notes, notes...)
@@ -1137,8 +1012,8 @@ func (a *compAssembler) notesTo(row *compRow, notes []string) {
 	}
 }
 
-// rowUnder adds a rule row under target: an item, or the program (Req 1, or
-// the top when there is no total).
+// rowUnder adds a rule row under target, or under the program when target is
+// nil.
 func (a *compAssembler) rowUnder(target *compRow, r *types.Requirement) {
 	if target != nil {
 		target.children = append(target.children, &compRow{r: r})
@@ -1148,23 +1023,17 @@ func (a *compAssembler) rowUnder(target *compRow, r *types.Requirement) {
 }
 
 var (
-	// complLooseRe: a sentence that permits or defines rather than requires:
-	// "LIN courses from other campuses are considered courses from other
-	// Departments", "Students may use CR/NCR on ...", "ANT390H1 may be placed
-	// in either Group A or B", "Sub-total = 8.5 credits".
+	// complLooseRe matches a sentence that permits or defines rather than
+	// requires: "Students may use CR/NCR on ...".
 	complLooseRe = regexp.MustCompile(`(?i)\b(?:may|can|could|might)\b|\b(?:is|are)\s+(?:also\s+)?considered\b|\bare\s+those\b|\bsub-?total\b|\bis\s+waived\b|\bis\s+not\s+a\s+substitute\b|\bconsidered\s+equivalent\b|^total\s*=|\bdoes\s+not\s+(?:have|need)\s+to\s+be\s+replaced\b|\bno\s+need\s+to\s+replace\b`)
-	// complBindingWordRe: words that make a sentence a rule whatever else it
-	// says.
+	// complBindingWordRe matches words that make a sentence a rule whatever else
+	// it says: "must".
 	complBindingWordRe = regexp.MustCompile(`(?i)\bmust\b|\brequired?\b|\bat\s+least\b|\bno\s+more\s+than\b|\bminimum\b|\bmaximum\b|\bcannot\b|\bonly\b|\bat\s+most\b|\bnot\s+(?:be\s+)?(?:counted|accepted|used|permitted|allowed)\b|\bmay\s+not\b`)
 )
 
-// looseMain reports whether sentence s only permits or defines (complLooseRe
-// and no complBindingWordRe), read in its main clause: brackets and what
-// follows a ";" are remarks on it ("BIO120H1/ BIO130H1 (may be taken in Year
-// 1), BIO220H1 and 1.5 credits from ...", "1.0 credit from ESS224H1, ...; up
-// to 0.5 credit of this requirement can be satisfied by ..."). A line that
-// leads with an amount or a code the grammar reads as courses is a
-// requirement, whatever else it permits.
+// looseMain reports whether s only permits or defines, read in its main
+// clause (brackets and what follows ";" are remarks). A line leading with an
+// amount or codes the grammar reads as courses is a requirement.
 func looseMain(s string) bool {
 	t := complClean(s)
 	main := strings.TrimSpace(splitTop(complStripParens(t), ';')[0])
@@ -1181,18 +1050,13 @@ func looseMain(s string) bool {
 }
 
 // looseSentence places a requirement sentence the grammar can't read as a
-// rule. One that only permits or defines (complLooseRe, no binding word)
-// isn't a constraint (which would force Review on everyone): when it relaxes
-// a requirement it names ("Students exempted from FSL220H1/ FSL222H1 may
-// replace it with any FRE 200+ ...", "If the FOR301H1 is not on offer, a
-// student may use a substitute ...") it is an alternative on that row; else a
-// note. Other sentences are a row of text.
+// rule. One that only permits or defines is no constraint, which would force
+// Review on everyone: an alternative on a row it relaxes, else a note.
 func (a *compAssembler) looseSentence(target *compRow, s string) {
 	t := a.clean(s)
 	if !complLooseRe.MatchString(t) || complBindingWordRe.MatchString(t) {
 		if complFloorLikeRe.MatchString(t) {
-			// "At least one Applications course (0.5 credit) must be
-			// 300-level or higher": a floor the classifier read as an amount.
+			// "At least one Applications course (0.5 credit) must be ...": a floor
 			if rows, ok := readFloor(s); ok {
 				for _, r := range rows {
 					a.rowUnder(target, r)
@@ -1204,14 +1068,11 @@ func (a *compAssembler) looseSentence(target *compRow, s string) {
 			return
 		}
 		if r := a.restatedRow(t); r != nil {
-			// "CSC110Y1 and CSC111H1 must be completed in order to complete the
-			// Specialist program" restates the row requiring them: its raw.
+			// "CSC110Y1 and CSC111H1 must be completed ...": restates a row
 			addRaw(r, s)
 		} else if rs := a.referencedRows(s); complWeightSplitRe.MatchString(t) && rs != nil {
-			// "If students complete ENV465Y1, 0.5 credit from the course
-			// contributes to group B in requirement 2": the half the claims
-			// can't split goes to the row it names, as its alternative: Review,
-			// not NotMet, for a student who counts it there.
+			// "If students complete ENV465Y1, 0.5 credit ... contributes to group
+			// B in requirement 2": an alternative there, so Review, not NotMet
 			for _, r := range rs {
 				r.r.Req = orNode(r.r.Req, textNode(types.TextOther, s))
 				addRaw(r, s)
@@ -1236,8 +1097,7 @@ func (a *compAssembler) looseSentence(target *compRow, s string) {
 			return
 		}
 		if target == nil || target == a.total {
-			// A program route: placed by what it names, else a note
-			// (placeProgramRoutes).
+			// a program route: placed by what it names, else a note
 			a.programRoutes = append(a.programRoutes, s)
 			return
 		}
@@ -1249,22 +1109,21 @@ func (a *compAssembler) looseSentence(target *compRow, s string) {
 	a.notes = append(a.notes, cleanNote(s))
 }
 
-// complRequirementLeadRe: a line that announces the requirement stated after
-// it: "An Integrative, Inquiry-Based Activity Requirement must be satisfied."
+// complRequirementLeadRe matches a line announcing the requirement after it:
+// "An Integrative, Inquiry-Based Activity Requirement must be satisfied".
 var complRequirementLeadRe = regexp.MustCompile(`(?i)^an?\s+[^.]+?\s+requirement\s+must\s+be\s+(?:satisfied|met|completed|fulfilled)$|\bthe\s+following\s+requirements\s*:?$`)
 
-// complInheritRe: a focus that begins with another program's requirements,
-// which Link copies (design 3.4): a row of its own.
+// complInheritRe matches a focus that begins with another program's
+// requirements, which Link copies: "begins with the requirements of".
 var complInheritRe = regexp.MustCompile(`(?i)\bbegins\s+with\s+the\s+requirements\s+of\b`)
 
-// complYHalvesRe: "Some of the above course options are 1.0 credit courses, but
-// only 0.5 credit can be counted toward the completion of this major".
+// complYHalvesRe matches "Some of the above course options are 1.0 credit
+// courses, but only 0.5 credit can be counted".
 var complYHalvesRe = regexp.MustCompile(`(?i)^some\s+of\s+the\s+above\s+course\s+options\s+are\s+1\.0\s+credit\s+courses,?\s+but\s+only\s+0\.5\s+credit\s+can\s+be\s+counted\b`)
 
-// yHalves reads a complYHalvesRe sentence into a limit of 0.5 on each full-year
-// course of the item above it ("Only 0.5 of ECO220Y1 will be accepted",
-// design 3.1), or joins its raw when it lists none, and reports whether it
-// did.
+// yHalves reads a complYHalvesRe sentence into a 0.5 limit on each full-year
+// course of the item above it, or joins its raw when it lists none, and reports
+// whether it did.
 func (a *compAssembler) yHalves(s string) bool {
 	if !complYHalvesRe.MatchString(a.clean(s)) {
 		return false
@@ -1284,9 +1143,7 @@ func (a *compAssembler) yHalves(s string) bool {
 			continue
 		}
 		if ys == nil {
-			// The item above lists no full-year course (ASMAJ1533, whose
-			// list is all half courses): the sentence caps nothing there,
-			// and the item's amount says it; its raw holds it.
+			// no full-year course: the sentence caps nothing, so it is only raw
 			addRaw(r, s)
 			return true
 		}
@@ -1300,7 +1157,8 @@ func (a *compAssembler) yHalves(s string) bool {
 	return false
 }
 
-// complRestateRe: a sentence that says courses are required.
+// complRestateRe matches a sentence saying courses are required: "must be
+// completed".
 var complRestateRe = regexp.MustCompile(`(?i)\bmust\s+be\s+(?:completed|taken)\b|\b(?:is|are)\s+(?:a\s+)?required(?:\s+courses?)?\b`)
 
 // restatedRow returns the one row that already requires every course a
@@ -1327,22 +1185,20 @@ func (a *compAssembler) restatedRow(t string) *compRow {
 	return found
 }
 
-// complFloorLikeRe: a sentence worded as a floor: "At least ... must be ...".
+// complFloorLikeRe matches a sentence worded as a floor: "At least ... must
+// be ...".
 var complFloorLikeRe = regexp.MustCompile(`(?i)^at\s+least\b.*\bmust\s+be\b`)
 
-// complNotListedRe: a course outside a list, which refuses nothing: "not listed
-// in the above clusters", "not captured in the above list".
+// complNotListedRe matches a course outside a list, which refuses nothing:
+// "not listed in".
 var complNotListedRe = regexp.MustCompile(`(?i)\bnot\s+(?:already\s+)?(?:listed|captured|included)\s+in\b`)
 
-// complConsiderForRe: courses a person may accept for a requirement: "Other
-// 400-level courses ... can also be considered for fulfillment of the
-// capstone requirement, if students receive written permission ...",
-// "Daniels students ... may be able to fulfill up to 1.5 credits in the
-// Third/Fourth Year Requirement with three of the following ARC courses".
+// complConsiderForRe matches courses a person may accept for a requirement:
+// "can also be considered for".
 var complConsiderForRe = regexp.MustCompile(`(?i)\b(?:can|may)\s+(?:also\s+)?be\s+considered\s+for\b|\bmay\s+be\s+able\s+to\s+fulfil+\b`)
 
-// noteTarget is the row a note on target goes to: target, or the program's
-// notes for the total and the program.
+// noteTarget is the row a note on target goes to: nil (the program) for the
+// total.
 func (a *compAssembler) noteTarget(target *compRow) *compRow {
 	if target == a.total {
 		return nil
@@ -1351,38 +1207,24 @@ func (a *compAssembler) noteTarget(target *compRow) *compRow {
 }
 
 var (
-	// complPrereqRe: what a course needs before it, not what the program
-	// counts: "PSL300H1 and PSL301H1 require MAT 100-level/ PHY 100-level
-	// courses", "Students taking PCL477H1 must take BCH210H1 prior",
-	// "BIO220H1 is required for all EEB 300+ level courses", "prerequisites
-	// for these courses cannot be used towards Group A requirements".
+	// complPrereqRe matches what a course needs before it, not what the program
+	// counts: "Students taking PCL477H1 must take BCH210H1 prior".
 	complPrereqRe = regexp.MustCompile(`(?i)^(?:` + codePat + `)(?:\s*(?:,|and|or)\s*` + codePat + `)*\s+requires?\b|\bmust\s+take\s+` + codePat + `\s+(?:prior|first|before)\b|\b(?:is|are)\s+required\s+for\s+all\b|\bprerequisites?\s+for\s+these\s+courses\b`)
-	// complExclusiveAgainRe: the exclusive claims restated: "The course taken
-	// in lieu of STA130H1 cannot be one that is already being used to satisfy
-	// Requirement 2 ...".
+	// complExclusiveAgainRe matches the exclusive claims restated: "cannot be one
+	// that is already being used".
 	complExclusiveAgainRe = regexp.MustCompile(`(?i)\bcannot\s+be\s+(?:one|a\s+course)\s+that\s+is\s+already\s+(?:being\s+)?used\b`)
-	// complWeightSplitRe: how much of a course counts where, which the claims
-	// split: "If students complete CSC110Y1, 0.5 credit from the course
-	// contributes to the First Year requirements", "If students complete
-	// ENV465Y1, 0.5 credit from the course contributes to group B".
+	// complWeightSplitRe matches how much of a course counts where, which the
+	// claims split: "0.5 credit from the course contributes to group B".
 	complWeightSplitRe = regexp.MustCompile(`(?i)\bcredit\s+from\s+the\s+course\s+contributes\s+to\b`)
 )
 
-// complNoOtherRe: a refusal of anything else: "No other cognates are permitted
-// for a Spanish Minor".
+// complNoOtherRe matches a refusal of anything else: "No other cognates are
+// permitted".
 var complNoOtherRe = regexp.MustCompile(`(?i)\bno\s+other\b[^.;]*\b(?:permitted|allowed|accepted|counted)\b`)
 
-// carriesRule reports whether a requirement sentence the grammar can't read
-// states a rule the checker must see, so that it is a row of text (Review)
-// rather than a note: a binding word (complBindingWordRe: "must", "only",
-// "cannot", "no more than", "at least", ...) or an amount of courses or of a
-// filter. Definitions ("For the purpose of program completion, JWE206H1
-// counts as an English course"), information ("MST300H1 is offered through
-// the Centre for Medieval Studies", "STA130H1 is restricted to first-year
-// students"), pointers ("see Note A below"), prerequisites (complPrereqRe), the
-// exclusive claims restated (complExclusiveAgainRe) and weight splits
-// (complWeightSplitRe) don't: as rows of text they would force Review on
-// everyone.
+// carriesRule reports whether an unread requirement sentence states a rule
+// the checker must see (a text row, Review) rather than a note. Prerequisites,
+// restated claims and weight splits don't: they'd force Review on everyone.
 func carriesRule(t string) bool {
 	switch {
 	case complPrereqRe.MatchString(t), complExclusiveAgainRe.MatchString(t), complWeightSplitRe.MatchString(t):
@@ -1393,19 +1235,18 @@ func carriesRule(t string) bool {
 	return complAmountRe.MatchString(t) && (codeRe.MatchString(t) || complFilterRe.MatchString(t))
 }
 
-// complApprovalWordRe: a sentence that depends on someone's approval.
+// complApprovalWordRe matches a sentence that depends on someone's approval:
+// "permission".
 var complApprovalWordRe = regexp.MustCompile(`(?i)\bapprov(?:al|ed)\b|\bpermission\b|\bdiscretion\b`)
 
-// complSubstitutedFromRe: "A maximum of 0.5 credit may be substituted from the
-// following first-year courses: POL191H1, ...", "up to 0.5 credit of this
-// requirement can be satisfied by taking one of the following ethics
-// courses: IMC200H1/ ...", "Up to 1.0 credit of this requirement can also be
-// completed from HST211H1/ PHS211H1, INS200H1, ...".
+// complSubstitutedFromRe matches a capped share from named courses: "A
+// maximum of 0.5 credit may be substituted from the following first-year
+// courses: POL191H1".
 var complSubstitutedFromRe = regexp.MustCompile(`(?i)^(?:a\s+maximum\s+of|up\s+to|no\s+more\s+than)\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:of\s+this\s+requirement\s+)?(?:may|can)\s+(?:also\s+)?be\s+(?:substituted|taken|chosen|satisfied|completed|fulfilled)\s+(?:from|by\s+taking)\s+(?:(?:one|any)\s+of\s+)?(?:the\s+following[^:]*:\s*)?((?:` + codePat + `\s*[,/;]?\s*(?:and|or)?\s*)+)$`)
 
 // substitutedFrom widens the item's pool with the courses a
-// complSubstitutedFromRe sentence names, capped at its amount (a limit under
-// the item), and reports whether it did.
+// complSubstitutedFromRe sentence names, capped at its amount, and reports
+// whether it did.
 func (a *compAssembler) substitutedFrom(row *compRow, s string) bool {
 	n, limit := widenPool(row.r.Req, s)
 	if limit == nil {
@@ -1417,9 +1258,9 @@ func (a *compAssembler) substitutedFrom(row *compRow, s string) bool {
 	return true
 }
 
-// widenPool returns pool n widened with the courses of a complSubstitutedFromRe
-// clause s, and the limit that caps them at its amount; a nil limit when s
-// isn't one or n isn't a pool of listed courses the courses fit (by level).
+// widenPool returns pool n widened with the courses of complSubstitutedFromRe
+// clause s, and the limit capping them. The limit is nil when s isn't one, or
+// n isn't a pool of listed courses whose levels the courses fit.
 func widenPool(n *types.ReqNode, s string) (*types.ReqNode, *types.Requirement) {
 	m := complSubstitutedFromRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(complClean(s)), "."))
 	if m == nil || n == nil || n.Type != types.NodeCredits || n.Courses == nil || n.Items != nil {
@@ -1436,14 +1277,13 @@ func widenPool(n *types.ReqNode, s string) (*types.ReqNode, *types.Requirement) 
 		Req: &types.ReqNode{Type: types.NodeCredits, Courses: dedupe(codes), MaxAmount: maxAmount(v)}}
 }
 
-// complConditionalRe: "If CLA160H1 is taken, students must take an additional
-// 0.5 credit from the following: ( CLA210H1/ ...)/ GGR101H1".
+// complConditionalRe matches "If CLA160H1 is taken, students must take an
+// additional 0.5 credit from the following: ...".
 var complConditionalRe = regexp.MustCompile(`(?i)^if\s+((?:` + codePat + `\s*(?:/|or|,)?\s*)+?)\s+(?:is|are)\s+taken,?\s+students\s+must\s+(?:also\s+)?take\s+an\s+additional\s+(.+)$`)
 
 // conditionalExtra reads a complConditionalRe sentence into the item it
-// follows: the course becomes and(course, the extra credits), and reports
-// whether it did. When the item doesn't offer the course as one alternative,
-// or the extra doesn't read, the whole item is text.
+// follows, making the course and(course, extra), and reports whether it
+// matched. The item is text if it lacks that alternative or the extra doesn't read.
 func (a *compAssembler) conditionalExtra(row *compRow, s string) bool {
 	m := complConditionalRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(a.clean(s)), "."))
 	if m == nil {
@@ -1467,13 +1307,13 @@ func (a *compAssembler) conditionalExtra(row *compRow, s string) bool {
 	return true
 }
 
-// complExemptedRe: "Students exempted from FSL220H1/ FSL222H1 may replace it".
+// complExemptedRe matches "Students exempted from FSL220H1/ FSL222H1 may
+// replace it".
 var complExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\s+((?:` + codePat + `[\s,/]*(?:and|or)?\s*)+)`)
 
 // relaxedRows returns the rows a loose sentence relaxes and the codes it
-// stands in for: those holding the codes it replaces ("in lieu of ...",
-// "exempted from ..."), the requirement it names, or the only item naming
-// one of its codes.
+// stands in for: rows holding the codes it replaces, the requirement it names,
+// or the only item naming one of its codes.
 func (a *compAssembler) relaxedRows(s string) ([]*compRow, []string) {
 	t := a.clean(s)
 	for _, re := range []*regexp.Regexp{complReplacedRe, complExemptedRe} {
@@ -1485,10 +1325,8 @@ func (a *compAssembler) relaxedRows(s string) ([]*compRow, []string) {
 		}
 	}
 	if m := complEquivalentsRe.FindStringSubmatch(t); m != nil {
-		// "... would be able to use any completed RSM course equivalents
-		// towards the completion of the Certificate (e.g. RSM100H1 would be
-		// deemed equivalent to MGT100H1 ..., etc)": every row that requires
-		// a course of the example's designator (MGT).
+		// "... RSM course equivalents ... (e.g. RSM100H1 ... equivalent to
+		// MGT100H1)": every row requiring a course of the example's designator
 		var out []*compRow
 		var replaced []string
 		for _, r := range a.routeRows() {
@@ -1519,15 +1357,14 @@ func (a *compAssembler) relaxedRows(s string) ([]*compRow, []string) {
 	return nil, nil
 }
 
-// complEquivalentsRe: courses of another unit accepted as equivalents, with an
-// example: "any completed RSM course equivalents ... (e.g. RSM100H1 would
-// be deemed equivalent to MGT100H1 ..., etc)".
+// complEquivalentsRe matches another unit's courses accepted as equivalents,
+// with an example: "any completed RSM course equivalents ... deemed equivalent
+// to MGT100H1".
 var complEquivalentsRe = regexp.MustCompile(`(?i)\bany\s+(?:completed\s+)?(?-i:[A-Z]{3})\s+course\s+equivalents\b.*\bdeemed\s+equivalent\s+to\s+(` + codePat + `)`)
 
-// overlap reads "Some courses may contribute to both the Canadian Politics
-// and Diversity requirements (in requirements 4 and 6)" into overlaps on
-// both rows (design 3.3), and reports whether it named two items under one
-// parent.
+// overlap reads "Some courses may contribute to both ... (in requirements 4
+// and 6)" into an overlap of the two rows, and reports whether it named two
+// items.
 func (a *compAssembler) overlap(s string) bool {
 	rows := a.referenced(s)
 	if len(rows) != 2 || rows[0] == rows[1] || !slices.Contains(a.items, rows[0]) || !slices.Contains(a.items, rows[1]) {
@@ -1545,22 +1382,18 @@ func (a *compAssembler) textRow(target *compRow, s string) {
 	a.rowUnder(target, a.textReq(s))
 }
 
-// textReq is the row textRow adds.
 func (a *compAssembler) textReq(s string) *types.Requirement {
 	a.diag.textRows = append(a.diag.textRows, s)
 	return &types.Requirement{Kind: types.RequirementConstraint, Req: textNode(types.TextOther, s), Raw: s}
 }
 
-// constraint reads a floor into constraint rows under target.
 func (a *compAssembler) constraint(target *compRow, s string) {
 	for _, r := range a.floorRows(s) {
 		a.rowUnder(target, r)
 	}
 }
 
-// floorRows reads a floor ("At least 1.0 credit must be at the 300+ level",
-// "at least 2.0 credits in each of GRK and LAT") into constraint rows
-// (readFloor), or a row of text (textReq).
+// floorRows reads a floor into constraint rows, or a row of text.
 func (a *compAssembler) floorRows(s string) []*types.Requirement {
 	if rows, ok := readFloor(s); ok {
 		return rows
@@ -1568,21 +1401,18 @@ func (a *compAssembler) floorRows(s string) []*types.Requirement {
 	return []*types.Requirement{a.textReq(s)}
 }
 
-// complMinUpToRe: a floor and a cap on the courses of some designators:
-// "For CSC courses, a minimum of 1.0 credit and up to 2.0 credits must be
-// chosen".
+// complMinUpToRe matches a floor and a cap on some designators' courses: "For
+// CSC courses, a minimum of 1.0 credit and up to 2.0 credits must be chosen".
 var complMinUpToRe = regexp.MustCompile(`(?i)^for\s+((?-i:[A-Z]{3})(?:\s*(?:,|/|and|or)\s*(?-i:[A-Z]{3}))*)\s+courses,\s+(?:a\s+minimum\s+of|at\s+least)\s+(\d+(?:\.\d+)?)\s+credits?\s+and\s+(?:up\s+to|a\s+maximum\s+of|no\s+more\s+than)\s+(\d+(?:\.\d+)?)\s+credits?\s+must\s+be\s+(?:chosen|taken|completed)$`)
 
-// readFloor reads a floor into constraint rows; ok is false when the
-// grammar can't read it.
+// readFloor reads a floor into constraint rows; ok is false when the grammar
+// can't read it.
 func readFloor(s string) (rows []*types.Requirement, ok bool) {
 	t := complOutOfRe.ReplaceAllString(strings.TrimSpace(strings.TrimSuffix(s, ".")), "$1 credit")
-	// "At least one Applications course (0.5 credit) must be 300-level or
-	// higher": the floor is the course's credit.
+	// "At least one Applications course (0.5 credit) must be ...": its credit
 	t = complOneCourseFloorRe.ReplaceAllString(t, "At least $1 credit must be at the")
 	if m := complMinUpToRe.FindStringSubmatch(t); m != nil {
-		// "For CSC courses, a minimum of 1.0 credit and up to 2.0 credits
-		// must be chosen": a floor and a cap on the same courses.
+		// a floor and a cap on the same courses
 		lo, _ := strconv.ParseFloat(m[2], 64)
 		hi, _ := strconv.ParseFloat(m[3], 64)
 		desigs := desigRe.FindAllString(m[1], -1)
@@ -1592,7 +1422,7 @@ func readFloor(s string) (rows []*types.Requirement, ok bool) {
 		}, true
 	}
 	if m := complEachOfRe.FindStringSubmatch(t); m != nil {
-		// "at least 2.0 credits in each of GRK and LAT": a floor for each.
+		// "at least 2.0 credits in each of GRK and LAT": a floor for each
 		v, _ := strconv.ParseFloat(m[1], 64)
 		for _, d := range desigRe.FindAllString(m[2], -1) {
 			rows = append(rows, &types.Requirement{Kind: types.RequirementConstraint, Raw: s,
@@ -1615,21 +1445,19 @@ func readFloor(s string) (rows []*types.Requirement, ok bool) {
 	return nil, false
 }
 
-// complOneCourseFloorRe: "At least one Applications course (0.5 credit) must
-// be".
+// complOneCourseFloorRe matches "At least one Applications course (0.5
+// credit) must be".
 var complOneCourseFloorRe = regexp.MustCompile(`(?i)^at\s+least\s+one\s+(?:[\w-]+\s+){0,3}?course\s+\((\d+(?:\.\d+)?)\s+credits?\)\s+must\s+be(?:\s+at\s+the)?`)
 
-// complOutOfRe: "1.0 out of the 3.5 credits must be ...": the scope is the
-// item.
+// complOutOfRe matches a floor scoped to the item: "1.0 out of the 3.5
+// credits".
 var complOutOfRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+out\s+of\s+the\s+\d+(?:\.\d+)?\s+credits\b`)
 
-// complEachOfRe: "at least 2.0 credits in each of GRK and LAT".
+// complEachOfRe matches "at least 2.0 credits in each of GRK and LAT".
 var complEachOfRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(\d+(?:\.\d+)?)\s+credits?\s+in\s+each\s+of\s+((?-i:[A-Z]{3})(?:\s*(?:,|and|or|/)\s*(?-i:[A-Z]{3}))+)$`)
 
-// limit reads a cap ("No more than 1.0 credit of 100-level courses may be
-// used", "No more than 0.5 credit in BCH can be used towards this
-// requirement") into a limit row under target. Courses that don't count
-// ("STA220H1 and STA255H1 are not accepted for the major") are a cap of 0.
+// limit reads a cap into a limit row under target: "No more than 1.0 credit
+// of 100-level courses may be used". Courses that don't count are a cap of 0.
 func (a *compAssembler) limit(target *compRow, s string) {
 	if complCampusRe.MatchString(a.clean(s)) && a.campusRule(s) || a.yHalves(s) {
 		return
@@ -1639,62 +1467,54 @@ func (a *compAssembler) limit(target *compRow, s string) {
 		return
 	}
 	if target != nil && target != a.total && a.poolAddition(target, s) {
-		// "Up to 1.0 credit can be used from GGR493Y1, based on suitability
-		// of placement for this program, and approved by department": more
-		// courses for the item, not a cap on it.
+		// "Up to 1.0 credit can be used from GGR493Y1, ... approved by department":
+		// more courses for the item, not a cap on it
 		return
 	}
 	if t := a.clean(s); (target == nil || target == a.total) && complCognateRe.MatchString(t) && complApprovalWordRe.MatchString(t) {
-		// "Up to 1.0 credit in identified or pre-approved cognate courses may
-		// count (...); please inquire at the Department and get approved in
-		// advance": a route into the program, placed by what it names
-		// (placeProgramRoutes), not a cap.
+		// "Up to 1.0 credit in ... pre-approved cognate courses may count ...": a
+		// program route, placed by what it names, not a cap
 		a.programRoutes = append(a.programRoutes, s)
 		return
 	}
 	if complPrereqRe.MatchString(a.clean(s)) {
-		// "PHY392H1 and PHY492H1 include relevant environmental content, but
-		// prerequisites for these courses cannot be used towards Group A
-		// requirements": what a list's courses need, a note (carriesRule).
+		// "... prerequisites for these courses cannot be used towards ...": a note
 		a.notesTo(a.noteTarget(target), []string{cleanNote(s)})
 		return
 	}
 	a.textRow(target, s)
 }
 
-// complCognateRe: courses of other departments a program accepts.
+// complCognateRe matches courses of other departments a program accepts:
+// "cognate".
 var complCognateRe = regexp.MustCompile(`(?i)\bcognates?\b`)
 
 var (
-	// "Students enrolled in the Computer Science Minor program are limited to
-	// at most 1.5 credits from ...": a cap.
+	// complLimitedToRe matches a cap worded as a limit on students: "Students
+	// enrolled in the Computer Science Minor program are limited to at most ".
 	complLimitedToRe = regexp.MustCompile(`(?i)^students\s+(?:enrolled\s+in\s+.+?\s+)?are\s+limited\s+to\s+(?:at\s+most|a\s+maximum\s+of)\s+`)
-	// A cap leading a sentence: "Up to 1.0 credit ...", "No more than ...".
+	// complCapLeadRe matches a cap leading a sentence: "Up to".
 	complCapLeadRe = regexp.MustCompile(`(?i)^(?:up\s+to|no\s+more\s+than|a\s+maximum\s+of|at\s+most)\b`)
-	// The campus rule restated: "Courses taught at UTM or UTSC are not
-	// included for consideration".
+	// complCampusRe matches the campus rule restated: "Courses taught at UTM or
+	// UTSC are not included for consideration".
 	complCampusRe = regexp.MustCompile(`(?i)^courses\s+taught\s+at\s+UTM\s+or\s+UTSC\s+are\s+not\s+included\s+for\s+consideration\.?$`)
-	// Courses that never count, named before the verb: "STA220H1 and
-	// STA255H1 are not accepted for the major", "PSL201Y1 is not
-	// acceptable", "Courses with lectures taught in English – PRT250H1 or
-	// PRT375H1, for instance – are not included for consideration in the
-	// Certificate", "MAT133Y1 is not a suitable substitute for ...".
+	// complNotCountedRe matches courses that never count, named before the verb:
+	// "STA220H1 and STA255H1 are not accepted for the major".
 	complNotCountedRe = regexp.MustCompile(`(?i)\b(?:are|is)\s+not\s+(?:accepted|acceptable|included\s+for\s+consideration|an?\s+suitable\s+substitutes?\s+for)\b`)
-	// "... is not a suitable substitute for": the course doesn't count
-	// toward what follows.
+	// complNotSubstituteRe matches "is not a suitable substitute for": the course
+	// doesn't count toward what follows.
 	complNotSubstituteRe = regexp.MustCompile(`(?i)\b(?:are|is)\s+not\s+an?\s+suitable\s+substitutes?\s+for\b`)
-	// ... or after it: "Students are not permitted to take PCL472Y1 or
-	// PCL474Y1", "We do not accept ENG100H1, ENG102H1".
+	// complNotTakenRe matches courses that never count, named after the verb:
+	// "We do not accept ENG100H1".
 	complNotTakenRe = regexp.MustCompile(`(?i)\b(?:are|is)\s+not\s+permitted\s+to\s+take\b|\bdo\s+not\s+accept\b`)
 )
 
-// complOmitRe: "may omit CSC108H1".
+// complOmitRe matches "may omit CSC108H1".
 var complOmitRe = regexp.MustCompile(`(?i)\bmay\s+omit\s+(` + codePat + `)\b`)
 
-// omitCovered reports whether the course a sentence lets students omit is
-// one the item naming it already offers routes without (an "or" with an
-// alternative that doesn't need it). The sentence then joins that item's
-// raw: the item encodes it.
+// omitCovered reports whether the item naming the course a sentence lets
+// students omit already offers a route without it. If so, the sentence joins
+// that item's raw: the item encodes it.
 func (a *compAssembler) omitCovered(s string) bool {
 	code := complOmitRe.FindStringSubmatch(s)[1]
 	r := a.itemNaming(code)
@@ -1712,10 +1532,9 @@ func (a *compAssembler) omitCovered(s string) bool {
 	return without
 }
 
-// campusRule places a sentence restating the campus rule (design 5.9: a
-// designator or level filter matches St. George courses only) on Req 1,
-// whose pool is such a filter: it is encoded there, so it joins Req 1's raw.
-// It reports false when Req 1 has no such pool.
+// campusRule puts a sentence restating the campus rule (filters match St.
+// George courses only) in Req 1's raw, whose designator pool encodes it. It
+// reports false when Req 1 has no such pool.
 func (a *compAssembler) campusRule(s string) bool {
 	if a.total == nil || a.total.r.Req.Type != types.NodeCredits || a.total.r.Req.Designators == nil || a.total.r.Req.Courses != nil {
 		return false
@@ -1724,50 +1543,42 @@ func (a *compAssembler) campusRule(s string) bool {
 	return true
 }
 
-// complOnlyOfRe: "only 0.5 of ECO220Y1 will be accepted".
+// complOnlyOfRe matches "only 0.5 of ECO220Y1 will be accepted".
 var complOnlyOfRe = regexp.MustCompile(`(?i)^(?:please\s+note\s+(?:that\s+)?)?only\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+(?:credits?\s+)?of\s+(` + codePat + `)\s+(?:will\s+be|is|may\s+be|can\s+be)\s+(?:accepted|counted|used)\b`)
 
-// complNoMoreThanOneRe: "No more than one from GGR273H1, GGR373H1", "No more
-// than one of GGR273H1, GGR373H1".
+// complNoMoreThanOneRe matches "No more than one from GGR273H1, GGR373H1".
 var complNoMoreThanOneRe = regexp.MustCompile(`(?i)^no\s+more\s+than\s+one\s+(?:of|from)\s+((?:` + codePat + `)(?:\s*(?:,|or|and|/)\s*` + codePat + `)+)$`)
 
-// complCapExceptRe: the exception a cap states: "... except for students ...".
+// complCapExceptRe matches the exception a cap states: "except for students
+// ...".
 var complCapExceptRe = regexp.MustCompile(`(?i)\b(except\s+(?:for|that|when|if)\b.*)$`)
 
 // hasFilter reports whether a limit's node says what it caps: a cap on
-// "credits" alone ("Up to 1.0 credit from Cognate Courses:") caps nothing.
+// "credits" alone caps nothing.
 func hasFilter(n *types.ReqNode) bool {
 	return n != nil && (n.Courses != nil || n.Designators != nil || n.Levels != nil || n.Breadth != nil || n.Lists != nil ||
 		n.Transfer || n.CrNcr || n.Items != nil || n.ExcludeDesignators != nil || n.MaxCourseAmount != 0)
 }
 
 var (
-	// complCapWordingRe: the ways a cap sentence leads into its amount that
-	// mean "No more than": "A maximum of a 0.5 credit", "At most a 0.5
-	// credit", "Students may use a maximum of 1.0 credit", "Only 1.0 credit
-	// from".
+	// complCapWordingRe matches a cap sentence's lead into its amount meaning "No
+	// more than": "A maximum of a 0.5 credit from".
 	complCapWordingRe = regexp.MustCompile(`(?i)^-?\s*(?:students\s+(?:may|can)\s+use\s+)?(?:(?:a\s+)?maximum\s+of\s+(?:an?\s+)?|at\s+most\s+(?:an?\s+)?|only\s+(?:an?\s+)?)(\d+(?:\.\d+)?\s+credits?\s+(?:from|in|at)\b)`)
-	// complCapAnyScopeRe: where a cap sentence says what it counts toward:
-	// "... may be counted", "... can be used for program requirements", "...
-	// towards the Criminology & Sociolegal Studies program", "... can be used
-	// to satisfy Physics Major program requirements".
+	// complCapAnyScopeRe matches where a cap sentence says what it counts toward:
+	// " may be counted".
 	complCapAnyScopeRe = regexp.MustCompile(`(?i)\s+(?:(?:can|may|will)\s+(?:be\s+)?(?:used|counted|count|applied|accepted)\b|towards?\s+(?:the\s+)?[\w&\s-]*?\b(?:program|requirements?)\b).*$`)
-	// complCapNumberedScopeRe: a cap on numbered requirements, "... can be
-	// used towards requirements 5. and 6" (ASSPE1003): it holds for those
-	// rows together, which no one limit row can say (one under the total
-	// would cap the whole program), so the sentence stays text.
+	// complCapNumberedScopeRe matches a cap on numbered requirements: "towards
+	// requirements 5". No one limit row can say that, so the sentence stays text.
 	complCapNumberedScopeRe = regexp.MustCompile(`(?i)\btowards?\s+(?:the\s+)?requirements?\s+#?\d`)
-	// complCapNoteParenRe: a pointer in brackets: "(See Note 3)".
+	// complCapNoteParenRe matches a pointer in brackets: "(See Note 3)".
 	complCapNoteParenRe = regexp.MustCompile(`(?i)\s*\((?:see|note)\b[^()]*\)`)
-	// complCodeDashTitleRe: a course's title after it: "CRI389Y0 - Topics in
-	// Criminology and Sociolegal Studies Abroad courses".
+	// complCodeDashTitleRe matches a course's title after it: "CRI389Y0 - Topics
+	// in Criminology and Sociolegal Studies Abroad courses".
 	complCodeDashTitleRe = regexp.MustCompile(`(` + codePat + `)\s+-\s+[A-Z][^,;]*?\s+courses\b`)
 )
 
 // capSentence rewrites a cap written as a sentence into the form the header
-// grammar reads: "A maximum of a 0.5 credit from APM346H1/ MAT334H1/
-// MAT354H1 may be used to fulfil this requirement (See Note 3)" is "No more
-// than 0.5 credit from APM346H1/ MAT334H1/ MAT354H1"; "" when it isn't one.
+// grammar reads ("No more than 0.5 credit from A/ B"), or "" when it isn't one.
 func capSentence(t string) string {
 	m := complCapWordingRe.FindStringSubmatchIndex(t)
 	if m == nil && !complCapLeadRe.MatchString(t) || complCapNumberedScopeRe.MatchString(t) {
@@ -1781,7 +1592,6 @@ func capSentence(t string) string {
 	return strings.TrimSpace(complCapAnyScopeRe.ReplaceAllString(t, ""))
 }
 
-// capRow reads a cap into a limit row, or returns nil.
 func capRow(s string) *types.Requirement {
 	t := complLimitedToRe.ReplaceAllString(strings.TrimSpace(strings.TrimSuffix(s, ".")), "No more than ")
 	for _, u := range []string{t, complCapScopeRe.ReplaceAllString(t, ""), capSentence(t)} {
@@ -1789,22 +1599,18 @@ func capRow(s string) *types.Requirement {
 		if ok && len(tail) == 0 && len(rows) == 1 && rows[0].Kind == types.RequirementLimit && hasFilter(rows[0].Req) {
 			rows[0].Raw = s
 			if m := complCapExceptRe.FindStringSubmatch(s); m != nil {
-				// "Only 0.5 credit of APM306Y1/ MAT329Y1 may count ... except
-				// for student enrolled in the Education and Society Minor may
-				// apply 1.0 credit": a limit can't hold an alternative, so the
-				// exception is the row's note.
+				// a limit can't hold an alternative: the exception is a note
 				rows[0].Notes = []string{cleanNote(m[1])}
 			}
 			return rows[0]
 		}
 	}
 	if m := complNoMoreThanOneRe.FindStringSubmatch(t); m != nil {
-		// "No more than one from GGR273H1, GGR373H1": at most one course.
+		// at most one course
 		return &types.Requirement{Kind: types.RequirementLimit, Raw: s, Req: courseCap(codeRe.FindAllString(m[1], -1))}
 	}
 	if m := complOnlyOfRe.FindStringSubmatch(t); m != nil {
-		// "Please note only 0.5 of ECO220Y1 will be accepted towards the
-		// program".
+		// "Please note only 0.5 of ECO220Y1 will be accepted ..."
 		v, _ := strconv.ParseFloat(m[1], 64)
 		return &types.Requirement{Kind: types.RequirementLimit, Raw: s,
 			Req: &types.ReqNode{Type: types.NodeCredits, Courses: []string{m[2]}, MaxAmount: maxAmount(v)}}
@@ -1823,21 +1629,19 @@ func capRow(s string) *types.Requirement {
 }
 
 var (
-	// "No more than 1.0 transfer credit(s) will be eligible for consideration
-	// in the Certificate", "No more than a 0.5 credit in transfer credit may
-	// be counted towards the program".
+	// complTransferCapRe matches "No more than 1.0 transfer credit(s) will be
+	// eligible for consideration in the Certificate".
 	complTransferCapRe = regexp.MustCompile(`(?i)^(?:no\s+more\s+than|a\s+maximum\s+of|up\s+to)\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+(?:credits?\s+in\s+)?transfer\s+credits?\s+(?:will\s+be\s+eligible\s+for\s+consideration|may\s+be\s+(?:counted|applied|used)\s+(?:to(?:wards?)?|for))\s+(?:in\s+)?the\s+(?:certificate|program|minor|major|specialist|focus)$`)
-	// "Transfer credits cannot comprise more than 0.5 credit at the
-	// 300-/400-level."
+	// complTransferComprisesRe matches "Transfer credits cannot comprise more
+	// than 0.5 credit at the 300-/400-level".
 	complTransferComprisesRe = regexp.MustCompile(`(?i)^transfer\s+credits\s+cannot\s+comprise\s+more\s+than\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+credits?(?:\s+at\s+the\s+([1-4]00[-/\s\d+]*-?\s*levels?))?$`)
 )
 
-// transfer reads a cap on transfer credit (design 3.5) into a limit row
-// under target.
+// transfer reads a cap on transfer credit into a limit row under target.
 func (a *compAssembler) transfer(target *compRow, s string) {
 	t := strings.TrimSpace(strings.TrimSuffix(s, "."))
 	if r, text, ok := transferRows(t); ok {
-		// With the exchange exception (completion_limits.go).
+		// with the exchange exception
 		r.Raw = s
 		a.rowUnder(target, r)
 		if text {
@@ -1860,26 +1664,21 @@ func (a *compAssembler) transfer(target *compRow, s string) {
 	a.rowUnder(target, &types.Requirement{Kind: types.RequirementLimit, Req: n, Raw: s})
 }
 
-// complCrNcrBanRe: courses taken CR/NCR don't count (design 3.5): "Courses that
-// have been taken as Credit/No Credit cannot be used to fulfill Certificate
-// requirements", "We do not accept any CR/NCR courses toward our program",
-// "Courses with a CR/NCR status may not be used to satisfy program
-// requirements".
+// complCrNcrBanRe matches a rule that courses taken CR/NCR don't count: "We
+// do not accept any CR/NCR courses toward our program".
 var complCrNcrBanRe = regexp.MustCompile(`(?i)^(?:courses\s+(?:that\s+have\s+been\s+taken\s+as|with\s+a)\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)(?:\s+status)?\s+(?:cannot|may\s+not)\s+be\s+used\s+to\s+(?:fulfill|satisfy)\s+(?:the\s+)?(?:certificate|program)\s+requirements|we\s+do\s+not\s+accept\s+any\s+CR\s*/\s*NCR\s+courses\s+toward\s+our\s+programs?)$`)
 
-// complCrNcrMayRe: CR/NCR allowed: "Students may use CR/NCR on ...", "Students
-// may use the CR/NCR option towards ...".
+// complCrNcrMayRe matches CR/NCR allowed: "may use".
 var complCrNcrMayRe = regexp.MustCompile(`(?i)\b(?:may|can)\s+(?:use|take)\b`)
 
 // crNcr reads a rule on CR/NCR courses into a limit row under target.
 func (a *compAssembler) crNcr(target *compRow, s string) {
 	if a.crNcrOutside(target, s) {
-		// CR/NCR or other coursework, one share (completion_limits.go).
+		// CR/NCR or other coursework, one share
 		return
 	}
 	if rows, text := crNcrRows(a.clean(s)); rows != nil {
-		// Codes beside the CR/NCR courses, other wordings, a share
-		// (completion_limits.go).
+		// codes beside the CR/NCR courses, other wordings, a share
 		for _, r := range rows {
 			r.Raw = s
 			a.rowUnder(target, r)
@@ -1891,8 +1690,7 @@ func (a *compAssembler) crNcr(target *compRow, s string) {
 	}
 	if !complCrNcrBanRe.MatchString(strings.TrimSpace(strings.TrimSuffix(s, "."))) {
 		if t := a.clean(s); complCrNcrMayRe.MatchString(t) && !complNegationRe.MatchString(t) && !complBindingWordRe.MatchString(t) {
-			// "Students may use CR/NCR on the course they use toward the
-			// ethics and social responsibility credit": a permission, a note.
+			// "Students may use CR/NCR on the course ...": a permission, a note
 			a.notesTo(a.noteTarget(target), []string{cleanNote(s)})
 			return
 		}
@@ -1903,24 +1701,18 @@ func (a *compAssembler) crNcr(target *compRow, s string) {
 		Req: &types.ReqNode{Type: types.NodeCredits, CrNcr: true, MaxAmount: maxAmount(0)}})
 }
 
-// isApproval reports an approval route: "Other introductory language classes
-// may be approved by the Director", "Students can request substitutions from
-// the IRP Director".
+// isApproval reports whether s is an approval route: "Other introductory
+// language classes may be approved by the Director".
 func (a *compAssembler) isApproval(s string) bool {
 	return a.cue(s).approval
 }
 
-// complAlternativeRe: a sentence that offers another way to meet a requirement:
-// "A 200 or 300-level Geography & Planning course ... may also be used to
-// meet this requirement", "0.5 credit from GGR493Y1 can be used to meet this
-// requirement", "Transfer credit equivalents of the following courses ...
-// will qualify for this requirement", "CSB450H1 is also acceptable".
+// complAlternativeRe matches a sentence offering another way to meet a
+// requirement: "CSB450H1 is also acceptable".
 var complAlternativeRe = regexp.MustCompile(`(?i)\balso\s+(?:be\s+)?(?:used|count(?:s|ed)?|accepted|acceptable|eligible|qualif\w*|fulfil\w*|satisf\w*|meet|complete)\b|\b(?:is|are)\s+also\s+acceptable\b|\bsubstitute\b|\bqualif(?:y|ies)\b|\b(?:meet|fulfil+|satisfy)\s+(?:this|the)\s+(?:[\w-]+\s+){0,3}requirement\b|\bcounts?\s+towards?\b|\bbe\s+counted\s+towards?\b|\bin\s+lieu\b|\b(?:can|may)\s+be\s+used\b|\bwill\s+be\s+accepted\b|\bacceptable\b`)
 
-// isAlternative reports a sentence that offers another way to meet a
-// requirement (complAlternativeRe), or widens its pool with a cap ("Of these
-// 9.0 credits, up to 2.0 credits ... may be taken from the following cognate
-// departmental or college offerings", complWidenRe).
+// isAlternative reports whether s offers another way to meet a requirement,
+// or widens its pool with a cap.
 func (a *compAssembler) isAlternative(s string) bool {
 	return a.cue(s).alternative
 }
@@ -1965,14 +1757,12 @@ func (a *compAssembler) lineSentences(i int) []string {
 	return a.lineSents[i]
 }
 
-// complNegationRe: a sentence that refuses an alternative ("MAT133Y1 is not
-// a suitable substitute for ...", "they cannot be used as substitutes").
+// complNegationRe matches a sentence that refuses an alternative: "cannot".
 var complNegationRe = regexp.MustCompile(`(?i)\bnot\b|\bcannot\b|n['’]t\b`)
 
-// alternative adds a sentence as another way to meet row: or(strict, text).
-// Its kind says what decides it (altKind). A permission that names its
-// wider pool is bounded by it once every row is read (boundRoutes, design
-// 3.3).
+// alternative adds s as another way to meet row: or(strict, text), its kind
+// saying what decides it. A permission naming its wider pool is bounded by it
+// once every row is read.
 func (a *compAssembler) alternative(row *compRow, s string) {
 	if row == nil {
 		a.programRoutes = append(a.programRoutes, s)
@@ -1986,8 +1776,8 @@ func (a *compAssembler) alternative(row *compRow, s string) {
 	addRaw(row, s)
 }
 
-// addRaw adds sentence s to row's raw unless the raw has it already: a row's
-// raw holds every sentence encoded in it.
+// addRaw adds sentence s to row's raw unless it is there already: a row's raw
+// holds every sentence encoded in it.
 func addRaw(row *compRow, s string) {
 	s = strings.TrimSpace(s)
 	if !strings.Contains(rawWords(row.r.Raw), rawWords(s)) {
@@ -2003,8 +1793,8 @@ func rawWords(s string) string {
 }
 
 // altKind is the kind of an alternative's text: a permission when a person
-// decides ("at the department's discretion"), else other. Not membership:
-// "count toward the program" is about courses, not programs.
+// decides, else other. Never membership: "count toward the program" is about
+// courses, not programs.
 func altKind(s string) types.TextKind {
 	if classify(cleanNote(s)) == types.TextPermission {
 		return types.TextPermission
@@ -2013,15 +1803,14 @@ func altKind(s string) types.TextKind {
 }
 
 var (
-	// complRefRe: references to numbered requirements: "requirement 2 of this
-	// focus", "requirements (4) and (5)".
+	// complRefRe matches references to numbered requirements: "requirements (4)
+	// and (5)".
 	complRefRe    = regexp.MustCompile(`(?i)\brequirements?\s+\(?\d{1,2}[a-z]?\)?(?:\s*(?:,|and|or)\s*\(?\d{1,2}[a-z]?\)?)*`)
 	complRefNumRe = regexp.MustCompile(`\d{1,2}[a-z]?`)
 )
 
-// referenced returns the items a sentence names by their numbers ("may also
-// count towards requirement 2"), or nil when a number names no item or more
-// than one.
+// referenced returns the items a sentence names by number ("may also count
+// towards requirement 2"), or nil when a number names no item or several.
 func (a *compAssembler) referenced(s string) []*compRow {
 	var out []*compRow
 	for _, num := range complRefNumRe.FindAllString(complRefRe.FindString(s), -1) {
@@ -2043,19 +1832,14 @@ func (a *compAssembler) referenced(s string) []*compRow {
 	return out
 }
 
-// complSatisfiesCountsRe: a course that meets one requirement and counts part
-// of its credit toward another: "PHY479Y1 (Undergraduate Research Project)
-// satisfies Requirement 3 in Third or Fourth Year and counts as a 0.5 credit
-// at the PHY 400-level for Requirement 4 in Third or Fourth Year".
+// complSatisfiesCountsRe matches a course that meets one requirement and
+// counts part of its credit toward another: "PHY479Y1 ... satisfies
+// Requirement 3 ... and counts as a 0.5 credit ... for Requirement 4 ...".
 var complSatisfiesCountsRe = regexp.MustCompile(`(?i)^(` + codePat + `)(?:\s*\([^()]*\))?\s+satisfies\s+(requirement\s+\d{1,2}[a-z]?(?:\s+in\s+.+?)?)\s+and\s+counts\s+as\s+an?\s+(\d+(?:\.\d+)?)\s+credit\b.*?\bfor\s+(requirement\s+\d{1,2}[a-z]?(?:\s+in\s+.+?)?)\.?$`)
 
-// satisfiesAndCounts places a complSatisfiesCountsRe sentence and reports
-// whether it did. The course's credit is split (design 2, weight): the
-// share it counts toward the second requirement, and the rest toward the
-// first, where it is an alternative: credits{rest, [course], weight rest}.
-// The second requirement takes the sentence as an alternative,
-// or(strict, text): the course counts only part of its credit there, which
-// a pool can't say of one of its courses.
+// satisfiesAndCounts splits a complSatisfiesCountsRe course's credit: the
+// rest is an alternative on the first requirement, and the second takes the
+// sentence as or(strict, text), since a pool can't count part of one course.
 func (a *compAssembler) satisfiesAndCounts(s string) bool {
 	m := complSatisfiesCountsRe.FindStringSubmatch(strings.TrimSpace(a.clean(s)))
 	if m == nil {
@@ -2074,10 +1858,9 @@ func (a *compAssembler) satisfiesAndCounts(s string) bool {
 	return true
 }
 
-// referencedIn returns the one item a phrase names by number, "Requirement 3
-// in Third or Fourth Year": among the items with that number, the one under
-// the section named after "in" when there are several. Nil when none or
-// several remain.
+// referencedIn returns the one item a phrase names by number ("Requirement 3
+// in Third or Fourth Year"), narrowed by the section after "in" when several
+// share it; nil when none or several remain.
 func (a *compAssembler) referencedIn(phrase string) *compRow {
 	num := complRefNumRe.FindString(phrase)
 	sec := ""
@@ -2099,14 +1882,9 @@ func (a *compAssembler) referencedIn(phrase string) *compRow {
 	return found[0]
 }
 
-// approval adds an approval route to the row it concerns, as an alternative
-// that only a person can grant: or(strict, text permission). This is the
-// design's form for a route that names no pool (3.3); one that names its
-// pool is bounded by it after placeProgramRoutes (boundRoutes), and Link
-// narrows a special-topics pool by the catalogue's titles
-// (linkOtherTopics). A route at the program level waits until every
-// row is read (placeProgramRoutes): it goes to the rows it names or
-// describes, else it is a note.
+// approval adds a route only a person can grant to target as or(strict,
+// permission text); a pool it names bounds it later. A program-level route
+// waits until every row is read, then goes to the rows it names, else a note.
 func (a *compAssembler) approval(target *compRow, s string) {
 	if target == nil {
 		a.programRoutes = append(a.programRoutes, s)
@@ -2114,7 +1892,7 @@ func (a *compAssembler) approval(target *compRow, s string) {
 	}
 	alt := textNode(types.TextPermission, cleanNote(s))
 	if target.r.Req == nil {
-		// A group: the route is a part's alternative, not the group's.
+		// a group: the route is a part's alternative, not the group's
 		a.textRow(target, s)
 		return
 	}
@@ -2123,7 +1901,7 @@ func (a *compAssembler) approval(target *compRow, s string) {
 }
 
 // exclusion reads a sentence naming programs that can't be combined with
-// this one, as enrolment does; a phrasing only completion text has stays a
+// this one, as enrolment does; a phrasing only completion text has stays
 // membership text.
 func (a *compAssembler) exclusion(s string) {
 	t := strings.TrimSpace(strings.TrimSuffix(a.clean(s), "."))
@@ -2139,27 +1917,26 @@ func (a *compAssembler) exclusion(s string) {
 }
 
 var (
-	// "Students are not allowed to enroll concurrently in the Major Program
-	// in Pharmacology and the Major Program in Toxicology": one of the two is
-	// this program, which Link drops.
+	// complConcurrentRe matches "Students are not allowed to enroll concurrently
+	// in the Major Program in Pharmacology and the Major Program in Toxicology".
+	// One of the two is this program, which Link drops.
 	complConcurrentRe = regexp.MustCompile(`(?i)\bnot\s+(?:be\s+)?allowed\s+to\s+enrol(?:l)?\s+concurrently\s+in\s+(?:the\s+|a\s+)?(.+?)\s+and\s+(?:the\s+|a\s+)?(.+)$`)
-	// "Students registered for a German Specialist or Major may not
-	// simultaneously be registered for a German Minor program": the
-	// programs in the subject.
+	// complSimultaneousRe matches "Students registered for a German Specialist or
+	// Major may not simultaneously": the programs in the subject.
 	complSimultaneousRe = regexp.MustCompile(`(?i)^students\s+(?:enrolled|registered)\s+(?:in|for)\s+(?:the\s+|a\s+|an\s+)?(.+?)\s+may\s+not\s+simultaneously\b`)
-	// "Students completing the Global Health Major (ASMAJ2575) cannot also
-	// complete the Applied Genetics and Biotechnology Major (ASMAJ1053), ...".
+	// complAlsoCompleteRe matches "cannot also complete the Applied Genetics and
+	// Biotechnology Major".
 	complAlsoCompleteRe = regexp.MustCompile(`(?i)\bcannot\s+also\s+complete\s+(.+)$`)
-	// "Students enrolled in this Minor program cannot be enrolled in any
-	// other program in Economics", "The Neuroscience major cannot be paired
-	// with any other Human Biology Program managed major program".
+	// complOtherProgramRe matches "cannot be enrolled in any other program in
+	// Economics".
 	complOtherProgramRe = regexp.MustCompile(`(?i)\b(?:cannot\s+be\s+enrol(?:l)?ed\s+in|cannot\s+be\s+paired\s+with)\s+(any\s+other\s+.+)$`)
-	// A label or list marker before an exclusion: "Note: (a)", "3.".
+	// complExclusionLeadRe matches a label or list marker before an exclusion:
+	// "Note: (a)".
 	complExclusionLeadRe = regexp.MustCompile(`(?i)^(?:note:\s*)?(?:\([a-z]\)\s*)?`)
 )
 
-// complExclusionNodes reads the cannot-combine phrasings only completion
-// text has, or returns nil.
+// complExclusionNodes reads the cannot-combine phrasings only completion text
+// has, or returns nil.
 func complExclusionNodes(t string) []*types.ReqNode {
 	t = complExclusionLeadRe.ReplaceAllString(t, "")
 	switch {
@@ -2176,8 +1953,8 @@ func complExclusionNodes(t string) []*types.ReqNode {
 	return nil
 }
 
-// claimable reports whether n only needs courses: courses, amounts of
-// credits and their and, or and choose. No text, cap or average.
+// claimable reports whether n only needs courses: courses, credit amounts and
+// their and, or and choose. No text, cap or average.
 func claimable(n *types.ReqNode) bool {
 	ok := true
 	walkReq(n, func(x *types.ReqNode) {
@@ -2192,9 +1969,8 @@ func claimable(n *types.ReqNode) bool {
 	return ok
 }
 
-// sharesCourses reports whether a course could count toward both x and y:
-// a code in both, or a code or filter of one that a filter of the other
-// matches. Text doesn't count: it is Review whatever courses it is given.
+// sharesCourses reports whether a course could count toward both x and y.
+// Text doesn't count: it is Review whatever courses it is given.
 func sharesCourses(x, y *types.ReqNode) bool {
 	cx, fx := poolParts(x)
 	cy, fy := poolParts(y)
@@ -2246,12 +2022,11 @@ func filtersMeet(f, g *types.ReqNode) bool {
 	return true
 }
 
-// isPool reports a credits node with an amount and a source: a pool.
+// isPool reports whether n is a credits node with an amount and a source.
 func isPool(n *types.ReqNode) bool {
 	return n != nil && n.Type == types.NodeCredits && n.Amount > 0 && n.Items == nil && (n.Courses != nil || n.Designators != nil)
 }
 
-// hasText reports whether n has a text node.
 func hasText(n *types.ReqNode) bool {
 	found := false
 	walkReq(n, func(x *types.ReqNode) { found = found || x.Type == types.NodeText })
@@ -2262,28 +2037,24 @@ func textNode(kind types.TextKind, s string) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeText, Kind: kind, Text: cleanNote(s)}
 }
 
-// sameNode reports whether two nodes are the same tree.
 func sameNode(x, y *types.ReqNode) bool {
 	return len(dedupeNodes([]*types.ReqNode{x, y})) == 1
 }
 
-// fmtAmount writes a credit amount as the calendar does: "4.0", "0.5".
+// fmtAmount writes a credit amount as the calendar does: "0.5".
 func fmtAmount(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
-// complRequiredSentenceRe: courses a sentence says are required, with
-// advice after: "PHL271H1, TRN203H1, and TRN204H1 are required courses that
-// students are recommended to take in second year".
+// complRequiredSentenceRe matches courses a sentence says are required:
+// "PHL271H1, TRN203H1, and TRN204H1 are required courses".
 var complRequiredSentenceRe = regexp.MustCompile(`(?i)^(.*\b` + codePat + `)\s+(?:are|is)\s+(?:the\s+)?required(?:\s+courses?)?\b`)
 
-// complOnlySomeRe: a requirement only some students have: "PRT420H1 is
-// required for students who began their Portuguese studies with 200+ level
-// PRT language courses", "if …", "unless …".
+// complOnlySomeRe matches a requirement only some students have: "for
+// students who began".
 var complOnlySomeRe = regexp.MustCompile(`(?i)\b(?:for\s+(?:students|those)|if|unless|when|only\s+for|in\s+case)\b`)
 
-// complThatRe: the "that" before the advice after complRequiredSentenceRe.
+// complThatRe matches the "that" before advice after complRequiredSentenceRe.
 var complThatRe = regexp.MustCompile(`(?i)^\s*,?\s*(?:that|which)\s+`)
 
-// fixedCourses reports whether n is a course or an and of courses.
 func fixedCourses(n *types.ReqNode) bool {
 	if n.Type == types.NodeCourse {
 		return true

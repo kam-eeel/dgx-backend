@@ -10,78 +10,52 @@ import (
 	"degree-explorer/types"
 )
 
-// Lists: lines that set out the courses items draw on, rather than
-// requirements. A list read here is recorded as a definition (listDef) and
-// kept as a note, or as the text of the item over it with the list as its
-// notes, never required courses; once every row is read, the lists rows
-// refer to become named lists and their notes go (completion_named.go).
-// Also the leads over sub-lists (listLead), numbered lists (numberedLists),
-// a requirement's own list (itemList) and text naming more members of a
-// pool (listMemberAlt).
-//
-// The regexes below tell lists from requirements: the ones a lead points
-// down with, then the headings and labels that name lists.
+// List lines: lines that set out the courses items draw on, rather than
+// requirements. They are recorded as list definitions, which namedLists resolves.
 
 var (
-	// complCodeLineLeadRe: a lead-in ending in "following", "listed below",
-	// "below" (with "list" or not) or ":", which takes the line of codes
-	// after it (blocks): "2.5 credits from the following list:".
+	// complCodeLineLeadRe matches a lead over a line of codes: "2.5 credits
+	// from the following list:".
 	complCodeLineLeadRe = regexp.MustCompile(`(?i)\b(?:following|listed\s+below|below)\b(?:\s+list)?\s*:?$|:$`)
-	// complPoolListedBelowRe: a pool drawn from the courses listed below:
-	// "4.0 credits chosen from those listed below, ..." (blocks, and header,
-	// where the list is the total's own pool).
+	// complPoolListedBelowRe matches a pool of the courses listed below: "4.0
+	// credits chosen from those listed below".
 	complPoolListedBelowRe = regexp.MustCompile(`(?i)\bfrom\s+(?:those|the\s+courses?)\s+listed\s+below\b`)
-	// complFromListBelowRe: "from the list below": an item's lead over the
-	// sub-lists under it: "4.5 credits chosen from the list below" (item).
+	// complFromListBelowRe matches a lead over sub-lists: "4.5 credits chosen
+	// from the list below".
 	complFromListBelowRe = regexp.MustCompile(`(?i)\bfrom\s+the\s+list\s+below\b`)
-	// complTheFollowingRe: "the following", with "list", "list of courses" or
-	// "courses" after it: the words the line of codes after a lead stands for
-	// ("2.5 credits from the following list, including ..."; item).
+	// complTheFollowingRe matches the words that the line of codes after a lead
+	// stands for: "the following list".
 	complTheFollowingRe = regexp.MustCompile(`(?i)\bthe\s+following(?:\s+(?:list(?:\s+of\s+courses)?|courses))?\b`)
-	// complSubListsLeadRe: "from the following", "following list" or "listed
-	// below": a lead with an amount over the sub-lists after it: "A minimum
-	// of 3.5 credits from the following list ..." (listZone).
+	// complSubListsLeadRe matches a lead over the sub-lists after it: "A minimum
+	// of 3.5 credits from the following list".
 	complSubListsLeadRe = regexp.MustCompile(`(?i)\bfrom\s+the\s+following\b|\bfollowing\s+list\b|\blisted\s+below\b`)
-	// complListsElsewhereRe: anywhere in the program's text, a sign that its
-	// items draw on lists set out elsewhere: "from either one concentration
-	// below", "2.5 credits from the groups listed below", "from each of the
-	// two chosen language areas" (listLine).
+	// complListsElsewhereRe matches a sign that items draw on lists set out
+	// elsewhere: "2.5 credits from the groups listed below".
 	complListsElsewhereRe = regexp.MustCompile(`(?i)\bbelow\b|\bfollowing\s+(?:groups?|lists?|concentrations?|areas?|subject\s+areas?|clusters?)\b|\bconcentrations?\b|\b(?:language|subject)\s+areas?\b|\bgroups?\s+[A-Z1-9]\b`)
 
-	// complListSetHeadingRe: a heading over the lists the items draw on:
-	// "Course Groups", "Concentrations", "_Society-Culture Courses_", "Group
-	// C", "Language Areas", "Disciplinary Focuses" (listLine).
+	// complListSetHeadingRe matches a heading over the lists items draw on:
+	// "Course Groups", "Language Areas".
 	complListSetHeadingRe = regexp.MustCompile(`(?i)\bcourses?\s*:?$|\bcourse\s+groups?\b|\bconcentrations?\b|\bgroups?\b|\bareas?\b|\bclusters?\b|\blists?\b|\bfoc(?:us|uses|i)\b|\bstreams?\b|\bfoundations?\b|\bcategor(?:y|ies)\b|\bthemes?\b|\bsubgroups?\b|\bnot\s+program\s+requirements\b`)
-	// complCourseListHeadingRe: a heading over one course list: "Group A:
-	// Ancient, Medieval", "Cluster B - Learning, Perception, ...",
-	// "(Sub-group: Africa)", "Core Group", "Current Eligible Electives",
-	// "Medieval Stream" (inListHeading). Unlike complListSetHeadingRe it
-	// takes electives and eligible courses, and not areas, concentrations,
-	// focuses or themes.
+	// complCourseListHeadingRe matches a heading over one course list: "Group
+	// A: Ancient, Medieval". Unlike complListSetHeadingRe it takes electives, not
+	// areas or themes.
 	complCourseListHeadingRe = regexp.MustCompile(`(?i)\b(?:groups?|lists?|clusters?|sub-?groups?|categor(?:y|ies)|electives?|eligible|streams?)\b`)
-	// complRequiredHeadingRe: a heading over required courses, not a list:
-	// "Required Courses (8.0 credits)", "Core Courses", "Foundational courses".
+	// complRequiredHeadingRe matches a heading over required courses: "Core
+	// Courses".
 	complRequiredHeadingRe = regexp.MustCompile(`(?i)\b(?:required|core|foundation(?:al|s)?|compulsory|program\s+requirements)\b`)
-	// complChoiceListLabelRe: a label naming a list of courses to choose
-	// from: "Approved Economics courses", "Eligible courses".
+	// complChoiceListLabelRe matches a label naming courses to choose from:
+	// "Approved Economics courses".
 	complChoiceListLabelRe = regexp.MustCompile(`(?i)\b(?:approved|eligible|accepted|elective|optional)\b.*\bcourses?\b`)
-	// complMemberLineRe: a line that says what a list holds rather than listing
-	// it: "Any URB or JGU courses not already taken to fulfill requirement 3"
-	// (under "Urban Studies:"), "Any other GGR, JGE, JIG, JUG courses at the
-	// 200/300/400-level not listed in Group A" (under "Group C").
+	// complMemberLineRe matches a line that describes a list's members instead of
+	// listing them: "Any other GGR courses not listed in Group A".
 	complMemberLineRe = regexp.MustCompile(`^Any\s+(?:other\s+)?(?:(?-i:[A-Z]{3})(?:\s*(?:,|or|and|/)\s*(?-i:[A-Z]{3}))*\s+)?courses?\b`)
 )
 
-// listLine reports whether b, at the program level, is a line of a list
-// rather than a requirement: an unnumbered line of codes with no amount of
-// its own, not under a year or an amount, that comes under a heading naming
-// lists (not one naming required courses), or after the numbered items when
-// they draw on lists set out below, or that only repeats courses earlier
-// rows already require.
+// listLine reports whether program-level line b is a list rather than a
+// requirement: codes with no amount, under a heading naming lists or after
+// items that draw on lists below, or only repeating required courses.
 func (a *compAssembler) listLine(b *compBlock) bool {
-	// Members that count only with permission ("and with permission of the
-	// director: TRN300H1, ..., 1.0 credit from TRN160Y1, ...") are the
-	// list's maybe item (permCodes): their amount isn't the line's.
+	// Members that count only with permission are the list's maybe item.
 	text, _ := permCodes(strings.TrimSuffix(strings.TrimSpace(b.text), "."))
 	members := mostlyCodes(text) || a.numberedSeen && b.heading != nil && complMemberLineRe.MatchString(strings.TrimSpace(text))
 	if blkNumbered(b) || len(b.children) > 0 || !members || complAmountRe.MatchString(text) || complOptionLabelRe.MatchString(b.label) ||
@@ -97,9 +71,7 @@ func (a *compAssembler) listLine(b *compBlock) bool {
 			return false // "First Year:", "Compulsory Foundation Sciences (1.5 credits):"
 		}
 		if a.numberedSeen {
-			// After the numbered items, a heading without an amount names a
-			// list ("_Core Courses_", "_Foundations_"): the items are the
-			// requirements.
+			// after the numbered items, a heading without an amount names a list
 			listHead = true
 			continue
 		}
@@ -129,14 +101,8 @@ func (a *compAssembler) listNote(b *compBlock) string {
 	return note
 }
 
-// namedElsewhere reports whether labelled line b names a list another line
-// refers to: its label, of two or more words, appears in the program's text
-// other than as the label of a line ("Pre-1800 British Literature: ENG220H1;
-// ..." and "2.0 ENG credits from Pre-1800 British Literature courses from
-// list below"). Another line with the same label is another list, not a
-// reference ("Mineralogy and Petrology:" under two headings in ASSPE0509),
-// and a line under a heading that states an amount is part of what the
-// heading requires.
+// namedElsewhere reports whether labelled line b names a list that another
+// line refers to. A line with the same label is another list, not a reference.
 func (a *compAssembler) namedElsewhere(b *compBlock) bool {
 	l := strings.ToLower(strings.TrimSpace(b.label))
 	if blkIsYearPhrase(b.label) || blkHasYearRe.MatchString(b.label) || complRequiredHeadingRe.MatchString(b.label) || len(strings.Fields(l)) < 2 {
@@ -188,21 +154,15 @@ func mayBeList(b *compBlock) bool {
 	return len(codeRe.FindAllString(b.text, -1)) >= 6
 }
 
-// subLine reports whether b is a sub-list under (or after) a lead: a
-// labelled line, a bullet, a lettered item or a line of codes, listing
-// codes with no amount of its own. Lines under it are rules on the item
-// ("d. Biogeography: ..." then "No more than one (0.5) of GGR273H1, ...",
-// listLead), not more lists.
+// subLine reports whether b is a sub-list under a lead: codes with no amount
+// of its own. Lines under it are rules on the item, not more lists.
 func subLine(b *compBlock) bool {
 	return b.kind != blockHeading && !blkNoteLabelRe.MatchString(b.label) && mostlyCodes(b.text) && !complAmountRe.MatchString(b.text) &&
 		!slices.ContainsFunc(b.children, func(c *compBlock) bool { return mostlyCodes(c.text) || len(c.children) > 0 })
 }
 
-// listZone returns how many blocks after bs[0] are the sub-lists bs[0]
-// leads into, or 0: bs[0] is an unnumbered line of prose or an item with an
-// amount that ends in ":" or takes "the following list", and the sub-lists
-// are two or more lines after it (subLine). One line of codes is read with
-// its lead (blocks).
+// listZone returns how many blocks after bs[0] are sub-lists that bs[0] leads
+// into (two or more), or 0.
 func (a *compAssembler) listZone(bs []*compBlock) int {
 	b := bs[0]
 	if b.kind == blockHeading || len(b.children) > 0 || !complAmountRe.MatchString(b.text) ||
@@ -222,11 +182,10 @@ func (a *compAssembler) listZone(bs []*compBlock) int {
 	return n
 }
 
-// blkLetteredRe: a lettered marker: "a.", "(b)".
+// blkLetteredRe matches a lettered marker: "a.", "(b)".
 var blkLetteredRe = regexp.MustCompile(`^\(?[a-z]\)?[.)]?$`)
 
-// leadingSubLines returns how many of bs, from the first, are sub-lists
-// (subLine).
+// leadingSubLines returns how many of bs, from the first, are sub-lists.
 func leadingSubLines(bs []*compBlock) int {
 	n := 0
 	for n < len(bs) && subLine(bs[n]) {
@@ -236,23 +195,15 @@ func leadingSubLines(bs []*compBlock) int {
 }
 
 var (
-	// complOneOfLeadRe: a lead whose sub-lists are alternatives: "1.0 credit
-	// from one of the following languages:".
+	// complOneOfLeadRe matches a lead whose sub-lists are alternatives: "1.0
+	// credit from one of the following languages:".
 	complOneOfLeadRe = regexp.MustCompile(`(?i)\bone\s+(?:of\s+)?the\s+following\b`)
 )
 
-// listLead reads a lead and its sub-lists (listZone, or the lines under an
-// item) as one item, never the first sub-list alone:
-//   - under "one of the following", their or, when each sub-list reads as
-//     courses worth the lead's amount ("- Estonian: EST100H1 and EST101H1");
-//   - under a lead that is only an amount ("2.0 credits from the
-//     following:"), the pool of all their courses;
-//   - sub-lists that each read as courses and add up to the amount ("10.0
-//     credits of core courses:"), a group of them, all required;
-//   - otherwise the lead is text and the sub-lists its notes ("2.5 credits
-//     from the following, so that courses are from at least two of the four
-//     areas:", "A minimum of 3.5 credits from the following list that have
-//     not been used ...").
+// listLead reads a lead and its sub-lists as one item: their or under "one of
+// the following", the pool of their courses under a bare amount, all of them
+// when they add up to the amount, and otherwise text with the sub-lists as
+// list definitions.
 func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (row *compRow) {
 	defer func() {
 		// The lines under a sub-list are rules on the item, or on its part.
@@ -268,8 +219,7 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 	}()
 	raw := a.line(b)
 	defer func() {
-		// The lead and its last sub-list end the item: a rule line after them
-		// is about it (poolRuleLine).
+		// a rule line after the lead or its last sub-list is about this item
 		a.leadRows[b] = row
 		if len(subs) > 0 {
 			a.leadRows[subs[len(subs)-1]] = row
@@ -280,9 +230,8 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 	for _, c := range subs {
 		codes = append(codes, complAnyCodeRe.FindAllString(c.text, -1)...)
 		raw += "\n" + a.line(c)
-		// The sub-list as written, for its "/" pairs; a remark in brackets
-		// ("(Note: for additional details ... visit the graduate timetable
-		// webpage)") is the item's note.
+		// keep the sub-list as written for its "/" pairs; a long bracketed remark
+		// is the item's note
 		t := complTitleParenRe.ReplaceAllStringFunc(c.text, func(p string) string {
 			if complAnyCodeRe.MatchString(p) {
 				return p
@@ -292,8 +241,7 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 			}
 			return ""
 		})
-		// "a. Hydrology/GIS/Remote Sensing: GGR273H1, ...": the sub-list's
-		// name says nothing about its courses.
+		// the sub-list's name says nothing about its courses
 		if m := complSubListNameRe.FindStringSubmatch(t); m != nil && !complAnyCodeRe.MatchString(m[1]) {
 			t = t[len(m[0]):]
 		}
@@ -301,9 +249,7 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 	}
 	row = &compRow{r: &types.Requirement{Kind: types.RequirementAllocation, Label: itemLabel(b), Section: b.section, Raw: raw}}
 	lead := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(b.text), ":"))
-	// "1.5 credits from the following three groups (students are strongly
-	// encouraged to include 0.5 credit from each group)": advice in brackets
-	// is the item's note, not a rule on its parts.
+	// bracketed advice in the lead is the item's note, not a rule on its parts
 	lead = strings.TrimSpace(complTitleParenRe.ReplaceAllStringFunc(lead, func(p string) string {
 		if inner := strings.TrimSpace(p[1 : len(p)-1]); len(strings.Fields(inner)) >= 3 && !codeRe.MatchString(inner) && a.role(inner) == roleAdvisory {
 			leadNotes = append(leadNotes, cleanNote(inner))
@@ -332,10 +278,8 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 			row.r.Req = orNode(opts...)
 		}
 	case !slices.ContainsFunc(subs, func(c *compBlock) bool { return !subLine(c) }):
-		// "2.0 credits from the following:", "4.0 credits chosen from the
-		// following list; at least 3.0 credits of which must be ...": the
-		// pool of all the sub-lists' courses, and the lead's other clauses
-		// rules on it.
+		// a bare amount: the pool of all the sub-lists' courses, with the lead's
+		// other clauses as rules on it
 		head, rest := poolLeadHead(lead)
 		if head == "" {
 			break
@@ -355,10 +299,8 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 		}
 	}
 	if row.r.Req == nil && !complOneOfLeadRe.MatchString(lead) {
-		// "10.0 credits of core courses:" then "Foundation courses: ...",
-		// "200-level physics, math, and earth sciences: ...": sub-lists
-		// that each read as courses and together make up the amount are
-		// all required, each a part of the item.
+		// sub-lists that each read as courses and add up to the amount are all
+		// required, each a part of the item
 		var parts []*compRow
 		sum := 0.0
 		for _, c := range subs {
@@ -382,8 +324,7 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 	if row.r.Req == nil {
 		row.r.Req = textNode(types.TextOther, lead)
 		for _, c := range subs {
-			// "Group 1 – Literary History: FRE318H1/ ...": the list's name
-			// is before its courses.
+			// a list's name may come before its courses: "Group 1 – Literary History: ..."
 			title, members := c.label, c.text
 			if m := complSubListNameRe.FindStringSubmatch(c.text); title == "" && m != nil {
 				if _, key := listName(m[1]); key != "" {
@@ -398,20 +339,16 @@ func (a *compAssembler) listLead(b *compBlock, subs []*compBlock, ctx compCtx) (
 	return row
 }
 
-// complSubListNameRe: the name before a sub-list's courses:
+// complSubListNameRe matches the name before a sub-list's courses:
 // "Hydrology/GIS/Remote Sensing: ".
 var complSubListNameRe = regexp.MustCompile(`^([^:]{1,80}):\s+`)
 
-// complPoolLeadClauseRe: the first clause of a lead that is only an amount
-// drawing on the lists after it: "2.0 credits from the following", "4.0
-// credits chosen from the following list", "1.5 credits from one or more of
-// the groups below", "1.5 credits in Literature, History, or Art from",
-// "Any 2 courses (1.0 credit) from".
+// complPoolLeadClauseRe matches a lead that is only an amount over the lists
+// after it: "2.0 credits from the following".
 var complPoolLeadClauseRe = regexp.MustCompile(`(?i)^(?:any\s+\d+\s+(?:half\s+)?courses\s+\(\s*)?(\d+(?:\.\d+)?)\s+credits?\)?\s+(?:(?:chosen|selected|taken)\s+)?(?:in\s+[A-Z][\w ,]*?(?:,?\s+or\s+[A-Z]\w*)\s+)?(?:from|of)(?:\s+(?:the\s+following(?:\s+(?:(?:two|three|four|five|six|\d)\s+)?(?:list|courses|groups?|categories))?|one\s+or\s+more\s+of\s+the\s+groups\s+below|the\s+groups\s+below|the\s+list\s+below))?\s*:?$`)
 
-// poolLeadHead splits a lead into its pool clause ("4.0 credits from") and
-// the clauses and sentences after it, which are rules on the pool; head is
-// empty when the lead isn't a pool lead.
+// poolLeadHead splits a lead into its pool clause ("4.0 credits from") and the
+// rules after it. head is empty when lead isn't a pool lead.
 func poolLeadHead(lead string) (head string, rest []string) {
 	sents := splitComplSentences(lead)
 	if len(sents) == 0 {
@@ -433,25 +370,19 @@ func poolLeadHead(lead string) (head string, rest []string) {
 func firstOf(n *types.ReqNode, _ []*types.ReqNode) *types.ReqNode { return n }
 
 var (
-	// complNumberedListsRe: a lead drawing on two numbered lists: "plus 2.5
-	// credits from Genetics Lists 1 and 2, distributed as follows:", "2.0
-	// credits to be selected from lists 1 and 2 (...):".
+	// complNumberedListsRe matches a lead over two numbered lists: "2.0 credits
+	// to be selected from lists 1 and 2".
 	complNumberedListsRe = regexp.MustCompile(`(?i)^(?:plus\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:to\s+be\s+selected\s+|selected\s+|chosen\s+)?from\s+(?:[\w-]+\s+)?lists\s+\(?(\d)\)?\s+and\s+\(?(\d)\)?`)
-	// complListNumRuleRe: a floor or cap on one of them: "At least 1.5 credits
-	// must be taken from list 1", "Up to 1.0 credit may be taken from list
-	// 2", "students can only use at a maximum 1.0 credit from list (2)".
+	// complListNumRuleRe matches a floor or cap on one of them: "Up to 1.0
+	// credit may be taken from list 2".
 	complListNumRuleRe = regexp.MustCompile(`(?i)\b(at\s+least|up\s+to|(?:at\s+)?a\s+maximum(?:\s+of)?|no\s+more\s+than)\s+(\d+(?:\.\d+)?)\s+credits?\b[^.;:]*?\blist\s+\(?(\d)\)?`)
-	// complListNumDefRe: a list's members: "(1) ACT350H1, ...", "At least 1.5
-	// credits must be taken from list 1: MGY425H1, ...".
+	// complListNumDefRe matches a list's members: "(1) ACT350H1, ...".
 	complListNumDefRe = regexp.MustCompile(`(?i)^\((\d)\)\s*(.*)$|\blist\s+\(?(\d)\)?\s*:\s*(.*)$`)
 )
 
-// numberedLists reads a lead over two numbered lists and the lines that
-// define them into one allocation (bs[0] the lead; it reports how many
-// blocks it read, 0 when bs[0] isn't one): the lead's amount from the
-// union of the lists, a constraint for each list's floor ("At least 1.5
-// credits must be taken from list 1") and a limit for each cap ("Up to 1.0
-// credit may be taken from list 2"), never the lists' courses all required.
+// numberedLists reads a lead over two numbered lists, and the lines defining
+// them, as one allocation from their union with a row for each floor and cap.
+// It returns how many blocks it read, or 0.
 func (a *compAssembler) numberedLists(bs []*compBlock, ctx compCtx) int {
 	b := bs[0]
 	m := complNumberedListsRe.FindStringSubmatch(strings.TrimSpace(b.text))
@@ -515,8 +446,7 @@ func (a *compAssembler) numberedLists(bs []*compBlock, ctx compCtx) int {
 	all := dedupe(append(slices.Clone(lists[m[2]]), lists[m[3]]...))
 	row := &compRow{r: &types.Requirement{Kind: types.RequirementAllocation, Label: itemLabel(b), Section: b.section, Raw: strings.Join(raw, "\n"),
 		Req: &types.ReqNode{Type: types.NodeCredits, Amount: amount, Courses: all}}}
-	// A "/" pair in a list ("ACT455H1/ ACT466H1 (whichever course that was
-	// not taken as a mandatory course)") is capped as in any pool.
+	// a "/" pair in a list is capped as in any pool
 	for i, t := range listTexts {
 		t = complTitleParenRe.ReplaceAllStringFunc(t, func(p string) string {
 			if codeRe.MatchString(p) {
@@ -548,9 +478,7 @@ func (a *compAssembler) numberedLists(bs []*compBlock, ctx compCtx) int {
 	return n
 }
 
-// namedListCodes returns the codes of the list named name in the program's
-// text: the lines of codes under the heading "<name> Courses" ("**Equivalent
-// Courses**"), or nil.
+// namedListCodes returns the codes under the heading "<name> Courses", or nil.
 func (a *compAssembler) namedListCodes(name string) []string {
 	want := strings.ToLower(strings.TrimSpace(name)) + " courses"
 	for k := range a.lines {
@@ -566,21 +494,18 @@ func (a *compAssembler) namedListCodes(name string) []string {
 	return nil
 }
 
-// complWidenNamedListRe: a capped share from a list named below (widen,
-// readWidenings): "Students may take up to a 0.5 credit from the Equivalent
-// Courses list below." The list is the lines of codes under its name.
+// complWidenNamedListRe matches a capped share from a list named below:
+// "Students may take up to a 0.5 credit from the Equivalent Courses list below".
 var complWidenNamedListRe = regexp.MustCompile(`(?i)^students\s+may\s+take\s+up\s+to\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+from\s+the\s+(.+?)\s+list\s+below$`)
 
-// complItemListRe: a sentence that lists the courses of the requirement it
-// follows: "The following courses fulfill the Diversity and Identity
-// requirement: POL101H1, POL195H1, ...".
+// complItemListRe matches a sentence listing the courses of the requirement
+// before it: "The following courses fulfill the Diversity and Identity
+// requirement: ...".
 var complItemListRe = regexp.MustCompile(`(?i)^the\s+following\s+courses\s+(?:fulfil+|satisfy|meet|count\s+toward)\s+the\s+(.+?)\s+requirement\s*:\s*(.+)$`)
 
-// itemList reads a complItemListRe sentence into the item before it, whose
-// body is text naming the requirement ("1.0 credit in Diversity and
-// Identity"): its pool is those courses. When the list doesn't read as
-// codes alone, it joins the item's text, never a note that hides it. It
-// reports whether the sentence was the item's.
+// itemList reads a complItemListRe sentence as the pool of the item before it,
+// whose body is text naming the requirement. A list that isn't codes alone
+// joins the item's text. It reports whether s was the item's.
 func (a *compAssembler) itemList(row *compRow, s string) bool {
 	m := complItemListRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(a.clean(s)), "."))
 	n := row.r.Req
@@ -608,20 +533,17 @@ func (a *compAssembler) itemList(row *compRow, s string) bool {
 }
 
 var (
-	// complUpToFromListRe: a list's capped share closing a pool: ", up to one
-	// half course from Group H".
+	// complUpToFromListRe matches a list's capped share closing a pool: ", up to
+	// one half course from Group H".
 	complUpToFromListRe = regexp.MustCompile(`(?i),\s+(up\s+to\s+[^,;]*?\bfrom\s+(?:group|list)\s+\w+)\s*\.?$`)
-	// complListMemberTextRe: text the grammar left beside a pool that names
-	// more of its members: "400-level courses in Group I", "courses from
-	// Group C".
+	// complListMemberTextRe matches text naming more of a pool's members:
+	// "400-level courses in Group I".
 	complListMemberTextRe = regexp.MustCompile(`(?i)^(?:and\s+)?(?:any\s+)?(?:[1-4]00(?:[-/+\s]*[1-4]00)*[-+]?\s*-?\s*level\s+)?(?:(?-i:[A-Z]{3})\s+)?courses?\s+(?:in|from)\s+(?:group|list)\s+\w+$`)
 )
 
-// listMemberAlt makes and(pool, text naming more of its members) the
-// pool or, with the text, Review: "Any 2 courses (1.0 credit) from GGR401H1,
-// ..., and 400-level courses in Group I" read as the courses and the text
-// would be NotMet for a student who uses a Group I course, and Review for
-// everyone else.
+// listMemberAlt turns and(pool, text naming more of its members) into
+// or(pool, text). Read as and, a student using one of those members would get
+// NotMet.
 func listMemberAlt(n *types.ReqNode) *types.ReqNode {
 	if n == nil || n.Type != types.NodeAnd || len(n.Items) < 2 || !isPool(n.Items[0]) {
 		return n

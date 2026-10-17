@@ -10,69 +10,45 @@ import (
 	"degree-explorer/types"
 )
 
-// Passes over the program's text that finish runs once every row is read.
-// Each reads sentences wherever they are written (a.lines, a.notes) and
-// encodes them in the rows they concern, then drops them from the notes,
-// program routes and rows of text (dropEncoded):
-//   - widen: a capped share that may come from courses a list names;
-//   - aliasDesignators and courseCountsAs: definitions of designators and
-//     courses ("ANT courses are those offered with the following prefixes",
-//     "JWE206H1 counts as an English course");
-//   - additionalElectives: a share left to the electives listed above.
-//
-// Widenings by a list: a capped share of the program that may come from
-// courses outside its pools, named in a list ("Up to 1.0 credit may be from
-// other departments. Approved courses include ANT253H1, ...", "1.0 credit of
-// related courses offered by other academic units may be counted towards
-// the fulfillment of the program. The list of eligible courses includes:"
-// then the codes, "Students may take up to a 0.5 credit from the Equivalent
-// Courses list below", "No more than 1.0 credit of courses from outside of
-// the Department of Political Science may be used ... AFR353H1, ... are
-// examples"). The listed courses join the pool the share comes from (the
-// nearest pool of designators before the sentence), and a limit caps them
-// at the share: under the total when the sentence speaks of the program,
-// else under the pool (design 3.1, "No more than 1.5 from Group B"). Courses
-// the text doesn't list ("Other courses might also qualify", examples) are a
-// text alternative on the pool: Review for a student who uses them. The
-// sentences and lists join the pool's raw; their notes and rows of text go.
+// Passes that read sentences wherever the program's text has them and encode
+// them in the rows they concern: widenings, designator aliases, electives.
 
 var (
 	complWidenNumPat = `(\d+(?:\.\d+)?)`
-	// "Up to 1.0 credit may be from other departments."
+	// complWidenOtherDeptsRe matches "Up to 1.0 credit may be from other
+	// departments".
 	complWidenOtherDeptsRe = regexp.MustCompile(`(?i)^(?:up\s+to|a\s+maximum\s+of)\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+may\s+be\s+from\s+other\s+departments$`)
-	// "1.0 credit of related courses offered by other academic units may be
-	// counted towards the fulfillment of the program."
+	// complWidenRelatedRe matches "1.0 credit of related courses offered by other
+	// academic units may be counted towards the fulfillment of the program".
 	complWidenRelatedRe = regexp.MustCompile(`(?i)^` + complWidenNumPat + `\s+credits?\s+of\s+related\s+courses\s+offered\s+by\s+other\s+academic\s+units\s+may\s+be\s+counted\s+towards?\s+the\s+fulfil+ment\s+of\s+the\s+program$`)
-	// "No more than 1.0 credit of courses (offered) (from) outside of the
-	// Department of Political Science may be used to fulfill the program
-	// requirements."
+	// complWidenOutsideRe matches "No more than 1.0 credit of courses from
+	// outside of the Department of Political Science may be used".
 	complWidenOutsideRe = regexp.MustCompile(`(?i)^no\s+more\s+than\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+of\s+courses\s+(?:offered\s+)?(?:from\s+)?outside\s+(?:of\s+)?the\s+department\s+of\s+.+?\s+may\s+be\s+used\s+to\s+fulfil+\s+the\s+program\s+requirements$`)
-	// "1.5 credits may be courses on East Asia offered by other
-	// departments." (the list: "_Society-Culture Courses on East Asia
-	// Offered by Other Departments_").
+	// complWidenOnRe matches "1.5 credits may be courses on East Asia offered by
+	// other departments", over a list headed with that phrase.
 	complWidenOnRe = regexp.MustCompile(`(?i)^` + complWidenNumPat + `\s+credits?\s+may\s+be\s+courses\s+on\s+(.+?)\s+offered\s+by\s+other\s+departments$`)
-	// What names the courses: "Approved courses include ...", "The list of
-	// eligible courses includes: ...", "... are examples", "Non-POL courses
-	// that may be used to fulfill the program requirements: ...".
+	// The sentences that name the courses: "Approved courses include ...", "...
+	// are examples".
 	complWidenApprovedRe = regexp.MustCompile(`(?i)^approved\s+courses\s+include\s+(.+)$`)
 	complWidenEligibleRe = regexp.MustCompile(`(?i)^the\s+list\s+of\s+eligible\s+courses\s+includes:?\s*(.*)$`)
 	complWidenExamplesRe = regexp.MustCompile(`(?i)^(.+?)\s+are\s+examples(?:\s+of\s+such\s+courses)?$`)
 	complWidenFullListRe = regexp.MustCompile(`(?i)^non-[A-Z]{3}\s+courses\s+that\s+may\s+be\s+used\s+to\s+fulfil+\s+the\s+program\s+requirements:\s*(.+)$`)
-	// "Other courses might also qualify; ...": the courses it doesn't list.
+	// complWidenOthersRe matches the courses a widening doesn't list: "Other
+	// courses might also qualify".
 	complWidenOthersRe = regexp.MustCompile(`(?i)\bother\s+courses\s+might\s+also\s+qualify\b`)
 )
 
-// complWidenLabelRe: a label before the sentence: "Courses in other
-// departments: Students may take ...".
+// complWidenLabelRe matches a label before the sentence: "Courses in other
+// departments: ".
 var complWidenLabelRe = regexp.MustCompile(`^[A-Z][^:.]{0,60}:\s+`)
 
-// widening is one capped share read from the text (readWidenings).
+// widening is a capped share of courses outside the pools, named in a list.
 type widening struct {
 	amount  float64
 	codes   []string
-	others  string   // a sentence about courses the text doesn't list
-	program bool     // the share is the program's: its limit goes under the total
-	line    int      // the line it is written on
+	others  string // a sentence about courses the text doesn't list
+	program bool   // the share is the program's: its limit goes under the total
+	line    int
 	used    []string // the sentences and lists it was read from
 }
 
@@ -81,7 +57,6 @@ func (a *compAssembler) widenLine(i int) string {
 	return strings.TrimSpace(a.clean(strings.TrimSpace(a.lines[i])))
 }
 
-// readWidenings finds the widenings in the program's text.
 func (a *compAssembler) readWidenings() []widening {
 	var out []widening
 	for i := range a.lines {
@@ -172,8 +147,9 @@ func (a *compAssembler) readWidenings() []widening {
 	return out
 }
 
-// widen applies the widenings: each to the nearest pool of designators
-// written before it.
+// widen adds each widening's courses to the nearest pool of designators before
+// it, capped at the share under the total or the pool; courses it doesn't list
+// are a text alternative on the pool.
 func (a *compAssembler) widen() {
 	for _, w := range a.readWidenings() {
 		row, pool := a.widenTarget(w.line)
@@ -202,8 +178,8 @@ func (a *compAssembler) widen() {
 	}
 }
 
-// widenTarget returns the row and pool a widening on line i widens: the
-// last pool of designators written before the line.
+// widenTarget returns the row and pool a widening on line i widens: the last
+// pool of designators written before the line.
 func (a *compAssembler) widenTarget(i int) (*compRow, *types.ReqNode) {
 	var best *compRow
 	var bestPool *types.ReqNode
@@ -229,8 +205,8 @@ func (a *compAssembler) widenTarget(i int) (*compRow, *types.ReqNode) {
 	return best, bestPool
 }
 
-// dropEncoded removes the notes, routes and rows of text that hold
-// sentences now encoded in a row.
+// dropEncoded removes the notes, routes and rows of text that hold the
+// sentences used, now encoded in a row.
 func (a *compAssembler) dropEncoded(used []string) {
 	enc := map[string]bool{}
 	for _, u := range used {
@@ -266,28 +242,21 @@ func (a *compAssembler) dropEncoded(used []string) {
 
 var (
 	complAliasDesigListPat = `((?-i:[A-Z]{3})(?:\s*(?:,|,?\s*and|,?\s*or)\s*(?-i:[A-Z]{3}))*)`
-	// "ANT courses are those offered with the following prefixes: ANT, ARH,
-	// INS, JAL, and JGA".
+	// complAliasPrefixesRe matches "ANT courses are those offered with the
+	// following prefixes: ANT, ARH, INS, JAL, and JGA".
 	complAliasPrefixesRe = regexp.MustCompile(`(?i)^((?-i:[A-Z]{3}))\s+courses\s+are\s+those\s+offered\s+with\s+the\s+following\s+prefixes:\s*` + complAliasDesigListPat + `$`)
-	// "JAR, JCR, ... and JSR courses will be counted as Department for the
-	// Study of Religion courses", "Courses with RLG, JAR, ... and JSR
-	// designators count as Department for the Study of Religion courses".
-	// complAliasExcludingRe: "(excluding the following language courses:
-	// MHB255H1, ..., RLG265H1)" after an aliased phrase, read as ", excluding
-	// MHB255H1, ..., RLG265H1".
+	// complAliasExcludingRe matches "(excluding the following language courses:
+	// MHB255H1, ..., RLG265H1)", read as ", excluding MHB255H1, ...".
 	complAliasExcludingRe = regexp.MustCompile(`(?i)\s*\(\s*excluding\s+the\s+following(?:\s+[a-z]+)?\s+courses:\s*((?:` + codePat + `)(?:\s*,\s*(?:` + codePat + `))*)\s*\)`)
 	complAliasAnyOtherRe  = regexp.MustCompile(`(?i)(\bin\s+)any\s+other\s+`)
+	// complAliasCountedAsRe matches "Courses with RLG, JAR, ... and JSR
+	// designators count as Department for the Study of Religion courses".
 	complAliasCountedAsRe = regexp.MustCompile(`(?i)^(?:courses\s+with\s+)?` + complAliasDesigListPat + `\s+(?:courses|designators)\s+(?:will\s+be\s+counted|count)\s+as\s+(.+?)\s+courses$`)
 )
 
-// aliasDesignators reads a definition of a set of designators the program's
-// rows use and applies it: "ANT courses are those offered with the following
-// prefixes: ANT, ARH, INS, JAL, and JGA" makes every ANT filter count those
-// five; "Courses with RLG, JAR, ... designators count as Department for the
-// Study of Religion courses" reads the rows of text that name "Department
-// for the Study of Religion" courses (or "DSR" courses) again with those
-// designators (the subject's own designator, subjectDesignators, joins the
-// listed ones). The definition then joins the rows' raw, not the notes.
+// aliasDesignators applies a definition of designators: a prefix list widens
+// every filter on its designator; a "count as <phrase> courses" sentence
+// rereads the rows of text that name the phrase with those designators.
 func (a *compAssembler) aliasDesignators() {
 	for i := range a.lines {
 		for _, s := range a.lineSentences(i) {
@@ -333,8 +302,8 @@ func (a *compAssembler) aliasDesignators() {
 				if r.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeText || !phraseRe.MatchString(n.Text) {
 					continue
 				}
-				// "any other": other than the courses the program's rows
-				// already use, which allocation keeps apart.
+				// "any other" means other than the courses the rows already
+				// use, which allocation keeps apart.
 				text := complAliasAnyOtherRe.ReplaceAllString(complAliasExcludingRe.ReplaceAllString(n.Text, ", excluding $1"), "${1}any ")
 				body, rows, notes := a.itemBody(phraseRe.ReplaceAllString(text, strings.Join(set, "/")+" $1"))
 				if body == nil || hasText(body) || isAnyCredits(body) {
@@ -362,16 +331,13 @@ func (a *compAssembler) aliasDesignators() {
 	}
 }
 
-// complAreaOfFocusRe: "in your area of focus", a qualifier the course's topic
-// decides.
+// complAreaOfFocusRe matches a qualifier the course's topic decides: "in your
+// area of focus".
 var complAreaOfFocusRe = regexp.MustCompile(`(?i)^in\s+your\s+area\s+of\s+focus$`)
 
-// aliasQualified reads an and(credits, text) node whose credits names no
-// source and whose text ends in "selected from <phrase> courses" ("0.5 credit
-// at the 400-level in your area of focus selected from Department for the
-// Study of Religion courses"): the credits count the set's designators and
-// the text keeps the rest, kind content when it is "in your area of focus".
-// It reports whether it did.
+// aliasQualified reads and(credits, text) whose credits name no source and
+// whose text ends in "selected from <phrase> courses": the credits count set
+// and the text keeps the rest. It reports whether it did.
 func aliasQualified(n *types.ReqNode, phrase string, set []string) bool {
 	if n == nil || n.Type != types.NodeAnd || len(n.Items) != 2 {
 		return false
@@ -393,18 +359,17 @@ func aliasQualified(n *types.ReqNode, phrase string, set []string) bool {
 	return true
 }
 
-// complCountsAsRe: a course defined as one of a subject's: "For the purpose of
-// program completion, JWE206H1 counts as an English course".
+// complCountsAsRe matches a course defined as one of a subject's: "For the
+// purpose of program completion, JWE206H1 counts as an English course".
 var complCountsAsRe = regexp.MustCompile(`(?i)^(?:for\s+the\s+purpose\s+of\s+program\s+completion,?\s*)?((?:` + codePat + `)(?:\s*(?:,|and|or)\s*` + codePat + `)*)\s+counts?\s+as\s+an?\s+([a-z]+(?:\s+[a-z]+)?)\s+courses?$`)
 
-// complCountsAsSubjects: subjects a complCountsAsRe sentence names, beside
-// subjectDesignators.
+// complCountsAsSubjects maps subjects complCountsAsRe names that
+// subjectDesignators lacks.
 var complCountsAsSubjects = map[string]string{"english": "ENG"}
 
-// courseCountsAs reads a complCountsAsRe sentence s and adds its courses to
-// every filter of the subject's designator they fit (by level): the pools,
-// floors and caps that count that subject's courses count them too. It
-// reports whether it did.
+// courseCountsAs adds the courses of a complCountsAsRe sentence s to every
+// filter on the subject's designator whose levels they fit. It reports
+// whether it did.
 func (a *compAssembler) courseCountsAs(s string) bool {
 	m := complCountsAsRe.FindStringSubmatch(strings.TrimSuffix(a.clean(s), "."))
 	if m == nil {
@@ -463,17 +428,13 @@ func (a *compAssembler) allRows() []*compRow {
 	return out
 }
 
-// complAdditionalElectiveRe: "An additional 0.5 credit can be taken from any
-// 3rd or 4th year elective listed above (or under the Forest Conservation
-// Specialist ...)".
+// complAdditionalElectiveRe matches "An additional 0.5 credit can be taken
+// from any 3rd or 4th year elective listed above".
 var complAdditionalElectiveRe = regexp.MustCompile(`(?i)^an?\s+additional\s+(\d+(?:\.\d+)?)\s+credits?\s+(?:can|may|must)\s+be\s+taken\s+from\s+any\s+(?:3rd|third)\s+or\s+(?:4th|fourth)\s+year\s+electives?\s+listed\s+above\s*(.*)$`)
 
-// additionalElectives reads a complAdditionalElectiveRe sentence, a share of
-// the program left to the electives above, into an allocation: the amount
-// from the pools of the third- and fourth-year items (exclusive claims leave
-// the courses those items use), with what else it allows as a text
-// alternative. The items alone fall short of the total by that amount, so as
-// a note it would leave every student Review.
+// additionalElectives makes a complAdditionalElectiveRe note an item: the
+// amount from the third- and fourth-year items' pools. As a note it would
+// leave every student Review, as the items fall short of the total.
 func (a *compAssembler) additionalElectives() {
 	for i, note := range a.notes {
 		m := complAdditionalElectiveRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(note), "."))

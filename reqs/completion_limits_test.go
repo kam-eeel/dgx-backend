@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleLimits checks the transfer and CR/NCR rules, profile
-// facts, the enrolment courses' row, the cap counted in courses, bounds on
-// pools of lists and pools of single courses and pairs (completion_limits.go).
+// TestCompletionRuleLimits checks the transfer and CR/NCR rules, profile facts,
+// the enrolment courses' row, the cap counted in courses, and bounds on pools.
 func TestCompletionRuleLimits(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"lists a note calls not exhaustive: each pool drawing on them has the note as its alternative (ASMAJ0135, shortened)",

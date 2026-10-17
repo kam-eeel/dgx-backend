@@ -5,13 +5,8 @@ import (
 	"strings"
 )
 
-// The scraper stores enrolment text one block per line (scraper/blocks.go):
-// "- " and "• " bullets, "1." / "a." / "A." numbering, nested lists indented
-// two spaces per level, **bold** and _italic_. A line emphasised as a whole
-// is a heading: "_Variable Minimum Grade_", "**For students who have
-// completed 9.0 or more credits:**". A few headings come without emphasis
-// ("Variable Minimum Grade", "Note:", "For students who have completed 9.0 or
-// more credits:", "Option 1:").
+// Enrolment text lines, one block per line: bullets, numbering, nested lists
+// indented two spaces per level, and headings, emphasised or not.
 
 type lineKind int
 
@@ -31,24 +26,23 @@ type enrolLine struct {
 var (
 	bulletRe = regexp.MustCompile(`^_?[-•]\s+`)                 // "- ", "• ", "_• " (a bullet glued to italics)
 	numberRe = regexp.MustCompile(`^(?:\d{1,2}|[a-zA-Z])\.\s+`) // "1. ", "a. ", "A. "
-	// A whole line in one emphasis, with an optional colon after it:
-	// "_Completed courses (with minimum grades)_", "**Notes**:".
+	// wholeEmphRe matches a heading: a whole line in one emphasis, with an
+	// optional colon: "**Notes**:".
 	wholeEmphRe = regexp.MustCompile(`^(?:\*\*|_)+.*(?:\*\*|_)+\s*:?$`)
-	// Headings that may come without emphasis.
+	// plainHeadingRe matches a heading that may come without emphasis: "Note:".
 	plainHeadingRe = regexp.MustCompile(`^(?i:(?:variable\s+)?minimum\s+grade(?:\s+average)?|notes?|special\s+requirements?|completed\s+courses.*|how\s+to\s+apply)\s*:?$|` +
 		`^For\s+students\b.{0,160}:$|^Option\s+\d+\s*:$`)
 	boldRe = regexp.MustCompile(`\*\*`)
-	// Italic markers sit next to spaces or punctuation; an "_" inside a word
-	// is kept.
+	// italicRe matches italic markers, next to spaces or punctuation; an "_"
+	// inside a word is kept.
 	italicRe = regexp.MustCompile(`(^|[\s(\[/,;:.*])_+|_+($|[\s)\]/,;:.*])`)
-	// A sentence end, so a line that doesn't end with one may continue on the
-	// next line.
+	// lineEndRe matches a sentence end; a line without one may continue on the
+	// next.
 	lineEndRe = regexp.MustCompile(`[.:;!?)]\s*$`)
 )
 
-// enrolLines splits raw enrolment text into classified lines. A paragraph
-// broken across lines mid-sentence ("... may change depending on" /
-// "available spaces ...") is joined again.
+// enrolLines splits raw enrolment text into classified lines, joining a
+// paragraph broken mid-sentence.
 func enrolLines(raw string) []enrolLine {
 	var out []enrolLine
 	for _, rawLine := range strings.Split(raw, "\n") {

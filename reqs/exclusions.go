@@ -12,45 +12,43 @@ import (
 const prevConcurrentPat = `(?i:(?:if\s+)?taken\s+previously\s+or\s+concurrently)\b`
 
 var (
-	// termRe recognizes offering qualifiers: "offered in Winter 2010", "Fall
-	// 2024", "taken in 2019", and ACORN section/session codes ("LEC0201 20261").
+	// termRe matches an offering qualifier: "offered in Winter 2010".
 	termRe = regexp.MustCompile(`(?i)\b(?:offered|taken)\b|\b(?:fall|winter|summer)(?:\s+session)?\s+\d{4}\b|^\d{4}(?:-\d{2,4})?$|\b(?:LEC|TUT|PRA)\d{4}\b|\b20\d{2}[159]\b`)
 
-	// condClauseRe: a condition right after a course ("LINC61H3 if the same
-	// language was analyzed") limits when that course excludes.
+	// condClauseRe matches a condition after a course, which limits when it
+	// excludes: "LINC61H3 if the same language was analyzed".
 	condClauseRe = regexp.MustCompile(`(?i)^(?:if|when)\b`)
 
-	// titleRe: an unbracketed topic title after a course ("RSM412H1 Financial
-	// Trading Strategies", "WGS335H1: The Politics of Girlhood"). Words are
-	// capitalized apart from short connectors, and there are at least two.
+	// titleRe matches an unbracketed topic title after a course, two or more
+	// capitalized words: "Financial Trading Strategies" after RSM412H1.
 	titleRe = regexp.MustCompile(`^[:\-–]?\s*[A-Z][\w'’]*(?:\s+(?:[A-Z][\w'’]*|of|in|the|and|for|to|a|an|on|at|around|with|from|&))+$`)
 
-	// gradCodeRe: a graduate course code ("PHM1130H", "JFK1120H").
+	// gradCodeRe matches a graduate course code: "PHM1130H".
 	gradCodeRe = regexp.MustCompile(`^[A-Z]{3}\d{4}[HY]\d?$`)
 
 	// Sentence rewrites (exclusions only).
 	alsoExcludedRe = regexp.MustCompile(`(?i)^also\s+excluded\s+(?:are|is)\b\s*:?\s*`)
-	// "<course> (if) taken previously or concurrently": taken already covers
-	// in progress. Only stripped right after a course or "course", so "A or
-	// equivalent, taken previously ..." keeps its qualifier note.
+	// prevConcurrentRe matches "<course> (if) taken previously or concurrently";
+	// taken covers in progress. Only right after a course or "course", so "A or
+	// equivalent, taken previously ..." keeps its note.
 	prevConcurrentRe = regexp.MustCompile(`(` + codePat + `|\b(?i:courses?))(?:\s*\(\s*` + prevConcurrentPat + `\s*\)|\s*,?\s*` + prevConcurrentPat + `)`)
-	// "FSL300+ level" -> "FSL 300+ level", so the designator reads as a word.
+	// gluedLevelRe matches a designator glued to its level: "FSL300+ level".
 	gluedLevelRe = regexp.MustCompile(`\b([A-Z]{3})([1-4]00(?:\s*\+|-level|\s+level))`)
-	// "<Title> taken under URB432H1 ..." -> "URB432H1 (<Title>) ...".
+	// takenUnderRe matches "<Title> taken under URB432H1", rewritten "URB432H1 (<Title>)".
 	takenUnderRe = regexp.MustCompile(`(?i)^([^,;()]+?)\s+taken\s+under\s+(` + codePat + `)`)
-	// "except A, B, AP, IB or GCE Transfer Credits": the non-course tail of an
-	// except list is bracketed, so it stays with the filter it qualifies.
+	// exceptTailRe matches an except list with a non-course tail, bracketed so it
+	// stays with its filter: "except A, B, AP, IB or GCE Transfer Credits".
 	exceptTailRe = regexp.MustCompile(`((?i:except|excluding)\s+` + codePat + `(?:\s*(?:,|/|(?i:and|or)\b)\s*` + codePat + `)*)\s*,\s*([^;()]*?(?i:transfer\s+credits?))`)
 
-	// placementPhraseRe: "placement in A, B or C-level courses based on the
-	// results of the French Placement Test" is one placement condition, not a
-	// list of courses.
+	// placementPhraseRe matches one placement condition, not a list of courses:
+	// "placement in A, B or C-level courses based on the ... Placement Test".
 	placementPhraseRe = regexp.MustCompile(`(?i)\bplacement\s+(?:in|at)\b[^;]*?\bplacement\s+test\b`)
 
-	// exclAdvisoryRe: list entries that are remarks, not exclusions.
+	// exclAdvisoryRe matches list entries that are remarks, not exclusions: "not recommended".
 	exclAdvisoryRe = regexp.MustCompile(`(?i)\bnot\s+recommended\b|\bdoes\s+not\s+count\b|^none$`)
 
-	// Kinds for prior-knowledge exclusions; see exclKind.
+	// speakersRe and schoolRe mark prior language or school knowledge: "Grade 8
+	// Hebrew".
 	speakersRe = regexp.MustCompile(`(?i)\bspeakers?\b`)
 	schoolRe   = regexp.MustCompile(`(?i)\bgrade\s+\d{1,2}\b|\bOAC\b`)
 
@@ -61,7 +59,7 @@ var (
 // separators: in an exclusion list every top-level separator means "any of these".
 var separators = []tokKind{tComma, tCommaAnd, tCommaOr, tSemi, tSlash, tAnd, tOr}
 
-// ParseExclusions turns a raw exclusions field into its stored JSON form
+// ParseExclusions parses a raw exclusions field into its stored form.
 func ParseExclusions(raw string) *types.Exclusions {
 	e := &types.Exclusions{Raw: raw, Items: []types.ExclusionItem{}}
 	text, urls := normalize(raw)
@@ -188,18 +186,9 @@ func mergePhrases(src string, toks []token, re *regexp.Regexp) []token {
 	return toks
 }
 
-// absorbQualifiers removes the topic title and offering terms that follow a
-// course, e.g. `RSM410H1 (Special Topics...), offered in Winter 2010/Winter 2011`,
-// and returns them as notes keyed by that course's node.
-//
-// The candidate run is every token after the course up to the next course or
-// an unmatched ")" (minus separators right before it). If the run mentions an offering term,
-// all of it is the note. Otherwise the note is a bracketed title directly
-// after the course, or a run of words up to the next separator that is a
-// title ("RSM412H1 Financial Trading Strategies") or an if/when clause.
-//
-// When a qualifier runs straight into the next course with no separator
-// ("...offered in Winter 2026 PHL235H1"), a separator is inserted.
+// absorbQualifiers moves each course's qualifiers into notes keyed by its node:
+// the run to the next course if it names a term ("offered in Winter 2010"), else
+// a title or if/when clause. One running into the next course gets a separator.
 func absorbQualifiers(src string, toks []token) ([]token, map[*types.ReqNode]string) {
 	notes := map[*types.ReqNode]string{}
 	var out []token
@@ -356,12 +345,9 @@ func segmentItems(src string, seg []token, notes map[*types.ReqNode]string) segR
 	return segResult{items: []types.ExclusionItem{{Kind: exclKind(text, preset), Text: text}}, text: true, span: sp}
 }
 
-// filterItem recognizes a whole phrase naming a set of courses by designator
-// and level: "FSL 200+ level courses", "any FSL 400-level course", "Any CSC
-// course except A, B", "Any PHY course (except A/ B)". Only explicit
-// designators count; subject names ("any physics course") stay text.
-// Non-course words in an except list ("except AP, IB ... Transfer Credits")
-// become the note.
+// filterItem reads a phrase naming courses by explicit designator and level
+// ("any FSL 400-level course", "Any CSC course except A, B"); "any physics
+// course" stays text. Non-course words in an except list become the note.
 func filterItem(s string) (types.ExclusionItem, bool) {
 	rest := filterHeadRe.ReplaceAllString(s, "")
 	sp := qualSpan(rest)

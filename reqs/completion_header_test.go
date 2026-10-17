@@ -24,10 +24,9 @@ func jCap(req, raw string) string {
 	return fmt.Sprintf(`{"number":0,"kind":"limit","req":%s,"raw":%q}`, req, raw)
 }
 
-// Header lines from the calendar (reqs/testdata/header_templates.txt), by
-// production. Each want is the header as JSON: the total, the upper end of a
-// range, Req 1's own pool, the floors and caps stated with the total, and the
-// sentences left to the classifier.
+// Header lines from the calendar, by production. Each want is the header as
+// JSON: the total, the range's upper end, Req 1's pool, the floors and caps
+// stated with the total, and the sentences left to the classifier.
 func TestParseHeader(t *testing.T) {
 	tests := []struct{ name, raw, want string }{
 		// 1. The total alone, in every wrapping.

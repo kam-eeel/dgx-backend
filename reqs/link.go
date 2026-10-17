@@ -8,19 +8,9 @@ import (
 	"degree-explorer/types"
 )
 
-// Link finishes the parsed requisites of a scraped catalogue, with the steps
-// that need the whole course list or the programs:
-//
-//   - codes the catalogue misprints in a way only the course list can settle
-//     ("MAT1581", "SPA258") are repaired and the field is parsed again;
-//   - exemptions stated in one requisite field apply to the other;
-//   - program names are resolved to program codes;
-//   - a timing restriction in the requisites ("should not be taken
-//     concurrently with AST425Y1") becomes a concurrent exclusion.
-//
-// Programs' enrolment requirements get the same code repair, program names
-// and subjects resolved (enrolment_link.go), and jointly offered courses and
-// "or equivalent" read from the catalogue (enrolment_catalog.go).
+// Link finishes a scraped catalogue's parsed requirements with the steps that
+// need the whole course list or the programs: misprinted codes ("MAT1581"),
+// cross-field exemptions, program names, timing exclusions, enrolment links.
 func Link(courses []*types.Course, programs []*types.Program) {
 	known := map[string]bool{}
 	for _, c := range courses {
@@ -63,8 +53,8 @@ func Link(courses []*types.Course, programs []*types.Program) {
 		cat.linkEquivalents(e)
 		linkEnrolmentCompletion(e, p.Completion)
 	}
-	// After the enrolment loop: a program enrolment requires (a focus's
-	// parent) is never a completion exclusion.
+	// after the enrolment loop, which narrows a focus's Req: a program enrolment
+	// requires is never a completion exclusion
 	for _, p := range programs {
 		if p.Completion != nil {
 			var req *types.ReqNode
@@ -77,22 +67,20 @@ func Link(courses []*types.Course, programs []*types.Program) {
 }
 
 var (
-	// A code missing its H/Y, or its H/Y and campus digit: "MAT1581", "SPA258".
+	// nearCodeRe matches a code missing its H/Y, or its H/Y and campus digit: "MAT1581".
 	nearCodeRe = regexp.MustCompile(`\b([A-Z]{3}\d{3})1?\b`)
-	// What may follow a code in a list: a separator, "or"/"and", or the end.
-	// "consult the BIO120 Office" is a name, not a course.
+	// codeFollowRe matches what may follow a code in a list: " or B". In "consult
+	// the BIO120 Office" it is a name, not a course.
 	codeFollowRe = regexp.MustCompile(`^\s*(?:$|[/,);.:]|(?i:or|and)\b)`)
-	// "Course should not be taken concurrently with AST425Y1", "May not be
-	// taken concurrently with FSL312H1, FSL313H1".
+	// notConcurrentRe matches a timing restriction: "May not be taken concurrently
+	// with FSL312H1".
 	notConcurrentRe = regexp.MustCompile(`(?i)\b(?:(?:may|must|should)\s+not|cannot|can\s+not)\s+be\s+taken\s+concurrently\s+with\s+(.+?)\.?$`)
 	codeListRe      = regexp.MustCompile(`^` + codePat + `(?:\s*(?:,|/|(?i:and|or))\s*` + codePat + `)*$`)
 )
 
-// repairCatalogCodes repairs near-codes in s that match exactly one course in
-// known: "MAT1581" is MAT158H1 when there's a MAT158H1 but no MAT158Y1. It
-// reports whether anything changed.
-// Only a near-code followed by what can follow a code in a list counts, so
-// "MAT100-series" and "the BIO120 Office" are left alone.
+// repairCatalogCodes repairs near-codes in s that match one course in known
+// ("MAT1581" is MAT158H1 if there's no MAT158Y1), if what follows can follow a
+// code in a list ("MAT100-series" can't), and reports whether anything changed.
 func repairCatalogCodes(s string, known map[string]bool) (string, bool) {
 	return repairCodesFollowedBy(s, known, codeFollowRe)
 }

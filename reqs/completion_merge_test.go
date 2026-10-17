@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionIntegrationG checks the rules the integration of the Task 10G
-// audit streams added, on snippets of real programs (and one built from a
-// real one to show a guard).
+// TestCompletionIntegrationG checks rules on snippets of real programs (and one
+// built from a real one to show a guard).
 func TestCompletionIntegrationG(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"approved courses of other programs for part of a designator's floor: the floor or that much less of it, as permission (ASSPE0908, shortened)",

@@ -9,115 +9,91 @@ import (
 	"degree-explorer/types"
 )
 
-// One requirement item (a bullet, or a paragraph that is a course list) is
-// parsed with the course grammar, after rewriting the wordings enrolment
-// lists use and course requisites don't. The rewrites only touch enrolment
-// text; the shared grammar is unchanged.
+// Requirement items, parsed with the course grammar after rewriting the
+// wordings only enrolment uses.
 
 var (
-	// A trailing conjunction joins this item to the next: "Completion of
-	// GGR172H1 with a grade of at least 70%, or", "COG100H1 and", "... ;
-	// or", "... OR".
+	// itemConjRe matches a trailing conjunction joining an item to the next:
+	// "COG100H1 and".
 	itemConjRe = regexp.MustCompile(`(?i)[\s,;]*\b(or|and)\s*$`)
-	// Footnote marks: "PSY100H1 (75%)*****", "IRW230H1*".
+	// starsRe matches footnote marks: "IRW230H1*".
 	starsRe = regexp.MustCompile(`\*+`)
-	// "PSY100H1 (passing grade)": completing it is enough.
+	// passingRe matches "PSY100H1 (passing grade)": completing it is enough.
 	passingRe = regexp.MustCompile(`(?i)\s*\(passing\s+grades?\)`)
-	// "Gr. 12 Calculus" is high-school preparation.
+	// anyCreditsAvgRe matches "3.0 credits (minimum grade average of 73%)";
+	// grade12Re matches high-school preparation: "Gr. 12 Calculus".
 	anyCreditsAvgRe = regexp.MustCompile(`(?i)^(\d+\.\d+)\s+credits?\s+\(\s*(?:a\s+)?minimum\s+grade\s+average\s+of\s+(\d{2})%\s*\)$`)
 	grade12Re       = regexp.MustCompile(`(?i)^Gr(?:ade|\.)\s*12\b\s*`)
 	highSchoolSepRe = regexp.MustCompile(`\s*(?:,|\band\b)\s*`)
-	// "URB235H1 (formerly INI235H1)": the old code counts too.
+	// formerlyRe matches "URB235H1 (formerly INI235H1)": the old code counts too.
 	formerlyRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*formerly\s+(` + codePat + `)\s*\)`)
-	// Campus notes on alternatives: "PSY100Y5 from UTM", "PSYA01H3 and
-	// PSYA02H3 (both) from UTSC".
+	// fromCampusRe matches campus notes on alternatives: "PSY100Y5 from UTM".
 	fromCampusRe = regexp.MustCompile(`(?i)\s*\(both\)|\s+from\s+(?:UTM|UTSC)\b`)
-	// "200-series ENG courses" is "200-level ENG courses".
+	// seriesLevelRe matches "200-series", read as "200-level".
 	seriesLevelRe = regexp.MustCompile(`\b([1-4]00)-series\b`)
-	// "at least at least 63%" (source typo).
+	// doubleLeastRe matches a source typo: "at least at least 63%".
 	doubleLeastRe = regexp.MustCompile(`(?i)(at\s+least\s+){2,}`)
-	// ", each with a mark of at least 77%" -> " with a mark of at least 77% in each".
+	// eachWithRe matches ", each with a mark of at least 77%", moved after the
+	// courses as "in each".
 	eachWithRe = regexp.MustCompile(`(?i),?\s*each\s+(with\s+an?\s+(?:final\s+)?(?:mark|grade)\s+of\s+(?:at\s+least\s+)?\d{2}%)`)
-	// A pool that names its courses after a label or qualifiers: "1.0 credit
-	// in Economics: ECO101H1, ...", "1.0 credit in Architectural/Visual
-	// Studies: JAV120H1, ...", "1.0 200-level PSY credits from PSY210H1,
-	// ...", "1.0 credits in PSY from PSY210H1, ...". The listed courses say
-	// it all.
+	// labelPoolRe matches a pool naming its courses after a label or qualifiers:
+	// "1.0 credit in Economics: ECO101H1, ...". The listed courses say it all.
 	labelPoolRe = regexp.MustCompile(`(?i)\b(\d+\.\d+)\s+(?:\d00-level\s+)?(?:[A-Z]{3}\s+)?credits?\s+(?:in\s+[^:]+:|(?:in\s+[A-Z]{3}\s+)?from\s*:?)\s*(` + codePat + `)`)
-	// "A or the following HIS First-Year Foundations (FYF) courses: B, C"
-	// and "excluding the following HIS First-Year Foundations courses: B, C".
+	// orFollowingRe matches ", or the following HIS First-Year Foundations (FYF)
+	// courses:"; excludingFollowingRe the same after "excluding".
 	orFollowingRe        = regexp.MustCompile(`(?i),?\s+or\s+the\s+following\s+[^:]*courses:\s*`)
 	excludingFollowingRe = regexp.MustCompile(`(?i)\bexcluding\s+the\s+following\s+[^:]*courses:\s*`)
-	// "An additional 0.5 credit from ..." is a second pick from a pool named
-	// before; see mergeAdditional.
+	// additionalRe matches "An additional 0.5 credit from ...": a second pick from
+	// a pool named before.
 	additionalRe = regexp.MustCompile(`(?i)^an\s+additional\s+`)
-	// "1.0 credit from: CRI205H1, CRI210H1 and CRI225H1", "..., PHL275H1,
-	// and POL200Y1": the last course is one more pool member, not an extra
-	// requirement.
+	// poolAndRe matches "1.0 credit from: CRI205H1, CRI210H1 and CRI225H1": the
+	// last course is one more pool member, not an extra requirement.
 	poolAndRe = regexp.MustCompile(`(?i)(\d+\.\d+\s+credits?\s+from:?\s+` + codePat + `(?:,\s*` + codePat + `)*),?\s+and\s+(` + codePat + `)\b`)
-	// A grade after a plain list of codes (or a pool of them) covers the
-	// whole list: "ECO101H1 and ECO102H1 with a final mark of at least 63%",
-	// "one of CSC108H1/ CSC110Y1 with a grade of at least 60%", "1.0 credit
-	// from POL101H1, POL106H1, POL107H1, POL109H1 with a grade of 65% in
-	// each". It is rewritten as a bracketed group with "(minimum N%)", which
-	// the grammar applies to every course in the group.
-	//
-	// The list must start the item or follow ", and" / ", or" / "; or": in
-	// "(CHM135H1, CHM136H1) or CHM151Y1, with a minimum grade of at least 60%
-	// in each course" the grade covers the bracket too, which the grammar
-	// already handles.
+	// listGradeRe matches a grade after a list of codes, or a pool of them, which
+	// covers the list: "ECO101H1 and ECO102H1 with a final mark of at least 63%".
+	// The list must start the item or follow ", and", ", or" or "; or".
 	listGradeRe = regexp.MustCompile(`(?i)(^(?:completion\s+of\s+)?|,\s+(?:and|or)\s+|;\s+(?:or\s+)?)` +
 		`((?:(?:\d+\.\d+\s+(?:additional\s+)?credits?\s+(?:from|in):?|one\s+of)\s+)?` + codePat + `(?:\s*(?:,\s*(?:or\b|and\b)?|/|\bor\b|\band\b)\s*` + codePat + `)*)` +
 		`\s*,?\s+with\s+an?\s+(?:minimum\s+|final\s+)*(?:grade|mark)\s+of\s+(?:at\s+least\s+)?(\d{2})%(?:\s+in\s+each(?:\s+course)?)?`)
-	// One grade after the last of a slash list with no other grades covers
-	// the list: "ANT200Y1/ ARH100Y1 (65%)", "PSY100H1/ SOC100H1/ VIC153H1
-	// (70%)", "MAT130H1/ MAT135H1 (60%)".
+	// slashGradeRe matches one grade after a slash list, which covers the list:
+	// "MAT130H1/ MAT135H1 (60%)".
 	slashGradeRe = regexp.MustCompile(`((?:` + codePat + `\s*/\s*)+)(` + codePat + `)\s*\(\s*(\d{2})%\s*\)`)
-	// "A, B/ C" where A and B are half courses and C the full course that
-	// replaces both: "( MAT148H1, MAT149H1/ MAT137Y1)" is (MAT148H1 and
-	// MAT149H1) or MAT137Y1, not MAT148H1 and (MAT149H1 or MAT137Y1).
-	// Likewise "ECO101H1 (63%) and ECO102H1 (63%)/ ECO105Y1 (80%)".
+	// halvesRe matches "A, B/ C" where half courses A and B are replaced by C:
+	// "( MAT148H1, MAT149H1/ MAT137Y1)" is (MAT148H1 and MAT149H1) or MAT137Y1.
 	halvesRe = regexp.MustCompile(`(^|[(\[/]\s*)(([A-Z]{3})\d{3}H\d(?:\s*\(\d{2}%\))?)\s*(?:,|\band\b)\s*(([A-Z]{3})\d{3}H\d(?:\s*\(\d{2}%\))?)\s*/\s*(([A-Z]{3})\d{3}Y\d(?:\s*\(\d{2}%\))?)(\s*(?:$|[)\]/]))`)
-	// A grade followed straight by another code is missing its "/":
-	// "( MAT158H1 (55%), MAT159H1 (55%) MAT157Y1 (55%))".
+	// gradeThenCodeRe matches a grade followed straight by a code, missing its
+	// "/": "MAT159H1 (55%) MAT157Y1".
 	gradeThenCodeRe = regexp.MustCompile(`(\(\s*\d{2}%\s*\))\s+(` + codePat + `)`)
-	// "3.0 credits from BR=2 and/or BR=3 and/or TRN170Y1": the course counts
-	// toward a breadth pool, which can't list courses (they would have to
-	// carry the breadth too). It goes to the notes.
+	// breadthCodeRe matches "BR=2 and/or BR=3 and/or TRN170Y1": a breadth pool
+	// can't list courses, so the course goes to the notes.
 	breadthCodeRe = regexp.MustCompile(`(?i)(\bBR\s*=\s*[1-5](?:\s*(?:and/or|/|or)\s*BR\s*=\s*[1-5])*)\s*(?:and/or|/|or)\s*(` + codePat + `)`)
 	countTowardRe = regexp.MustCompile(`(?i)^(an?\s+(?:minimum\s+)?grade\s+average\s+of\s+\d{2}%\s+in\s+\d+\.\d+\s+credits\s+that\s+count\s+toward\s+the\s+program),?\s+including\s+(.+)$`)
-	// "One of the following courses must be completed: A/ B" -> "One of: A/ B".
+	// oneOfMustRe matches "One of the following courses must be completed:",
+	// rewritten as "One of:".
 	oneOfMustRe = regexp.MustCompile(`(?i)^one\s+of\s+the\s+following\s+courses\s+must\s+be\s+completed:`)
-	// "One Y or two H courses of the following (1.0 credit in a single
-	// language) with a final grade of 65% in each course: EST100H1 and
-	// EST101H1, ( FSL100H1 and FSL102H1 ) or ( FSL120H1 and FSL122H1) ,
-	// GER100Y1, ..."
+	// languagePairsRe matches "One Y or two H courses of the following ... with a
+	// final grade of 65% in each course: EST100H1 and EST101H1, ...".
 	languagePairsRe = regexp.MustCompile(`(?i)^one\s+Y\s+or\s+two\s+H\s+courses\s+of\s+the\s+following\s*(?:\([^)]*\))?\s*with\s+a\s+final\s+grade\s+of\s+(\d{2})%\s+in\s+each\s+course:\s*(.+)$`)
 	pairAndRe       = regexp.MustCompile(`(` + codePat + `)\s+and\s+(` + codePat + `)`)
-	// "2.0 credits in 200-level ENG courses or JWE260H1": the course is one
-	// more pool member.
+	// coursesOrCodeRe matches "ENG courses or JWE260H1": the course is one more
+	// pool member.
 	coursesOrCodeRe = regexp.MustCompile(`(?i)\bcourses\s+or\s+(` + codePat + `)\b`)
-	// "0.5 credit with a minimum grade of 67% from ECO101H1/ IRW230H1, or a
-	// minimum grade of 80% from ECO105Y1" -> "67% in ECO101H1/ IRW230H1, or
-	// 80% in ECO105Y1".
+	// gradeFromRe matches "0.5 credit with a minimum grade of 67% from ECO101H1",
+	// rewritten as "67% in ECO101H1".
 	gradeFromRe = regexp.MustCompile(`(?i)(?:\d+\.\d+\s+credits?\s+with\s+|\ba\s+)?a?\s*minimum\s+grade\s+of\s+(\d{2})%\s+from\s+`)
-	// "1.5 credits from SOC/ PSY/ IRE/ IRW, at any level, of which no more
-	// than 0.5 credit can be IRE/ IRW" -> "1.5 credits from SOC/ PSY/ IRE/
-	// IRW, no more than 0.5 credits in IRE/ IRW".
+	// anyLevelRe and ofWhichMaxRe rewrite "1.5 credits from SOC/ PSY/ IRE/ IRW,
+	// at any level, of which no more than 0.5 credit can be IRE/ IRW" as a cap.
 	anyLevelRe     = regexp.MustCompile(`(?i),?\s*at\s+any\s+level\b`)
 	ofWhichMaxRe   = regexp.MustCompile(`(?i),?\s*of\s+which\s+no\s+more\s+than\s+(\d+\.\d+)\s+credits?\s+(?:can|may)\s+be\s+`)
 	creditsFromDes = regexp.MustCompile(`(?i)\b(\d+\.\d+\s+credits?)\s+from\s+([A-Z]{3}(?:\s*/\s*[A-Z]{3})+)\b`)
 
-	// An average over the group before it: "( ACT240H1 and ACT245H1 and
-	// ACT247H1) with an average grade of 63%", "... with a grade average of
-	// 73% across all three courses", "... with at least an average of 75%
-	// across the three of them", "... with at least a 78% average across all
-	// four of them", "... with a combined minimum average grade of 75%".
+	// itemAvgRe matches an average over the group before it: "( ACT240H1 and
+	// ACT245H1) with an average grade of 63%".
 	itemAvgRe = regexp.MustCompile(`(?i),?\s*with\s+(?:at\s+least\s+)?an?\s+(?:combined\s+)?(?:minimum\s+)?(?:(?:average\s+grade|grade\s+average|average)\s+of\s+(\d{2})%|(\d{2})%\s+average)(?:\s+across\s+(?:all\s+)?(?:the\s+)?\w+\s+(?:courses|of\s+them))?`)
 )
 
-// itemConj strips a trailing conjunction from an item and returns it in
-// lower case ("or", "and", or "").
+// itemConj strips a trailing conjunction from an item and returns it in lower
+// case ("or", "and", or "").
 func itemConj(s string) (string, string) {
 	s = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "."))
 	if m := itemConjRe.FindStringSubmatchIndex(s); m != nil {
@@ -127,8 +103,7 @@ func itemConj(s string) (string, string) {
 	return s, ""
 }
 
-// parseItem parses one requirement item. Its notes go to the enrolment's
-// notes.
+// parseItem parses one requirement item. Its notes go to the enrolment's notes.
 func (p *enrolParser) parseItem(s string) *types.ReqNode {
 	s = strings.TrimSpace(strings.TrimRight(starsRe.ReplaceAllString(s, ""), ". "))
 	if grade12Re.MatchString(s) {
@@ -140,18 +115,14 @@ func (p *enrolParser) parseItem(s string) *types.ReqNode {
 		applyMinGrade(n, g)
 		return n
 	}
-	// "3.0 credits (minimum grade average of 73%)": any 3.0 credits, with
-	// that average. Amount includes having the credits.
+	// any 3.0 credits, with that average; the amount includes having the credits
 	if m := anyCreditsAvgRe.FindStringSubmatch(s); m != nil {
 		amount, _ := strconv.ParseFloat(m[1], 64)
 		grade, _ := strconv.Atoi(m[2])
 		return &types.ReqNode{Type: types.NodeAverage, MinGrade: grade, Amount: amount}
 	}
-	// An average over a group: split the item at each average phrase; each
-	// segment is a group averaged on its own, and the segments are
-	// alternatives if "/" separates them ("( MAT130H1/ MAT135H1, MAT136H1)
-	// with an average grade of 73%/ ( MAT148H1, MAT149H1)/ MAT137Y1 with an
-	// average grade of 63%/ ...").
+	// each average phrase ends a group averaged on its own; groups that "/"
+	// separates are alternatives
 	if locs := itemAvgRe.FindAllStringSubmatchIndex(s, -1); locs != nil {
 		var alts []*types.ReqNode
 		last := 0
@@ -195,9 +166,7 @@ func (p *enrolParser) parseItemText(s string) *types.ReqNode {
 		s = strings.TrimSpace(s[m[3]:])
 	}
 	if m := jointCourseRe.FindStringSubmatch(s); m != nil {
-		// "0.5 credit in a Geography & Planning course, including joint
-		// courses, at the 100- or 200-level": the joint courses' designators
-		// aren't named, so they are an alternative Link fills in (jointText).
+		// the joint courses' designators aren't named: Link fills them in
 		n := p.parseItemText(jointCourseRe.ReplaceAllString(s, "in GGR courses"))
 		alt := jointText("GGR")
 		return replaceFirst(n, func(c *types.ReqNode) bool {
@@ -210,9 +179,7 @@ func (p *enrolParser) parseItemText(s string) *types.ReqNode {
 		extra, s = m[1], strings.Replace(s, m[0], "courses", 1)
 	}
 	if m := countTowardRe.FindStringSubmatch(s); m != nil {
-		// "A minimum grade average of 77% in 3.0 credits that count toward
-		// the program, including 1.0 credit from: ...": which credits count
-		// toward the program isn't known here.
+		// which credits count toward the program isn't known here
 		return andNode(&types.ReqNode{Type: types.NodeText, Kind: types.TextOther, Text: m[1]}, p.parseItemText(m[2]))
 	}
 	if m := breadthCodeRe.FindStringSubmatch(s); m != nil {
@@ -231,16 +198,16 @@ func (p *enrolParser) parseItemText(s string) *types.ReqNode {
 }
 
 var (
-	// "Economics: ECO101H1, ECO102H1, ECO105Y1": the label names the
-	// group; the lead says how much of it is needed.
+	// labelRe matches a label naming a group: "Economics: ECO101H1".
 	labelRe = regexp.MustCompile(`^([A-Z][A-Za-z]*(?:[ /][A-Z][A-Za-z]*)*:)\s*` + codePat)
-	// "0.5 credit in a Geography & Planning course, including joint courses,"
+	// jointCourseRe matches "in a Geography & Planning course, including joint
+	// courses,".
 	jointCourseRe = regexp.MustCompile(`(?i)\bin\s+an?\s+(Geography\s*&\s*Planning)\s+course,\s+including\s+joint\s+courses,`)
-	// "1.0 credit from ( MAT130H1/ MAT135H1 and MAT136H1)/ ( MAT148H1,
-	// MAT149H1/ MAT137Y1)/ ...": a pool whose members are bundles.
+	// poolOfAltsRe matches a pool whose members may be bundles: "1.0 credit from (
+	// MAT130H1/ MAT135H1 and MAT136H1)/ ...".
 	poolOfAltsRe = regexp.MustCompile(`(?i)^(\d+\.\d+)\s+credits?\s+from:?\s+(.+)$`)
-	// "2.0 credits from CRI100H1, ECO, HIS, PHL, POL, PSY, or SOC courses
-	// (any course level and combination)": courses and designators mixed.
+	// mixedPoolRe matches a pool of courses and designators: "2.0 credits from
+	// CRI100H1, ECO, HIS, PHL, POL, PSY, or SOC courses".
 	mixedPoolRe     = regexp.MustCompile(`^(\d+\.\d+)\s+credits?\s+from\s+((?:(?:` + codePat + `|[A-Z]{3}),\s+)+(?:or\s+)?(?:` + codePat + `|[A-Z]{3}))\s+courses(?:\s*\(any\s+course\s+level\s+and\s+combination\))?$`)
 	mixedPoolItemRe = regexp.MustCompile(codePat + `|\b[A-Z]{3}\b`)
 )
@@ -263,13 +230,9 @@ func (p *enrolParser) mixedPool(s string) *types.ReqNode {
 	return n
 }
 
-// poolOfAlternatives reads "amount credit from X" where X is not a plain
-// course list. If X is alternatives that each weigh amount ("1.0 credit
-// from ( MAT130H1/ MAT135H1 and MAT136H1)/ ( PHY131H1 and PHY132H1)"), it is
-// one of them, or, read loosely, amount credits from any of their courses
-// (Review). Otherwise it is amount credits from any of X's courses ("1.0
-// credit from MAT130H1/ MAT135H1, MAT136H1, ( MAT148H1, MAT149H1)/
-// MAT137Y1, PHY131H1, ...").
+// poolOfAlternatives reads "amount credit from X" for X not a plain course
+// list: one of X's alternatives when each weighs amount, loosely any of their
+// courses (Review); otherwise amount credits from any of X's courses.
 func (p *enrolParser) poolOfAlternatives(amountText, list string) *types.ReqNode {
 	amount, _ := strconv.ParseFloat(amountText, 64)
 	var discard []string
@@ -281,17 +244,15 @@ func (p *enrolParser) poolOfAlternatives(amountText, list string) *types.ReqNode
 	}
 	flat := &types.ReqNode{Type: types.NodeCredits, Amount: amount, Courses: dedupe(codeRe.FindAllString(list, -1))}
 	if strict := sequencesOrSingles(alts, amount); strict != nil {
-		// "1.0 credit from ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1,
-		// MAT149H1)/ MAT137Y1, PHY131H1, PHY132H1, ...": a whole sequence,
-		// or 1.0 credit of the single courses; loosely, any 1.0 credit.
+		// a whole sequence, or the amount of the single courses; loosely, any of them
 		return ambiguous(strict, flat, "any "+amountText+" credit from the listed courses may count, not only a whole sequence")
 	}
 	return flat
 }
 
-// sequencesOrSingles reads an and of lists of alternatives that each weigh
-// amount and of single courses as one of those alternatives, or amount
-// credits of the single courses. It returns nil for any other shape.
+// sequencesOrSingles reads an and of alternatives weighing amount and single
+// courses as one of those alternatives, or amount credits of the single
+// courses. It returns nil for any other shape.
 func sequencesOrSingles(n *types.ReqNode, amount float64) *types.ReqNode {
 	if n == nil || n.Type != types.NodeAnd {
 		return nil
@@ -321,8 +282,8 @@ func normalizeAndKeep(s string, notes *[]string) string {
 	return out
 }
 
-// addToPool adds code to the credit pool in n ("2.0 credits in 200-level
-// ENG courses or JWE260H1"), when it passes the pool's level filter.
+// addToPool adds code to the credit pool in n when it passes the pool's level
+// filter.
 func addToPool(n *types.ReqNode, code string) *types.ReqNode {
 	added := false
 	walkReq(n, func(c *types.ReqNode) {
@@ -400,8 +361,8 @@ func spreadSlashGrade(m string) string {
 	return strings.Join(out, "/ ")
 }
 
-// groupHalves rewrites "A, B/ C" as "(A, B)/ C" when A and B are half
-// courses of C's designator.
+// groupHalves rewrites "A, B/ C" as "(A, B)/ C" when A and B are half courses
+// of C's designator.
 func groupHalves(m string) string {
 	g := halvesRe.FindStringSubmatch(m)
 	if g[3] != g[5] || g[5] != g[7] {
@@ -417,8 +378,8 @@ func (p *enrolParser) parseFragmentNotes(s string) *types.ReqNode {
 	return r.Req
 }
 
-// highSchoolNode reads "Gr. 12 Calculus", "Gr. 12 Calculus and Biology" as
-// high-school courses the student must have.
+// highSchoolNode reads "Gr. 12 Calculus and Biology" as high-school courses
+// the student must have.
 func highSchoolNode(s string) *types.ReqNode {
 	subjects := grade12Re.ReplaceAllString(s, "")
 	var items []*types.ReqNode
@@ -460,16 +421,9 @@ func withAverage(n *types.ReqNode, grade int) *types.ReqNode {
 	return andNode(n, avg)
 }
 
-// averageOver builds an average of grade over the courses that nodes
-// require, or returns nil if one average can't say which courses count.
-// Each requirement is a part: the courses every student takes, and each list
-// of alternatives or credit pool, with the credits it needs. One part is a
-// plain average over its filter. Several are items, so the average is over
-// the credits each part needs rather than over every course that could
-// match: "COG100H1 and 0.5 credits in PSY and 0.5 credit in LIN, PHL, or
-// CSC" averages COG100H1, 0.5 PSY credits and 0.5 LIN/PHL/CSC credits. A cap
-// ("no more than 0.5 credits in IRE/ IRW") limits which courses count but
-// adds none.
+// averageOver builds an average of grade over the courses nodes require, or
+// nil if one average can't say which count. Several parts average the credits
+// each needs; a cap limits which courses count but adds none.
 func averageOver(nodes []*types.ReqNode, grade int) *types.ReqNode {
 	var fixed []string
 	var items []*types.ReqNode
@@ -528,7 +482,7 @@ func averageOver(nodes []*types.ReqNode, grade int) *types.ReqNode {
 		for _, c := range it.Courses {
 			total += courseWeight(c)
 		}
-		// All the listed courses count unless fewer credits meet the part.
+		// all the listed courses count unless fewer credits meet the part
 		if len(it.Designators) > 0 || len(it.Levels) > 0 || len(it.Breadth) > 0 || it.Amount < total {
 			avg.Amount = it.Amount
 		}
@@ -541,12 +495,9 @@ func averageOver(nodes []*types.ReqNode, grade int) *types.ReqNode {
 	return avg
 }
 
-// alternativesItem is the average item for a list of alternatives. Single
-// courses ("BIO230H1/ BIO255H1") make one filter over them. Groups ("(
-// CHM135H1, CHM136H1)/ CHM151Y1", "1.0 credit from one of the following
-// groups: - Economics: ... - Geography: ...") stay apart, an or (or choose)
-// of one filter per group, so a choice can't mix half a group with half
-// another.
+// alternativesItem is the average item for a list of alternatives: one filter
+// over single courses, or one per group, so a choice can't mix half a group
+// with half another.
 func alternativesItem(n *types.ReqNode) *types.ReqNode {
 	single := !slices.ContainsFunc(n.Items, func(it *types.ReqNode) bool {
 		return it.Type != types.NodeCourse && !(it.Type == types.NodeText && it.Kind == types.TextAmbiguity)
@@ -576,10 +527,9 @@ func alternativesItem(n *types.ReqNode) *types.ReqNode {
 	return alt
 }
 
-// alternativesFilter is one filter for the courses of a list of
-// alternatives: the courses named, and the designators of plain pools in it.
-// It returns nil when a pool has a filter of its own (levels, breadth,
-// exclusions) or the list has a node that isn't a course or a pool.
+// alternativesFilter is one filter for a list of alternatives: its courses and
+// its plain pools' designators. It returns nil for a pool with its own filter
+// or a node that isn't a course or a pool.
 func alternativesFilter(n *types.ReqNode) *types.ReqNode {
 	f := &types.ReqNode{Type: types.NodeCredits}
 	var walk func(n *types.ReqNode) bool
@@ -619,13 +569,9 @@ func ownFilter(c *types.ReqNode) bool {
 	return len(c.Levels) > 0 || len(c.Breadth) > 0 || len(c.Exclude) > 0
 }
 
-// minWeight is the fewest credits that can meet n, for enrolment: a
-// course's weight, a pool's or an average's amount, the sum of an "and", the
-// cheapest alternative of an "or", the cheapest count of a "choose".
-// Anything else (text, a program, a GPA) counts 0, so an "or" with a text
-// alternative costs nothing. nodeCredits (completion) differs on text: there
-// a text alternative is skipped and text makes the count unknown.
-// minCredits (the grammar) reads courses only.
+// minWeight is the fewest credits that can meet n, for enrolment. Text, a
+// program or a GPA counts 0, so an or with a text alternative costs nothing;
+// completion's nodeCredits instead skips text alternatives.
 func minWeight(n *types.ReqNode) float64 {
 	if n == nil {
 		return 0
@@ -655,9 +601,8 @@ func minWeight(n *types.ReqNode) float64 {
 	return 0
 }
 
-// sumCheapest returns the sum of the k smallest of ws (all of them when
-// there are fewer, 0 for none): the fewest credits of an "or" (k = 1) or a
-// "choose" (k = its count). It sorts ws.
+// sumCheapest returns the sum of the k smallest of ws, or of all when fewer.
+// It sorts ws.
 func sumCheapest(ws []float64, k int) float64 {
 	slices.Sort(ws)
 	sum := 0.0
@@ -667,8 +612,8 @@ func sumCheapest(ws []float64, k int) float64 {
 	return sum
 }
 
-// andNode and orNode combine nodes, dropping nils and flattening children
-// of the same type.
+// andNode and orNode combine nodes, dropping nils and flattening children of
+// the same type.
 func andNode(items ...*types.ReqNode) *types.ReqNode { return combineNodes(types.NodeAnd, items) }
 func orNode(items ...*types.ReqNode) *types.ReqNode  { return combineNodes(types.NodeOr, items) }
 
@@ -693,11 +638,9 @@ func combineNodes(t types.NodeType, items []*types.ReqNode) *types.ReqNode {
 	return &types.ReqNode{Type: t, Items: flat}
 }
 
-// closeStrayParens fixes a bracket closed without being opened: "( MAT148H1/
-// MAT158H1, MAT149H1/ MAT159H1)/ MAT137Y1)/ MAT157Y1", "MAT133Y1/ MAT130H1/
-// MAT135H1, MAT136H1)/ ...". The missing "(" goes after one of the "/"
-// before the stray ")": where the alternatives then all weigh the same, and
-// split into the most of them; else after the first.
+// closeStrayParens fixes a bracket closed without being opened: "MAT133Y1/
+// MAT130H1/ MAT135H1, MAT136H1)/ ...". The "(" goes after the "/" where the
+// alternatives then weigh the same and split into the most, else the first.
 func closeStrayParens(s string) string {
 	for {
 		depth, stray := 0, -1

@@ -8,135 +8,96 @@ import (
 	"degree-explorer/types"
 )
 
-// Sentences that say what kind of program this is, how many credits a
-// student needs, and the requirements that aren't course lists: program
-// enrolment, applications and interviews, timing rules and programs that
-// can't be combined.
+// Sentences giving the program's kind, the credits needed, and requirements
+// that aren't course lists: program enrolment, applications, timing, exclusions.
 
 var (
-	// "This is an open enrolment program.", "This is a limited enrolment
-	// Certificate.", "this is a limited enrollment program that can
-	// accommodate ...", "The Research Specialist is a limited program".
+	// enrolKindRe matches "This is a limited enrolment Certificate."
 	enrolKindRe = regexp.MustCompile(`(?i)\b(?:this\s+is\s+an?|is\s+an?)\s+(open|limited)\s+(?:enrol(?:l)?ment\s+)?(?:program|certificate)\b(.*)$`)
-	// "... limited enrolment certificate for any non-Rotman Commerce student
-	// in the Faculty of Arts & Science"
+	// enrolNonRe matches "for any non-Rotman Commerce student".
 	enrolNonRe = regexp.MustCompile(`(?i)\bfor\s+any\s+non-(.+?)\s+students?\b`)
-	// "**Enrolment in the Forest Biomaterials Science Major is being
-	// administratively suspended as of 1 October 2020 ...**", "Admission to
-	// the Environmental Geosciences Minor has been administratively suspended
-	// ... and is no longer admitting students."
+	// enrolSuspendedRe matches "has been administratively suspended ... and is no
+	// longer admitting students".
 	enrolSuspendedRe = regexp.MustCompile(`(?i)administratively\s+suspended|no\s+longer\s+admitting|no\s+new\s+students\s+will\s+be\s+admitted`)
 
-	// "Students must have completed 4.0 credits and meet the requirements
-	// listed below to enrol.", "... a minimum of 4.0 credits ... to apply for
-	// enrolment.", "A student who has completed 4.0 credits may enrol in the
-	// program.", "A student who has completed 4.0 credits including MGT100H1
-	// or equivalent may enrol in the Certificate."
+	// enrolThresholdRe matches "A student who has completed 4.0 credits may enrol
+	// in the program."
 	enrolThresholdRe = regexp.MustCompile(`(?i)^(?:students\s+must\s+have\s+completed|a\s+student\s+who\s+has\s+completed)\s+(?:a\s+minimum\s+of\s+)?(\d+(?:\.\d+)?)\s+credits?\b(?:\s+including\s+(.+?)\s+may\s+enrol\b)?`)
 
-	// The cutoff changes each year: "... and this minimum changes each year
-	// depending on available spaces and the number of applicants", "this
-	// minimum may change", "this average varies each year", "the minimum
-	// grade average in required courses may vary year to year", "a higher
-	// grade/grade average than the posted minimums listed below, which will
-	// depend each year on ...".
+	// enrolVariableRe matches a cutoff that changes each year: "this minimum may
+	// change".
 	enrolVariableRe = regexp.MustCompile(`(?i)\bchanges?\s+each\s+year|\bmay\s+(?:change|vary)\b|\bvar(?:y|ies)\s+(?:each\s+year|year\s+to\s+year)|\bdepend\s+each\s+year`)
-	// A variable cutoff that names its courses: "A minimum grade average in
-	// STA130H1 and ( MAT148H1, MAT149H1)/ MAT137Y1 is needed for entry."
+	// enrolVariableScopeRe matches a variable cutoff naming its courses: "A
+	// minimum grade average in STA130H1 and ... is needed for entry."
 	enrolVariableScopeRe = regexp.MustCompile(`(?i)^(?:a\s+)?minimum\s+grade(?:\s+average)?s?\s+in\s+.*` + codePat + `.*\s+(?:is|are)\s+needed\s+for\s+entry$`)
 
-	// Program enrolment: "Enrolment in the Computer Science Major Program
-	// (ASMAJ1689).", "Enrolment in the History Specialist is required.",
-	// "Enrolment in the International Relations Major is required for entry
-	// into the Focus.", "Enrolment in the Human Geography Major (ASMAJ1667)
-	// program is required."
+	// enrolInRe matches program enrolment: "Enrolment in the History Specialist
+	// is required."
 	enrolInRe = regexp.MustCompile(`(?i)^enrol(?:l)?ment\s+in\s+(?:the\s+)?(.+?)(?:\s+is\s+required)?(?:\s+for\s+entry\s+into\s+(?:the|this)\s+focus)?$`)
-	// "Students must be enrolled in the Psychology Minor, Major or
-	// Specialist, to be considered for enrolment.", "Student must be enrolled
-	// in the Criminology and Sociolegal Studies Major (ASMAJ0826)", "In order
-	// to apply for the Economics Specialist Program, a student must first be
-	// enrolled in the Economics Major (ASMAJ1478)".
+	// enrolMustBeInRe matches "Students must be enrolled in the Psychology Minor,
+	// Major or Specialist, to be considered for enrolment."
 	enrolMustBeInRe = regexp.MustCompile(`(?i)^(?:in\s+order\s+to\s+apply\s+for\s+.+?,\s+)?(?:a\s+)?students?\s+must\s+(?:first\s+)?be\s+enrolled\s+in\s+(?:the\s+)?(.+?)(?:,?\s+to\s+be\s+considered\s+for\s+enrolment)?$`)
-	// The parent of an application-based focus: "Once you have enrolled in
-	// the Cell and Molecular Biology Major program, you have the option to
-	// apply for entry into a focus."
+	// enrolOnceInRe matches the parent of an application-based focus: "Once you
+	// have enrolled in the Cell and Molecular Biology Major program, you have the
+	// option to apply for entry into a focus".
 	enrolOnceInRe = regexp.MustCompile(`(?i)^once\s+you\s+have\s+(?:been\s+approved\s+for\s+and\s+have\s+)?enrolled\s+in\s+the\s+(.+?)(?:\s+program)?,\s+you\s+have\s+the\s+option\s+to\s+apply\s+for\s+entry\s+into\s+a\s+focus`)
-	// "Students who complete the Technology Leadership Focus application
-	// and/or interview and are admitted to a Computer Science Specialist or
-	// Major or Data Science Specialist program will be considered for
-	// admission to the Focus."
+	// enrolAdmittedToRe matches "and are admitted to a Computer Science Specialist
+	// or Major ... program will be considered for admission".
 	enrolAdmittedToRe = regexp.MustCompile(`(?i)\band\s+are\s+admitted\s+to\s+an?\s+(.+?)\s+program\s+will\s+be\s+considered\s+for\s+admission`)
-	// "Students who have completed at least 8.0 credits and who are already
-	// enrolled in ASSPE2340 may enrol in ASSPE2082 themselves on ACORN."
+	// enrolSelfEnrolRe matches "Students who have completed at least 8.0 credits
+	// and who are already enrolled in ... may enrol in ... themselves on ACORN."
 	enrolSelfEnrolRe = regexp.MustCompile(`(?i)^students\s+who\s+have\s+completed\s+(?:at\s+least\s+)?(\d+\.\d+)\s+credits\s+and\s+who\s+are\s+already\s+enrolled\s+in\s+(` + progCodePat + `)\s+may\s+enrol\s+in\s+` + progCodePat + `\s+themselves`)
-	// Only one admission category may apply: "Only students in the Year 1
-	// Computer Science admission category (CMP1) who meet the criteria of the
-	// Computer Science program admission guarantee are eligible to apply ..."
+	// enrolOnlyRe matches a route for one admission category only: "Only students
+	// in the Year 1 Computer Science admission category (CMP1) who meet the
+	// criteria ... are eligible to apply".
 	enrolOnlyRe = regexp.MustCompile(`(?i)^only\s+(students\s+in\s+the\s+.+?)\s+(?:who\s+meet\s+.+?\s+)?are\s+eligible\s+to\s+apply`)
 
-	// Decided by the department: "Students who do not have the Computer
-	// Science Admission Guarantee must complete a supplementary application
-	// to be considered", "Students must pass an interview", "passing a short
-	// admissions test", "submit a portfolio of creative works", "an
-	// additional audition-interview", "students must include a 300-word
-	// statement of interest", "Complete an application and/or interview",
-	// "Students must complete the Rotman Commerce Supplemental Application",
-	// "Program applicants will be required to submit a supplemental
-	// application", "Admission is determined by a range of criteria, including
-	// ... short essays, a writing sample, a resume, and a video submission".
+	// enrolAdmissionRe matches an admission the department decides: "Students must
+	// pass an interview".
 	enrolAdmissionRe = regexp.MustCompile(`(?i)supplementa(?:l|ry)\s+application|\bpass\s+an\s+interview\b|application\s+and/or\s+interview|admissions?\s+test|\bportfolio\b|\baudition|statement\s+of\s+interest|student\s+profile|admission\s+is\s+determined\s+by`)
 
-	// An admission decided by a grade with a fallback (the CSB foci):
-	// "Admission will be determined with a minimum grade of 80% in BIO130H1.
-	// If the student does not achieve 80% in BIO130H1, admission can be
-	// determined with a minimum grade of 80% in BIO230H1, BIO255H1 or
-	// CSB349H1."
+	// enrolGradeFirstRe and enrolGradeElseRe match a grade with a fallback:
+	// "Admission will be determined with a minimum grade of 80% in BIO130H1. If
+	// the student does not achieve 80% in BIO130H1, ..."
 	enrolGradeFirstRe = regexp.MustCompile(`(?i)^admission\s+will\s+be\s+determined\s+with\s+a\s+minimum\s+grade\s+of\s+(\d{2})%\s+in\s+(.+)$`)
 	enrolGradeElseRe  = regexp.MustCompile(`(?i)^if\s+the\s+student\s+does\s+not\s+achieve\s+\d{2}%\s+in\s+` + codePat + `,\s+admission\s+can\s+be\s+determined\s+with\s+a\s+minimum\s+grade\s+of\s+(\d{2})%\s+in\s+(.+)$`)
 
-	// Timing rules the checker can't see: "Requests for admission will be
-	// considered in the first program request period only.", "Requests for
-	// admission will only be considered in the first program request period."
+	// enrolFirstPeriodRe matches a timing rule the checker can't see: "will only
+	// be considered in the first program request period".
 	enrolFirstPeriodRe = regexp.MustCompile(`(?i)will\s+(?:only\s+)?be\s+considered\s+in\s+the\s+first\s+program\s+request\s+period`)
-	// "... provided the following courses ... are completed within 12 months
-	// of beginning their studies", "failure to complete all the required
-	// courses within 12 months (a student’s first Fall/Winter and Summer
-	// sessions) ... will result in losing the admission guarantee".
-	// "At least 20 spaces will be available each year for students applying
-	// from Year 1 Computer Science (CMP1) within 12 months of beginning their
-	// studies" is about reserved spaces, not when the courses are done.
+	// enrolWithinRe matches "are completed within 12 months of beginning their
+	// studies". It needs "complete": reserved spaces "within 12 months" don't count.
 	enrolWithinRe = regexp.MustCompile(`(?i)\bcomplete[ds]?\b[^.]*\bwithin\s+12\s+months`)
-	// Deadlines for the application itself: "All course admission
-	// requirements must be completed by May 1 to be eligible."
+	// enrolDeadlineRe matches an application deadline: "must be completed by May
+	// 1".
 	enrolDeadlineRe = regexp.MustCompile(`(?i)must\s+be\s+completed\s+by\s+[A-Z][a-z]+\s+\d`)
-	// "Have not yet completed CSC207H1 prior to beginning Focus requirements."
+	// enrolNotYetRe matches "Have not yet completed CSC207H1 prior to beginning
+	// Focus requirements."
 	enrolNotYetRe = regexp.MustCompile(`(?i)^have\s+not\s+(?:yet\s+)?completed\b`)
 
-	// Programs that can't be combined with this one.
+	// Programs that can't be combined with this one, and the phrases naming them.
 	enrolNotOpenRe      = regexp.MustCompile(`(?i)\bnot\s+open\s+to\s+students\s+enrolled\s+in\s+(?:a\s+|an\s+)?(.+)$`)
 	enrolCombinedWithRe = regexp.MustCompile(`(?i)\bcannot\s+be\s+combined\s+with(?:\s+the)?\s*:?\s*(.*)$`)
 	enrolCombineRe      = regexp.MustCompile(`(?i)\bcannot\s+combine\s+(?:a|an|the)\s+.+?\s+with\s+(.+?)(?:\s+for\s+their\s+degree)?$`)
 	enrolSimultaneousRe = regexp.MustCompile(`(?i)\bcannot\s+be\s+simultaneously\s+enrolled\s+in\s+(?:or\s+complete\s+)?(.+)$`)
-	// "another Sociology program (Specialist or Minor)" -> "Sociology
-	// Specialist or Minor"; "either departmental Major programs (Biomedical
-	// Toxicology or Pharmacology)" -> "Biomedical Toxicology Major",
-	// "Pharmacology Major".
+	// enrolProgTypesParenRe matches "another Sociology program (Specialist or
+	// Minor)", read as "Sociology Specialist or Minor".
 	enrolProgTypesParenRe = regexp.MustCompile(`(?i)^(?:another|any\s+other)\s+(.+?)\s+program\s+\(((?:Specialist|Major|Minor)(?:\s+or\s+(?:Specialist|Major|Minor))*)\)$`)
 	enrolDeptParenRe      = regexp.MustCompile(`(?i)^(?:either\s+)?departmental\s+(Major|Specialist|Minor)\s+programs?\s+\((.+)\)$`)
 	enrolProgSplitRe      = regexp.MustCompile(`(?i)\s*,?\s+or\s+the\s+|\s*,\s+the\s+|\s+or\s+(?:the\s+)?(?:Environmental|Biomedical)\b`)
 	enrolProgArticleRe    = regexp.MustCompile(`(?i)^(?:the|a|an|either|any)\s+`)
 	enrolTypeOnlyRe       = regexp.MustCompile(`^(?i:specialist|major|minor)$`)
 	enrolAltSepRe         = regexp.MustCompile(`\s*,\s*(?:or\s+)?|\s+or\s+`)
-	// A phrase about a subject or department, not named programs: "other
-	// CIRHR program", "any Minor, Major, or Specialist offered by the
-	// Department of French".
+	// exclusionIncludingRe drops what "including" lists. enrolSubjectOnlyRe
+	// matches a subject or department, not named programs: "any Minor, Major, or
+	// Specialist offered by the Department of French".
 	exclusionIncludingRe = regexp.MustCompile(`(?i),\s+including\s+[^;]*`)
 	exclusionPartsRe     = regexp.MustCompile(`\s*;\s*(?:nor\s+)?|\s+nor\s+`)
 	enrolSubjectOnlyRe   = regexp.MustCompile(`(?i)^other\b|\boffered\s+by\b|\bdepartment\b`)
 )
 
-// kindSentence records an open/limited kind sentence and reports whether s
-// was one.
+// kindSentence records an open/limited kind sentence and reports whether s was
+// one.
 func (p *enrolParser) kindSentence(s string) bool {
 	m := enrolKindRe.FindStringSubmatch(s)
 	if m == nil {
@@ -146,7 +107,7 @@ func (p *enrolParser) kindSentence(s string) bool {
 		p.kind = types.EnrolmentKind(strings.ToLower(m[1]))
 	}
 	if n := enrolNonRe.FindStringSubmatch(m[2]); n != nil {
-		// "for any non-Rotman Commerce student": Link resolves the subject.
+		// Link resolves the subject
 		p.exclusions = append(p.exclusions, &types.ReqNode{Type: types.NodeProgram, Text: n[1]})
 	}
 	return true
@@ -221,8 +182,8 @@ func (p *enrolParser) specialSentence(s string) bool {
 	return true
 }
 
-// withinNode is the condition on the admission guarantees: the courses of
-// the route must be done in the student's first 12 months.
+// withinNode is the condition on the admission guarantees: the route's courses
+// done in the student's first 12 months.
 func withinNode() *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeProfile, Attr: "max_months_from_start", Value: "12",
 		Text: "required courses completed within 12 months of beginning studies"}
@@ -242,21 +203,18 @@ func notYetNode(s string) *types.ReqNode {
 }
 
 var (
-	// "students admitted to Arts & Science in the Year 1 Computer Science
-	// (CMP1) admission category": a code in brackets, dropped before reading
-	// the name (the calendar gives one only for some categories).
+	// categoryCodeRe matches a category's code in brackets, dropped before reading
+	// its name: "(CMP1)".
 	categoryCodeRe = regexp.MustCompile(`\([A-Z]{2,}\d*\)`)
-	// "students admitted to the Rotman Commerce admission category in Year 1",
-	// "students NOT admitted to the Year 1 Rotman Commerce admission
-	// category": the capitalised words before "admission category" name the
-	// category.
+	// categoryNameRe matches the capitalised words naming a category before
+	// "admission category": "the Year 1 Rotman Commerce admission category".
 	categoryNameRe = regexp.MustCompile(`((?:[A-Z][\w&]*\s+)*[A-Z][\w&]*)\s+admissions?\s+categor`)
 	categoryNotRe  = regexp.MustCompile(`\bNOT\b|\b(?i:other)\b`)
 )
 
-// categoryNode reads who an admission-category audience is for as a
-// profile condition. "other ... admission categories" is every category but
-// the last one named.
+// categoryNode reads who an admission-category audience is for as a profile
+// condition. "other ... admission categories" is every category but the last
+// one named.
 func (p *enrolParser) categoryNode(text string) *types.ReqNode {
 	cat := ""
 	if m := categoryNameRe.FindStringSubmatch(categoryCodeRe.ReplaceAllString(text, "")); m != nil {
@@ -280,27 +238,22 @@ func (p *enrolParser) categoryNode(text string) *types.ReqNode {
 	return n
 }
 
-// exclusionSentence records programs the student must not be enrolled in.
-// A sentence that only introduces a list ("the Biochemistry Major cannot be
-// combined with the:") returns lead = true; the list items follow.
+// exclusionSentence records programs the student must not be enrolled in. lead
+// is true for a sentence that only introduces a list; its items follow.
 func (p *enrolParser) exclusionSentence(s string) (ok, lead bool) {
 	nodes, ok, lead := exclusionNodes(s)
 	p.exclusions = append(p.exclusions, nodes...)
 	return ok, lead
 }
 
-// exclusionPhrase adds the programs named in phrase to Exclusions
-// (exclusionPhraseNodes).
+// exclusionPhrase adds the programs named in phrase to Exclusions.
 func (p *enrolParser) exclusionPhrase(phrase string) {
 	p.exclusions = append(p.exclusions, exclusionPhraseNodes(phrase)...)
 }
 
 // exclusionNodes reads a sentence naming programs the student must not be
-// enrolled in, as enrolment and completion text write it: "not open to
-// students enrolled in ...", "cannot be combined with ...", "cannot combine
-// the X with ...", "cannot be simultaneously enrolled in ...". ok reports
-// whether s is one; lead, that it only introduces a list ("the Biochemistry
-// Major cannot be combined with the:"), whose items follow.
+// enrolled in: "cannot be combined with ...". ok reports whether s is one;
+// lead, that it only introduces a list ("cannot be combined with the:").
 func exclusionNodes(s string) (nodes []*types.ReqNode, ok, lead bool) {
 	for _, re := range []*regexp.Regexp{enrolNotOpenRe, enrolCombinedWithRe, enrolCombineRe, enrolSimultaneousRe} {
 		m := re.FindStringSubmatch(s)
@@ -316,18 +269,14 @@ func exclusionNodes(s string) (nodes []*types.ReqNode, ok, lead bool) {
 	return nil, false, false
 }
 
-// exclusionPhraseNodes returns the programs named in phrase. Explicit
-// alternatives ("the Biomedical Toxicology Major or the Pharmacology Major")
-// become one node each. A phrase about a subject or a department ("any other
-// CIRHR program", "any Minor, Major, or Specialist offered by the Department
-// of French") stays membership text.
+// exclusionPhraseNodes returns the programs named in phrase, one node per
+// explicit alternative. A phrase about a subject or department stays
+// membership text.
 func exclusionPhraseNodes(phrase string) []*types.ReqNode {
 	var out []*types.ReqNode
 	phrase = enrolProgArticleRe.ReplaceAllString(phrase, "")
-	// "any Computer Science, Statistics, or Actuarial Science programs,
-	// including the Computer Science Minor, ...; nor any Mathematics Major or
-	// Specialist program; nor the Focus in ...": each part on its own. What
-	// "including" lists is already in the part before it.
+	// each ";" or "nor" part on its own; what "including" lists is already in
+	// the part before it
 	phrase = exclusionIncludingRe.ReplaceAllString(phrase, "")
 	if parts := exclusionPartsRe.Split(phrase, -1); len(parts) > 1 {
 		for _, part := range parts {
@@ -349,10 +298,8 @@ func exclusionPhraseNodes(phrase string) []*types.ReqNode {
 		}
 		_, ok := parseProgramRef(piece)
 		if enrolSubjectOnlyRe.MatchString(piece) || !ok && !strings.Contains(piece, "(") {
-			// A subject or a department, not a list the program grammar can
-			// read: "any other Economics program", "Psychology Specialist,
-			// Research Specialist, Major, or Minor". Link resolves it by
-			// subject area, or leaves it as text.
+			// a subject or a department, not a list the program grammar can read: Link
+			// resolves it by subject area, or leaves it as text
 			out = append(out, &types.ReqNode{Type: types.NodeProgram, Text: piece})
 			continue
 		}
@@ -361,12 +308,9 @@ func exclusionPhraseNodes(phrase string) []*types.ReqNode {
 	return out
 }
 
-// programPhraseNode turns a phrase naming programs into program nodes:
-// explicit codes go into Programs ("Computer Science Major Program
-// (ASMAJ1689)"); names are left for Link to resolve ("History Specialist",
-// "Psychology Minor, Major or Specialist"). A list that mixes subjects with
-// bare types ("Computer Science Specialist or Major or Data Science
-// Specialist") is split into one node per subject, OR'd.
+// programPhraseNode turns a phrase naming programs into program nodes: codes
+// go into Programs, names are left for Link. A list mixing subjects with bare
+// types splits into one node per subject, OR'd.
 func programPhraseNode(phrase string) *types.ReqNode {
 	phrase = strings.TrimSpace(strings.TrimRight(phrase, ".,"))
 	phrase = progSuffixRe.ReplaceAllString(phrase, "")
@@ -374,8 +318,7 @@ func programPhraseNode(phrase string) *types.ReqNode {
 		return &types.ReqNode{Type: types.NodeProgram, Programs: dedupe(codes), Text: phrase}
 	}
 	if _, ok := parseProgramRef(phrase); ok || strings.Contains(phrase, "(") {
-		// A bracket qualifies a title ("Anthropology Major (Society,
-		// Culture, and Language)"); Link resolves it by title.
+		// a bracket qualifies a title; Link resolves it by title
 		return &types.ReqNode{Type: types.NodeProgram, Text: phrase}
 	}
 	var groups []string
@@ -408,47 +351,34 @@ func gradedAlternatives(list, grade string) *types.ReqNode {
 }
 
 var (
-	// "Applications from students lacking numerical grades in one or more of
-	// the specified prerequisites, or students applying in their second or
-	// later years, may be considered on the basis of their entire academic
-	// record and the availability of space in the program."
+	// holisticRe matches "lacking numerical grades ... second or later years, may
+	// be considered on the basis of their entire academic record".
 	holisticRe = regexp.MustCompile(`(?i)\b(?:lacking|do\s+not\s+have)\s+numerical\s+grades\b.*\bsecond\s+or\s+later\s+years?\b.*\bentire\s+academic\s+record`)
-	// "Students applying for admissions to the program utilizing transfer
-	// credits will be considered on a case-by-case basis."
+	// transferRouteRe matches "utilizing transfer credits will be considered on a
+	// case-by-case basis".
 	transferRouteRe = regexp.MustCompile(`(?i)\butili[sz]ing\s+transfer\s+credits\s+will\s+be\s+considered\s+on\s+a\s+case[-\s]+by[-\s]+case\s+basis`)
-	// "Students wishing to enroll after their second year who have taken
-	// PCL201H1 will be considered on a case by case basis", "Students who
-	// wish to enroll in the program after their second year will be
-	// considered on a case-by-case basis."
+	// afterSecondRe matches "Students who wish to enroll in the program after
+	// their second year will be considered on a case-by-case basis."
 	afterSecondRe = regexp.MustCompile(`(?i)\b(?:wishing|who\s+wish)\s+to\s+enrol+(?:\s+in\s+the\s+program)?\s+after\s+their\s+second\s+year(?:\s+who\s+have\s+taken\s+(` + codePat + `))?\s+will\s+be\s+considered\s+on\s+a\s+case[-\s]+by[-\s]+case\s+basis`)
-	// "If students have not taken a course from this list, they can request
-	// approval from the unit to consider other relevant courses for
-	// admission."
+	// otherCoursesRe matches "If students have not taken a course from this list,
+	// they can request approval".
 	otherCoursesRe = regexp.MustCompile(`(?i)\bhave\s+not\s+taken\s+a\s+course\s+from\s+this\s+list\b.*\brequest\s+approval\b`)
-	// "Students are invited to inquire with the program office about possible
-	// appropriate substitutions for the courses above."
+	// substitutionsRe matches "inquire with the program office about possible
+	// appropriate substitutions for the courses above".
 	substitutionsRe = regexp.MustCompile(`(?i)\binquire\b.*\bappropriate\s+substitutions\s+for\s+the\s+courses\s+above`)
-	// "For students who are missing Gr. 12 Calculus and/or Biology,
-	// information on these requirements and how they can be fulfilled is
-	// provided in the Psychology section of the Calendar"
+	// missingHSRe matches "missing Gr. 12 Calculus and/or Biology, information on
+	// these requirements and how they can be fulfilled".
 	missingHSRe = regexp.MustCompile(`(?i)\bmissing\s+Gr(?:ade|\.)\s*12\b.*\bhow\s+they\s+can\s+be\s+fulfilled`)
-	// The Rotman Commerce guarantee: "Students may repeat any required
-	// Guaranteed Admission course once", "Students who have attempted a
-	// required Guaranteed Admission course twice and have not achieved the
-	// minimum required grade will be ineligible".
+	// repeatOnceRe matches "Students may repeat any required Guaranteed Admission
+	// course once".
 	repeatOnceRe = regexp.MustCompile(`(?i)\brepeat\s+any\s+required\s+Guaranteed\s+Admission\s+course\s+once\b|\battempted\s+a\s+required\s+Guaranteed\s+Admission\s+course\s+twice\b`)
-	// "Students who do not achieve the minimum required grade in MAT133Y1,
-	// ... after two attempts within 12 months are not permitted to satisfy
-	// the requirement by taking an alternative mathematics course." Two
-	// attempts in total at the mathematics requirement, whichever courses
-	// they were in: no switching to another mathematics course after two
-	// failed attempts (max_attempts_per_requirement).
+	// noSwitchRe matches "after two attempts within 12 months are not permitted to
+	// satisfy the requirement by taking an alternative": two attempts in total.
 	noSwitchRe = regexp.MustCompile(`(?i)\bafter\s+two\s+attempts\b.*\bnot\s+permitted\s+to\s+satisfy\s+the\s+requirement\s+by\s+taking\s+an\s+alternative\b`)
-	// "Note that none of the required courses may be completed using the
-	// CR/NCR option."
+	// noCRRe matches "none of the required courses may be completed using the
+	// CR/NCR option".
 	noCRRe = regexp.MustCompile(`(?i)\bnone\s+of\s+the\s+required\s+courses\s+may\s+be\s+completed\s+using\s+the\s+CR/NCR\s+option`)
-	// "All course admission requirements must be completed by May 1 to be
-	// eligible."
+	// completedByRe matches "must be completed by May 1".
 	completedByRe = regexp.MustCompile(`(?i)\bmust\s+be\s+completed\s+by\s+([A-Z][a-z]+\s+\d{1,2})\b`)
 )
 

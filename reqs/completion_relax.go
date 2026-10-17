@@ -9,56 +9,44 @@ import (
 	"degree-explorer/types"
 )
 
-// Relaxations: a sentence that lets a student meet a requirement without a
-// course it names ("CSC108H1 is waived for students who complete CSC148H1
-// first", "If the FOR301H1 is not on offer, a student may use a substitute
-// ...", "students who take CHM222H1 will not have to take PHY252H1") is an
-// alternative on that course's node, on each row that requires it
-// (wrapNode): or(course, the other way). Never a note (the row would stay
-// strict, NotMet for a student the calendar lets through), and never a row
-// of text (Review for everyone, the row still strict). The other way is
-// structured where the sentence states it ("this requirement must be
-// fulfilled with one of the following 0.5 credits: ACT100H1, ..." is
-// credits{0.5, courses}; "Students may use MAT351Y1 instead of APM346H1" is
-// MAT351Y1), else the sentence as text (Review).
+// Relaxations: sentences that let a student meet a requirement without a
+// course it names, placed as or(course, the other way) on each row needing it.
 
 var (
 	complRelaxCodesPat = `((?:` + codePat + `)(?:\s*(?:/|,|or|and)\s*` + codePat + `)*)`
-	// "CSC108H1 is waived for students who complete CSC148H1 first".
+	// complRelaxWaivedRe matches "CSC108H1 is waived for students who complete
+	// CSC148H1 first".
 	complRelaxWaivedRe = regexp.MustCompile(`(?i)^` + complRelaxCodesPat + `\s+(?:is|are)\s+waived\b`)
-	// "... waived for students who complete CSC148H1 first": the course the
-	// waiver needs, on the same row; which came first is not on a transcript
-	// checker's terms, so it is a note.
+	// complRelaxWaivedForRe matches the course a waiver needs taken first:
+	// "waived for students who complete CSC148H1 first".
 	complRelaxWaivedForRe = regexp.MustCompile(`(?i)\bwaived\s+for\s+students\s+who\s+(?:complete|take)\s+(` + codePat + `)\s+first$`)
-	// "If the FOR301H1 is not on offer, a student may use a substitute ...".
+	// complRelaxNotOfferedRe matches "If the FOR301H1 is not on offer, a student
+	// may use a substitute ...".
 	complRelaxNotOfferedRe = regexp.MustCompile(`(?i)^if\s+(?:the\s+)?` + complRelaxCodesPat + `\s+(?:is|are)\s+not\s+(?:on\s+offer|offered|available)\b`)
-	// "students who take CHM222H1 will not have to take PHY252H1".
+	// complRelaxNotTakeRe matches "students who take CHM222H1 will not have to
+	// take PHY252H1".
 	complRelaxNotTakeRe = regexp.MustCompile(`(?i)\b(?:will|do|does|need)\s+not\s+(?:have|need)\s+to\s+take\s+` + complRelaxCodesPat)
-	// "If you are unable to complete STA130H1 in your first year of study,
-	// this requirement must be fulfilled with ..." / "... by completing a 300
-	// or 400-level 0.5 credit STA course to replace STA130H1".
+	// complRelaxUnableRe matches "If you are unable to complete STA130H1 in your
+	// first year of study, this requirement must be fulfilled with ...".
 	complRelaxUnableRe = regexp.MustCompile(`(?i)^if\s+you\s+(?:are\s+unable\s+to|do\s+not|cannot)\s+complete\s+` + complRelaxCodesPat + `\b[^,]*,\s*this\s+requirement\s+must\s+be\s+(?:fulfilled|met|satisfied)\s+(?:with|by\s+completing)\s+(.+)$`)
-	// "Students exempted from any of the required FSL courses ... must
-	// replace these with ...", "Students exempted from any of FSL220H1/
-	// FSL222H1 ... must replace these credits with ...", "Students exempted
-	// from any of the required courses must replace these courses with ...
-	// FSL courses at the 200+ level".
+	// complRelaxExemptedRe matches "Students exempted from any of FSL220H1/
+	// FSL222H1 ... must replace". Group 1 holds codes, else group 2 a designator.
 	complRelaxExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\s+(?:any\s+of\s+)?(?:the\s+)?(?:` + complRelaxCodesPat + `|(?:required\s+)?((?-i:[A-Z]{3}))\s+(?:program\s+)?courses|required\s+courses)\b.*\b(?:must|may|can)\s+replace\b`)
-	// "Students may use MAT351Y1 instead of APM346H1".
+	// complRelaxInsteadRe matches "Students may use MAT351Y1 instead of
+	// APM346H1".
 	complRelaxInsteadRe = regexp.MustCompile(`(?i)\b(?:may|can)\s+(?:use|take|substitute)\s+` + complRelaxCodesPat + `\s+(?:instead\s+of|in\s+place\s+of|in\s+lieu\s+of)\s+` + complRelaxCodesPat + `\s*$`)
-	// "Students who completed DTS200Y1 for Requirement 1 only have to
-	// complete DTS300H1 for Requirement 2".
+	// complRelaxOnlyHaveRe matches "Students who completed DTS200Y1 for
+	// Requirement 1 only have to complete DTS300H1 for Requirement 2".
 	complRelaxOnlyHaveRe = regexp.MustCompile(`(?i)\bwho\s+(?:have\s+)?completed\s+(` + codePat + `)\s+for\s+requirement\s+(\d+)\s+only\s+(?:have|need)\s+to\s+complete\s+(` + codePat + `)\s+for\s+requirement\s+(\d+)\b`)
-	// "(e) 300-level courses may be replaced by 400-level courses (inquire in
-	// advance)".
+	// complRelaxLevelRe matches "300-level courses may be replaced by 400-level
+	// courses".
 	complRelaxLevelRe = regexp.MustCompile(`(?i)^([1-4])00-level\s+courses\s+may\s+be\s+(?:replaced|substituted)\s+(?:by|with)\s+([1-4])00-level\s+courses\b`)
-	// "There is no need to replace the missing half-credit for program
-	// completion": with "may omit", an exception to the total.
+	// complNoReplaceRe matches "There is no need to replace the missing
+	// half-credit": with "may omit", an exception to the total.
 	complNoReplaceRe = regexp.MustCompile(`(?i)\bno\s+need\s+to\s+replace\b|\bdoes\s+not\s+(?:have|need)\s+to\s+be\s+replaced\b`)
 )
 
-// isRelaxation reports whether s relaxes a course a requirement names (the
-// patterns above, and "may omit CSC108H1").
+// isRelaxation reports whether s relaxes a course a requirement names.
 func isRelaxation(s string) bool {
 	t := complClean(s)
 	for _, re := range []*regexp.Regexp{complRelaxWaivedRe, complRelaxNotOfferedRe, complRelaxNotTakeRe, complRelaxUnableRe, complRelaxExemptedRe, complRelaxInsteadRe, complRelaxOnlyHaveRe, complRelaxLevelRe, complOmitRe} {
@@ -69,8 +57,9 @@ func isRelaxation(s string) bool {
 	return false
 }
 
-// relax places the relaxations read so far (finish). A sentence whose
-// course no row requires is a note.
+// relax places the relaxations read so far. One whose course no row requires
+// is a note; otherwise never a note, or the row would stay NotMet for a
+// student the calendar lets through.
 func (a *compAssembler) relax() {
 	for _, s := range a.relaxations {
 		if !a.relaxOne(s) {
@@ -81,21 +70,20 @@ func (a *compAssembler) relax() {
 	a.omitTotals()
 }
 
-// relaxOne places one relaxation and reports whether a row took it.
+// relaxOne places relaxation s and reports whether a row took it.
 func (a *compAssembler) relaxOne(s string) bool {
 	t := a.clean(s)
 	kind := types.TextOther
 	if complApprovalWordRe.MatchString(t) || a.isApproval(s) || complRelaxNotOfferedRe.MatchString(t) {
 		kind = types.TextPermission
 	}
-	// alt builds the other way afresh for each row it wraps: rows never
-	// share a node.
+	// alt builds the other way afresh for each row: rows never share a node.
 	var codes []string
 	alt := func(string) *types.ReqNode { return textNode(kind, s) }
 	switch {
 	case complRelaxLevelRe.MatchString(t):
-		// The pools of the replaced level take the other one too, with the
-		// approval: or(pool, and(pool at both levels, permission)).
+		// The replaced level's pools take the other level too, with the approval:
+		// or(pool, and(pool at both levels, permission)).
 		m := complRelaxLevelRe.FindStringSubmatch(t)
 		from, to := int(m[1][0]-'0')*100, int(m[2][0]-'0')*100
 		done := false
@@ -113,11 +101,9 @@ func (a *compAssembler) relaxOne(s string) bool {
 		}
 		return done
 	case complRelaxOnlyHaveRe.MatchString(t):
-		// The row the sentence names gets the reduced route: "Students who
-		// completed DTS200Y1 for Requirement 1 only have to complete DTS300H1
-		// for Requirement 2" is or(row 2, and(DTS200Y1, DTS300H1)), and rows 1
-		// and 2 share DTS200Y1 (overlaps; claims are exclusive). Without a
-		// row 1 that names DTS200Y1, the condition stays text.
+		// The row named last gets or(row, and(DTS200Y1, DTS300H1)), sharing
+		// DTS200Y1 with the first row, as claims are exclusive. Without a first
+		// row naming DTS200Y1, the condition stays text.
 		m := complRelaxOnlyHaveRe.FindStringSubmatch(t)
 		labelled := func(n string) *compRow {
 			for _, r := range a.items {
@@ -150,8 +136,7 @@ func (a *compAssembler) relaxOne(s string) bool {
 	case complRelaxNotTakeRe.MatchString(t):
 		loc := complRelaxNotTakeRe.FindStringSubmatchIndex(t)
 		codes = codeRe.FindAllString(t[loc[2]:loc[3]], -1)
-		// "students who take CHM222H1 will not have to take PHY252H1": the
-		// course they take instead, with the approval.
+		// The other way is the course taken instead, with the approval.
 		alt = func(string) *types.ReqNode {
 			return andNode(append(courseNodes(codeRe.FindAllString(t[:loc[0]], -1)), textNode(kind, s))...)
 		}
@@ -175,7 +160,7 @@ func (a *compAssembler) relaxOne(s string) bool {
 		if r == a.total {
 			continue
 		}
-		// The smallest node naming the row's relaxed courses: "Students
+		// Wrap the smallest node naming the row's relaxed courses: "Students
 		// exempted from FSL220H1/ FSL222H1 ..." wraps the pair.
 		named := slices.DeleteFunc(dedupe(slices.Clone(codes)), func(c string) bool { return !rowNames(r, c) })
 		if len(named) == 0 {
@@ -188,10 +173,9 @@ func (a *compAssembler) relaxOne(s string) bool {
 			waivedFor = nil
 		}
 		if complOmitRe.MatchString(t) && omitAsCourse(r.r.Req, named[0]) || waivedFor != nil {
-			// "may omit CSC108H1 and proceed directly with CSC148H1", "CSC108H1
-			// is waived for students who complete CSC148H1 first": the item
-			// needs the course only when it is taken, or(course,
-			// not(course)) (completion_cross.go).
+			// "may omit CSC108H1", "CSC108H1 is waived for students who complete
+			// CSC148H1 first": the course is needed only when taken, or(course,
+			// not(course)).
 			other = notCourse(named[0])
 		}
 		r.r.Req = wrapNode(r.r.Req, named, other, &wrapped)
@@ -215,11 +199,9 @@ func courseNodes(codes []string) []*types.ReqNode {
 	return out
 }
 
-// unableAlternative reads what replaces a course a student couldn't take:
-// "one of the following 0.5 credits to fulfill your 13.0-credit program
-// requirements: ACT100H1 (...), ACT350H1, ..." is credits{0.5, those
-// courses}; "a 300 or 400-level 0.5 credit STA course to replace STA130H1"
-// is read by the grammar. Nil when it doesn't read.
+// unableAlternative reads what replaces a course a student couldn't take: "one
+// of the following 0.5 credits ...: ACT100H1, ..." is credits{0.5, courses};
+// other wording goes to the grammar. Nil when it doesn't read.
 func unableAlternative(s string, replaced []string) *types.ReqNode {
 	s = strings.TrimSuffix(strings.TrimSpace(s), ".")
 	if i := strings.LastIndex(s, ":"); i >= 0 {
@@ -237,7 +219,7 @@ func unableAlternative(s string, replaced []string) *types.ReqNode {
 	}
 	s = complToReplaceTailRe.ReplaceAllString(s, "")
 	if m := complLevelCreditCourseRe.FindStringSubmatch(s); m != nil {
-		// "a 300 or 400-level 0.5 credit STA course".
+		// "a 300 or 400-level 0.5 credit STA course"
 		v, _ := strconv.ParseFloat(m[2], 64)
 		return &types.ReqNode{Type: types.NodeCredits, Amount: v, Designators: desigRe.FindAllString(m[3], -1), Levels: parseLevels(m[1] + " level")}
 	}
@@ -248,15 +230,16 @@ func unableAlternative(s string, replaced []string) *types.ReqNode {
 	return n
 }
 
-// complToReplaceTailRe: the replaced course after an unableAlternative: "...
+// complToReplaceTailRe matches the replaced course after an alternative: "...
 // STA course to replace STA130H1".
 var complToReplaceTailRe = regexp.MustCompile(`(?i)\s+to\s+replace\s+` + codePat + `$`)
 
-// complLevelCreditCourseRe: "a 300 or 400-level 0.5 credit STA course".
+// complLevelCreditCourseRe matches "a 300 or 400-level 0.5 credit STA
+// course".
 var complLevelCreditCourseRe = regexp.MustCompile(`(?i)^(?:an?\s+)?([1-4]00(?:\s*(?:or|/|-|and)\s*[1-4]00)*)[-\s]*level\s+(\d+(?:\.\d+)?)\s+credits?\s+((?-i:[A-Z]{3})(?:\s*/\s*(?-i:[A-Z]{3}))*)\s+courses?$`)
 
-// requiredCodes returns the courses of designator desig (any designator when
-// empty) that the items require by code.
+// requiredCodes returns the courses of designator desig (any when empty) that
+// the items require by code.
 func (a *compAssembler) requiredCodes(desig string) []string {
 	var out []string
 	for _, r := range a.routeRows() {
@@ -279,16 +262,15 @@ func rowNames(r *compRow, code string) bool {
 	return has
 }
 
-// compOmission is a part of the items a student may leave out with no need
-// to replace it (omitTotal, standIns): the total is that much less for the
-// student conds describe.
+// compOmission is a part of the items a student may leave out with no need to
+// replace it: the total is weight less for the student conds describe.
 type compOmission struct {
 	conds  []*types.ReqNode // not(CSC108H1); CSC240H1, not(CSC165H1)
 	weight float64
 }
 
-// omitTotal records the exception to the total that leaving out a course
-// with no need to replace it makes (design 3.1); omitTotals writes it.
+// omitTotal records the exception to the total that leaving out course code
+// with no need to replace it makes; omitTotals writes it.
 func (a *compAssembler) omitTotal(code string) {
 	t := a.total
 	if t == nil || t.r.Req == nil || t.r.Req.Type != types.NodeCredits || t.r.Req.Amount <= courseWeight(code) {
@@ -302,11 +284,9 @@ func (a *compAssembler) omitTotal(code string) {
 	}
 }
 
-// omitTotals gives the total one branch per set of omissions:
-// or(credits{N}, and(credits{N less the omitted credits}, conds), ...). A
-// range total ("13.0-13.5 credits", "10.5 or 11.0 credits") already allows
-// for what its lower end leaves out: the omissions count down from the
-// upper end, and a branch the lower end meets is left out.
+// omitTotals gives the total one branch per set of omissions: or(credits{N},
+// and(credits{N less the omitted}, conds), ...). A range total's omissions
+// count down from its upper end; a branch its lower end meets is left out.
 func (a *compAssembler) omitTotals() {
 	t := a.total
 	if t == nil || len(a.omissions) == 0 || t.r.Req == nil || t.r.Req.Type != types.NodeCredits {
@@ -336,24 +316,17 @@ func (a *compAssembler) omitTotals() {
 	t.r.Req = orNode(alts...)
 }
 
-// Stand-ins: one course that counts for two required courses. "CSC240H1 is
-// an accelerated and enriched version of CSC165H1 plus CSC236H1" lets the
-// rows holding or(CSC165H1, CSC240H1) and or(CSC236H1, CSC240H1) share
-// CSC240H1 (overlaps; allocation is exclusive, so one of them would be
-// NotMet), and "If you take CSC240H1 without CSC165H1, there is no need to
-// replace the missing half-credit" lowers the total for that student:
-// and(credits{N-0.5}, CSC240H1, not(CSC165H1)). A footnote on an item
-// ("( CSC111H1/ CSC165H1, CSC236H1)/ CSC240H1 (1)" with "(1) The
-// "missing" 0.5 credit of the substitution does not have to be replaced")
-// lowers it for the student who took the lighter alternative and not the
-// pair's required course: and(credits{N-0.5}, CSC240H1, not(CSC236H1)).
+// Stand-ins: one course that counts for two required courses, "CSC240H1 is an
+// accelerated and enriched version of CSC165H1 plus CSC236H1".
 var (
 	complStandInRe        = regexp.MustCompile(`(?i)^(` + codePat + `)\s+is\s+an?\s+(?:[a-z]+(?:\s+and\s+[a-z]+)?\s+)?version\s+of\s+(` + codePat + `)\s+(?:plus|and)\s+(` + codePat + `)\b`)
 	complStandInWithoutRe = regexp.MustCompile(`(?i)^if\s+you\s+take\s+(` + codePat + `)\s+without\s+(` + codePat + `)\s*,`)
 	complFootNoReplaceRe  = regexp.MustCompile(`(?i)^\((\d)\)\s+the\s+["“]?missing["”]?\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+the\s+substitution\s+does\s+not\s+(?:have|need)\s+to\s+be\s+replaced\b`)
 )
 
-// standIns places the stand-in sentences (above).
+// standIns lets the two rows a stand-in counts for share it, since claims are
+// exclusive, and lowers the total for a student who has it without the
+// course it replaces when the text says there is no need to replace it.
 func (a *compAssembler) standIns() {
 	var sents []string
 	for _, line := range strings.Split(a.raw, "\n") {
@@ -404,8 +377,8 @@ func (a *compAssembler) standIns() {
 }
 
 // footnoteStandIn reads the footnote "(n) The "missing" w credit of the
-// substitution does not have to be replaced" on the item that ends in
-// "(n)": or(and(..., B), X) with X lighter than the pair by w.
+// substitution does not have to be replaced" on the item ending in "(n)":
+// or(and(..., B), X) with X lighter than the pair by w.
 func (a *compAssembler) footnoteStandIn(mark string, w float64, line string) {
 	if a.total == nil {
 		return
@@ -448,18 +421,15 @@ func sharedCodes(r, q *compRow) []string {
 	return slices.Compact(out)
 }
 
-// dropNote removes the sentence s from the notes: a row encodes it.
+// dropNote removes sentence s from the notes: a row encodes it.
 func (a *compAssembler) dropNote(s string) {
 	c := cleanNote(complClean(s))
 	a.notes = slices.DeleteFunc(a.notes, func(n string) bool { return n == c })
 }
 
 // splitYAlternatives gives a full-year course offered as the alternative of
-// two half-credit rows under one parent ("PSY201H1 (or one of ECO220Y1/
-// ...)" and "PSY202H1 (or one of ECO220Y1/ SOC252H1/ STA221H1)") a weight of
-// 0.5 in each (design 2, weight): ECO220Y1 stands in for both halves, and as
-// a plain course node the first row would claim all of it and leave the
-// second NotMet.
+// two half-credit rows a weight of 0.5 in each: as a plain course node, the
+// first row would claim all of it and leave the second NotMet.
 func splitYAlternatives(rows []*compRow) {
 	halves := map[string][]*compRow{}
 	for _, r := range rows {
@@ -494,34 +464,20 @@ func splitYAlternatives(rows []*compRow) {
 }
 
 var (
-	// complFloorItemRe: an item worded as a floor: "11. At least 2.0 credits
-	// from 400-level/ D-level courses & Graduate courses in Req5 or ...".
+	// complFloorItemRe matches an item worded as a floor: "11. At least 2.0
+	// credits from 400-level/ D-level courses".
 	complFloorItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?at\s+least\b`)
-	// complFloorOverRe: a floor worded over other requirements or the program:
+	// complFloorOverRe matches a floor over other requirements or the program:
 	// "in Req5 or Req6", "of the student's program".
 	complFloorOverRe = regexp.MustCompile(`(?i)\breq(?:uirements?)?\s*\(?\d|\bof\s+the\s+student['’]s\s+(?:\d+(?:\.\d+)?\s+credits|program)\b`)
-	// complWithinCreditsRe: a condition on the program's courses counted
-	// elsewhere: "5. Within the 12.0 credits required for the specialist
-	// program, 3.0 credits must focus on a particular global region and ...".
+	// complWithinCreditsRe matches a condition on courses counted elsewhere: "5.
+	// Within the 12.0 credits required for the specialist program".
 	complWithinCreditsRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?within\s+the\s+\d+(?:\.\d+)?\s+credits\s+required\b`)
 )
 
 // floorItems makes the items that are floors on the program's courses
-// constraints under the total, not allocations (design 3.1): an allocation
-// would claim the courses its siblings need, so a student who meets both
-// with the same courses would fail. They are:
-//   - a pool of levels alone ("4. 3.5 credits at the 300+level", "5. 1.0
-//     credit at the 400 level");
-//   - an item of text worded as a floor over other requirements or the
-//     program ("11. At least 2.0 credits from 400-level/ D-level courses &
-//     Graduate courses in Req5 or Req6 ...", "At least 1.5 credits of the
-//     student’s program must be in American Studies ..."); "At least 1.0
-//     credit from the following courses: ..." allocates;
-//   - "Within the 12.0 credits required for the specialist program, 3.0
-//     credits must focus on ..." and the lines under headings after it that
-//     spell out its parts (unnumbered, of text).
-//
-// What was under such an item moves to the total.
+// constraints under the total: as allocations they would claim the courses
+// their siblings need. What was under such an item moves to the total.
 func (a *compAssembler) floorItems() {
 	if a.total == nil {
 		return
@@ -535,11 +491,11 @@ func (a *compAssembler) floorItems() {
 		switch {
 		case r.r.Kind != types.RequirementAllocation || n == nil:
 		case n.Type == types.NodeCredits && n.Amount > 0 && n.Levels != nil && n.Designators == nil && n.Courses == nil && n.Breadth == nil &&
-			n.Lists == nil && n.Requirements == nil:
+			n.Lists == nil && n.Requirements == nil: // "4. 3.5 credits at the 300+level"
 			floor = true
 		case complWithinCreditsRe.MatchString(first) && hasText(n):
 			floor, within = true, true
-		case within && r.r.Label == "" && hasText(n) && !codeRe.MatchString(first):
+		case within && r.r.Label == "" && hasText(n) && !codeRe.MatchString(first): // a part spelled out under "Within ..."
 			floor = true
 		case n.Type == types.NodeText && complFloorItemRe.MatchString(first) && complFloorOverRe.MatchString(first):
 			floor = true

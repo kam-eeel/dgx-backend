@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleOneOffs checks the item-20 one-off readings
-// (completion_oneoffs.go).
+// TestCompletionRuleOneOffs checks one-off readings.
 func TestCompletionRuleOneOffs(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a course or its exclusions, half of a full-year one counting (ASFOC2015A, shortened)",

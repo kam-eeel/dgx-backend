@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionShares checks the share routes and the language and stream
-// pools (completion_shares.go).
+// TestCompletionShares checks the share routes and the language and stream pools.
 func TestCompletionShares(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"the share a floor leaves over is approved: the floor's designators and the listed courses make the total (ASMAJ2665, shortened)",

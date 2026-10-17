@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleTitles checks course titles and labels in lists, and
-// pools written inside an item (completion_titles.go,
-// completion_streams.go) on real snippets.
+// TestCompletionRuleTitles checks course titles and labels in lists, and pools
+// written inside an item.
 func TestCompletionRuleTitles(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"bare course titles after the codes are dropped (ASMAJ0151)",
@@ -35,8 +34,7 @@ func TestCompletionRuleTitles(t *testing.T) {
 	})
 }
 
-// TestCompletionRuleStreams checks pools written inside an item
-// (completion_streams.go) on real snippets.
+// TestCompletionRuleStreams checks pools written inside an item.
 func TestCompletionRuleStreams(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a stream lead over its parts and a prerequisite line (ASMAJ1445A, shortened)",

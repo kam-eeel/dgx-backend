@@ -54,9 +54,8 @@ func TestParseExpr(t *testing.T) {
 	}
 }
 
-// Completion grammar extensions (parseCompletionText), on real completion
-// text. Each one is gated: TestCompletionGrammarGated shows that course text
-// still parses as before.
+// Completion grammar extensions on real completion text. Each is gated:
+// TestCompletionGrammarGated shows that course text still parses as before.
 func TestParseCompletionText(t *testing.T) {
 	tests := []struct{ name, src, want string }{
 		// ";" is the lowest-precedence "and"; in a pool it separates items.
@@ -72,9 +71,8 @@ func TestParseCompletionText(t *testing.T) {
 			"BIO120H1; 1.0 credit from MSE101H1; ECO101H1, ECO102H1, ECO105Y1; CHM135H1, CHM136H1; MAT130H1/ MAT135H1",
 			jAnd(jC("BIO120H1"), `{"type":"credits","amount":1,"courses":["MSE101H1","ECO101H1","ECO102H1","ECO105Y1","CHM135H1","CHM136H1","MAT130H1","MAT135H1"]}`,
 				jPairCap(0.5, "MAT130H1", "MAT135H1"))},
-		// Review B2: "and" over groups of alternatives only when each group
-		// weighs the same either way (or, with a range, when the range
-		// accounts for the difference).
+		// "and" over groups of alternatives only when each group weighs the same either
+		// way (or, with a range, when the range accounts for the difference).
 		{"ASMAJ2660 a Y course after \"/\" replaces the H pair in a pool", "1.0 credit from ECO101H1, ECO102H1/ ECO105Y1",
 			jOr(jAnd(jC("ECO101H1"), jC("ECO102H1")), jC("ECO105Y1"))},
 		{"ASSPE2290 uneven alternatives the range doesn't allow are a union",
@@ -157,7 +155,7 @@ func TestParseCompletionText(t *testing.T) {
 		{"ASSPE2270 groups whose smallest credits pass the range's lower end: text",
 			// 2.5 at least (STA130H1, a CSC pair, a MAT pair or Y course) where
 			// the range starts at 2.0, and the CSC alternatives weigh 1.0 or
-			// 1.5: no reading of "each needed" is sure (B2).
+			// 1.5: no reading of "each needed" is sure.
 			"2.0 to 2.5 credits from STA130H1, ( CSC108H1, CSC148H1)/ ( CSC110Y1, CSC111H1)/ ( CSC110Y1, CSC148H1), ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1) / MAT157Y1",
 			jT("other", "2.0 to 2.5 credits from STA130H1, ( CSC108H1, CSC148H1)/ ( CSC110Y1, CSC111H1)/ ( CSC110Y1, CSC148H1), ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1) / MAT157Y1")},
 		{"ASFOC1478B described pool", "1.5 credit of 300+ ECO elective courses from: ECO310H1, ECO334H1, ECO339H1",
@@ -418,10 +416,9 @@ func TestCompletionGrammarGated(t *testing.T) {
 			jOr(`{"type":"credits","amount":1,"courses":["APM346H1"]}`, jT("other", "PHY 300-level courses"))},
 		{"All of: LIN101H1, LIN102H1", jAnd(jT("other", "All of: LIN101H1"), jC("LIN102H1"))},
 		{"CHM135H1(recommended)/ CHM151Y1", jOr(jAnd(jC("CHM135H1"), jT("other", "recommended")), jC("CHM151Y1"))},
-		// ";" doesn't make a pool a comma list (listSep), so "/" still
-		// separates its items. Constructed from ASMAJ0482's "1.0 credit from
-		// HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1", rewritten as a count; no
-		// corpus text depends on the gate.
+		// ";" doesn't make a pool a comma list, so "/" still separates its items.
+		// Constructed from ASMAJ0482's line, rewritten as a count; no corpus text
+		// depends on the gate.
 		{"Two of HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1",
 			jAnd(jChoose(2, jC("HMB430H1"), jC("HMB470H1"), jC("HMB472H1")), jC("JPM400Y1"))},
 	}

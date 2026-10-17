@@ -9,50 +9,36 @@ import (
 	"degree-explorer/types"
 )
 
-// Linking program completion, the steps that read another program's rows:
-// inheritance ("begins with the requirements of First Year and of lines 1-3
-// of Higher Years of the Cell and Molecular Biology Major Program") and a
-// pool widened by another program's ("any 3rd or 4th year elective listed
-// above or under the Forest Conservation Specialist").
+// Linking program completion: the steps that read another program's rows,
+// inheritance and a pool widened by another program's.
 
 var (
-	// "This Focus is part of the Cell and Molecular Biology Major and begins
-	// with the requirements of First Year and of lines 1-3 of Higher Years
-	// of the Cell and Molecular Biology Major Program."
+	// complInheritPartsRe matches an inheritance sentence: "begins with the
+	// requirements of First Year and of lines 1-3 of Higher Years of the Cell and
+	// Molecular Biology Major Program".
 	complInheritPartsRe = regexp.MustCompile(`(?i)\bbegins\s+with\s+the\s+requirements\s+of\s+(.+)\s+of\s+the\s+(.+?)\.?$`)
-	// The parts of what it begins with: "First Year", "lines 1-3 of Higher
-	// Years".
+	// complInheritPartSepRe splits what it begins with into parts: "First Year",
+	// "lines 1-3 of Higher Years".
 	complInheritPartSepRe = regexp.MustCompile(`(?i)\s*(?:,\s*(?:and\s+)?(?:of\s+)?|\s+and\s+(?:of\s+)?)`)
 	complInheritLinesRe   = regexp.MustCompile(`(?i)^lines?\s+(\d+)\s*(?:-|–|to)\s*(\d+)\s+of\s+(.+)$`)
-	// "An additional 1.0 credit can be taken from any 3rd or 4th year
-	// elective listed above or under the Forest Conservation Specialist
-	// (Arts Program)".
+	// complOrUnderRe matches a pool widened by another program's: "any 3rd or 4th
+	// year elective listed above or under the Forest Conservation Specialist".
 	complOrUnderRe = regexp.MustCompile(`(?i)^(.+?)\s+or\s+under\s+the\s+(.+?)\.?$`)
-	// complListedInRe: a pool another program lists: "2.0 credits in
-	// eligible elective courses listed in the European Affairs Major". The
-	// groups: the amount, the program's title.
+	// complListedInRe matches a pool another program lists: "2.0 credits in
+	// eligible elective courses listed in the European Affairs Major".
 	complListedInRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+eligible\s+elective\s+courses\s+listed\s+in\s+the\s+(.+?)\.?$`)
 )
 
-// inheritSource is one part of an inheritance sentence: the rows of a
-// section, or of the lines from..to of it.
+// inheritSource is one part of an inheritance sentence: the rows of a section,
+// or of its lines from..to.
 type inheritSource struct {
 	section  string
 	from, to int // 0: the whole section
 }
 
-// linkInheritance copies the rows another program's requirements begin
-// with (design 3.4): "This Focus ... begins with the requirements of First
-// Year and of lines 1-3 of Higher Years of the Cell and Molecular Biology
-// Major Program" is the Major's rows in section "First Year" and those
-// labelled "Higher Years 1" to "Higher Years 3", with the rows under them.
-// The copies (deep: cloneNode, so no row shares a node with the Major's)
-// take the place of the row of text the sentence was, keep their label,
-// section and raw (the sentence joins it), and become top-level rows, or
-// rows under this program's total when it has one: the Major's total
-// doesn't exist here. The rows are numbered again. A sentence whose
-// program or rows aren't found stays text (the corpus report lists it). It
-// reports whether c changed.
+// linkInheritance replaces an inheritance sentence's row with deep copies of
+// the rows it names, under this program's total if any, and renumbers. It
+// reports whether c changed; a sentence it can't resolve stays text.
 func linkInheritance(c *types.Completion, self string, byCode map[string]*types.Program, titles titleIndex) bool {
 	at := -1
 	var m []string
@@ -89,7 +75,6 @@ func linkInheritance(c *types.Completion, self string, byCode map[string]*types.
 	if completionTotal(c) {
 		parent = 1
 	}
-	// Copy the picked rows and the rows under them, in the source's order.
 	under := map[int]bool{}
 	for _, r := range picked {
 		under[r.Number] = true
@@ -110,16 +95,14 @@ func linkInheritance(c *types.Completion, self string, byCode map[string]*types.
 		old[k] = r.Number
 		copies = append(copies, k)
 	}
-	// The source's lists the copies name come with them.
 	lists, ok := inheritLists(c, src, copies)
 	if !ok {
 		return false
 	}
 	c.Lists = append(c.Lists, lists...)
-	// The sentence's own notes go with the first copy.
 	copies[0].Notes = slices.Concat(copies[0].Notes, sentence.Notes)
-	// References among the copies are to the source's rows; among this
-	// program's, to its own. The sentence's row goes.
+	// references among the copies are to the source's rows; among this program's,
+	// to its own
 	srcRow := map[int]*types.Requirement{}
 	for _, k := range copies {
 		srcRow[old[k]] = k
@@ -135,8 +118,7 @@ func linkInheritance(c *types.Completion, self string, byCode map[string]*types.
 	rows := slices.Concat(slices.Clone(c.Requirements[:at]), copies, slices.Clone(c.Requirements[at+1:]))
 	renumber(c, rows, func(r *types.Requirement, n int) *types.Requirement {
 		if r == nil {
-			// A list item's reference: to this program's rows; the
-			// sentence's row is gone.
+			// a list item's reference is to this program's rows
 			if n == sentence.Number {
 				return nil
 			}
@@ -158,11 +140,9 @@ func linkInheritance(c *types.Completion, self string, byCode map[string]*types.
 	return true
 }
 
-// inheritLists returns copies of the source's lists that the copied rows
-// name, and the lists those name, that c doesn't have yet. A name c already
-// gives a different list is a conflict (not ok), and so is a list whose
-// items refer to the source's requirements: the inheritance sentence then
-// stays text.
+// inheritLists returns copies of the source's lists the copied rows name, and
+// the lists those name, that c lacks. A name c gives another list, or a list
+// referring to source rows, is a conflict (not ok): the sentence stays text.
 func inheritLists(c *types.Completion, src *types.Completion, copies []*types.Requirement) ([]*types.CourseList, bool) {
 	own := map[string]*types.CourseList{}
 	for _, l := range c.Lists {
@@ -201,8 +181,7 @@ func inheritLists(c *types.Completion, src *types.Completion, copies []*types.Re
 			walkReq(it, func(n *types.ReqNode) { refers = refers || n.Requirements != nil })
 		}
 		if refers {
-			// Its requirements are the source's rows: the copies can't say
-			// which of them came along. The sentence stays text.
+			// its requirements are source rows the copies can't map
 			return nil, false
 		}
 		for _, it := range l.Items {
@@ -214,10 +193,9 @@ func inheritLists(c *types.Completion, src *types.Completion, copies []*types.Re
 	return add, true
 }
 
-// inheritRows picks the source's rows for the parts: the allocations in a
-// section (case-insensitive) whose parent is the source's total or the top,
-// or, for lines from..to, those labelled "<section> <n>". Every part must
-// pick something.
+// inheritRows picks the source's rows for the parts: a section's allocations
+// under the total or the top, or those labelled "<section> <n>" for lines
+// from..to. Every part must pick something.
 func inheritRows(src *types.Completion, parts []inheritSource) []*types.Requirement {
 	total := completionTotal(src)
 	var picked []*types.Requirement
@@ -245,18 +223,12 @@ func inheritRows(src *types.Completion, parts []inheritSource) []*types.Requirem
 }
 
 // complNoRow stands for a row a reference named that the program doesn't
-// have (a copied row's reference to a source row that wasn't copied):
-// checkRequirementRefs turns a requirements filter naming it into text and
-// drops an overlap with it. Dropping the reference instead would widen a
-// pool to any course.
+// have. checkRequirementRefs makes it text: dropping it would widen a pool.
 const complNoRow = -1
 
-// renumber puts rows in c, numbered 1..N in their order, and rewrites
-// every reference: a row's parent and overlaps and the requirements of its
-// nodes and of c's list items. resolve gives the row a number names, as seen
-// from row r (r nil for a list item), or nil when it names none now: an
-// overlap or a requirements number then becomes complNoRow, a parent the
-// top; override, when it gives a row, is r's parent.
+// renumber puts rows in c, numbered 1..N, and rewrites every reference through
+// resolve: a name resolving to nothing becomes complNoRow, or the top for a
+// parent. override, when it gives a row, is r's parent.
 func renumber(c *types.Completion, rows []*types.Requirement, resolve func(r *types.Requirement, n int) *types.Requirement, override func(r *types.Requirement) *types.Requirement) {
 	type refs struct {
 		parent   *types.Requirement
@@ -327,14 +299,9 @@ func renumber(c *types.Completion, rows []*types.Requirement, resolve func(r *ty
 	c.Requirements = rows
 }
 
-// linkOtherProgramPool widens a pool by another program's: "An additional
-// 1.0 credit can be taken from any 3rd or 4th year elective listed above or
-// under the Forest Conservation Specialist (Arts Program)" in the Forest
-// Conservation Major is or(this program's elective pool, text) after
-// parsing; the Specialist has the same sentence without "or under ...",
-// read as the pool of its own electives. The row becomes one pool of both
-// programs' courses. Anything else (no such row there, a pool with a
-// filter) stays as it is. It reports whether c changed.
+// linkOtherProgramPool widens a pool by another program's ("listed above or
+// under the X"): the row becomes one pool of both programs' courses. Anything
+// else stays as it is. It reports whether c changed.
 func linkOtherProgramPool(c *types.Completion, self string, byCode map[string]*types.Program, titles titleIndex) bool {
 	changed := false
 	for _, r := range c.Requirements {
@@ -366,14 +333,9 @@ func linkOtherProgramPool(c *types.Completion, self string, byCode map[string]*t
 	return changed
 }
 
-// linkProgramList reads a row of text that draws on another program's
-// list (complListedInRe): the program's one row whose body is
-// or(credits{lists: [L]}, text{permission}) names the list, which c gets a
-// copy of (inheritLists), and the row becomes or(credits{amount, lists:
-// [L]}, that text): the list is the other program's, and so is its
-// approval route ("Students may also petition the Program Coordinator to
-// take other courses ... as electives"). Anything else stays text. It
-// reports whether c changed.
+// linkProgramList reads a row of text drawing on another program's list: c
+// gets a copy of the list, and the row takes that program's approval route
+// with it. Anything else stays text. It reports whether c changed.
 func linkProgramList(c *types.Completion, self string, byCode map[string]*types.Program, titles titleIndex) bool {
 	changed := false
 	for _, r := range c.Requirements {

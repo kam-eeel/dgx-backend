@@ -2,12 +2,9 @@ package reqs
 
 import "testing"
 
-// TestCompletionFocusParts checks a focus's own requirements, which only
-// the Specialist's text states (completion_focus.go), on lines of ASSPE2270:
-// each focus's alternative is and(program{focus}, its line read with the
-// item grammar), with a pool of the amount beside a requirement that falls
-// short of it, a pool's floor beside the pool, caps under the row, and the
-// wordings the grammar writes otherwise.
+// TestCompletionFocusParts checks a focus's own requirements, which only the
+// Specialist's text states (ASSPE2270): each is and(program{focus}, its line
+// read with the item grammar).
 func TestCompletionFocusParts(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a focus's line is its requirement beside its program node; short of the amount, a pool of its courses (ASSPE2270, shortened)",

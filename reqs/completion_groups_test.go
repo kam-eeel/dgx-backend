@@ -2,8 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleGroups: groups of alternatives, remainder pools and
-// one-off pools over lists (completion_groups.go).
+// TestCompletionRuleGroups checks groups of alternatives, remainder pools and
+// one-off pools over lists.
 func TestCompletionRuleGroups(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"groups of alternatives with nested brackets: the and of the groups, the amount checked (ASMAJ1165, shortened)",

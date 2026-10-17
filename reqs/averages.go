@@ -9,44 +9,30 @@ import (
 	"degree-explorer/types"
 )
 
-// Averages over a set of courses: "a 77% average in 3.0 HIS credits",
-// "Minimum 80% over 3.0 HIS credits at the 200-level or above", "an overall
-// average of 73% across all ECO courses taken", "3.0 BMS credits with at least
-// a B+ average", "( A, B) (average of both must be 80%)". Each becomes an
-// average node: the credit filters say which courses are averaged and
-// MinGrade is the lowest average allowed.
-//
-// A grade "in" a set of courses is a per-course minimum, not an average
-// ("75% or higher in each of A, B"); only "average", or a percentage "over" or
-// "across" credits, makes an average. Wordings that don't say which courses
-// are averaged ("Normally a B standing", "each math course used to satisfy
-// the prerequisite") stay text.
+// Averages over a set of courses ("a 77% average in 3.0 HIS credits"). A grade
+// "in" courses is a per-course minimum, not an average.
 
 var (
 	avgGradePat = `(?:(\d{2})\s*%|([A-D][+-]?))`
 	avgUpPat    = `(?:\s+(?i:or\s+(?:higher|above|better)))?`
-	// The phrase before the courses: "a 77% average in", "a B+ average
-	// over", "an average of at least 70% in", "an overall average of 73%
-	// across", "Minimum 80% over".
+	// avgHeadRe matches the phrase before the courses: "a 77% average in".
 	avgHeadRe = regexp.MustCompile(`^(?i:(?:an?\s+)?(?:(?:minimum|overall|cumulative|combined)\s+(?:of\s+)?)*)(?:` +
 		avgGradePat + `\s+(?i:average\s+(?:grade\s+|mark\s+)?(?:in|over|across|for))` +
 		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:at\s+least\s+)?)` + avgGradePat + avgUpPat + `\s+(?i:in|over|across|for)` +
 		`|(\d{2})\s*%\s+(?i:over|across))\b`)
-	// Courses named without an amount: "all ECO courses taken", "the BMS
-	// courses", "all CHM credits".
+	// avgAllRe, avgCoursesEndRe and avgTakenRe read courses named without an
+	// amount: "all ECO courses taken".
 	avgAllRe        = regexp.MustCompile(`^(?i:(?:all\s+)?(?:(?:of\s+)?(?:the|their)\s+)?)`)
 	avgCoursesEndRe = regexp.MustCompile(`(?i)\bcourses?$`)
 	avgTakenRe      = regexp.MustCompile(`^(?:\s*(?i:credits?)\b)?(?:\s+(?i:taken|completed)\b)?`)
 
-	// "with at least a B+ average", "with a 77% average", "with an average of
-	// at least 77%" after a credit phrase.
+	// avgSuffixRe matches an average after a credit phrase: "with a 77% average".
 	avgSuffixRe = regexp.MustCompile(`^\s*,?\s*(?i:with\s+(?:at\s+least\s+)?(?:an?\s+)?(?:(?:minimum|overall|combined)\s+)*)(?:` +
 		avgGradePat + `\s+(?i:average)` +
 		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:at\s+least\s+)?)` + avgGradePat + avgUpPat + `)`)
 
-	// An average over the group just before it: "(average of both must be
-	// 80%)", "(a combined average of at least 80% in both courses)", "with
-	// an average of 80% in these courses".
+	// avgOfBody matches an average over the group just before it: "(average of
+	// both must be 80%)".
 	avgOfBody = `(?i:(?:an?\s+)?(?:(?:combined|overall|minimum)\s+)*average\s+(?:grade\s+|mark\s+)?)(?:` +
 		`(?i:of|in|across|for)\s+(?i:(?:the\s+)?(both|these|the\s+two)(?:\s+courses)?\s+(?:must|should)\s+be\s+(?:at\s+least\s+)?)(\d{2})\s*%` + avgUpPat +
 		`|(?i:of\s+(?:at\s+least\s+)?)(\d{2})\s*%` + avgUpPat + `\s+(?i:(?:in|across|for)\s+(?:the\s+)?(both|these|the\s+two)(?:\s+courses)?))`
@@ -69,10 +55,9 @@ func avgGrade(m []string, i int) int {
 	return 0
 }
 
-// matchAverage reads an average phrase together with the courses it is over:
-// a credit phrase ("3.0 HIS credits (excluding HIS262H1)") or a set of courses
-// with no amount ("all ECO courses taken"). It doesn't match if the courses
-// can't be read, so the words stay text.
+// matchAverage reads an average phrase with the courses it is over: a credit
+// phrase ("3.0 HIS credits") or courses with no amount ("all ECO courses
+// taken"). It doesn't match if the courses can't be read.
 func matchAverage(s string) (token, bool) {
 	m := avgHeadRe.FindStringSubmatch(s)
 	if m == nil {
@@ -105,10 +90,9 @@ func matchAverage(s string) (token, bool) {
 	return token{kind: tCredits, end: end, node: n}, true
 }
 
-// toAverage turns the credit requirement c into an average of grade over the
-// same courses. It returns nil when c is not a plain credit filter: one with
-// no filters (an average of what?), a per-course grade of its own, an upper
-// bound, or a narrower part ("of which ...").
+// toAverage turns credit requirement c into an average of grade over the same
+// courses, or nil unless c is a credit filter with no grade or upper bound of
+// its own.
 func toAverage(c *types.ReqNode, grade int) *types.ReqNode {
 	if c == nil || c.Type != types.NodeCredits || grade == 0 || c.MinGrade > 0 || c.MaxAmount != nil ||
 		len(c.Designators) == 0 && len(c.Levels) == 0 && len(c.Breadth) == 0 && len(c.Courses) == 0 {
@@ -151,10 +135,9 @@ func matchAvgSuffix(s string) (token, bool) {
 	return token{}, false
 }
 
-// applyAvgSuffix adds an average over the courses of n, which must be a
-// course list joined by "and" ("( A, B) (average of both must be 80%)").
-// Anything else ("A/ B (average of both ...)", or a list of three for "both")
-// leaves the phrase as text.
+// applyAvgSuffix adds an average over the courses of n, which must be an "and"
+// of courses ("( A, B) (average of both must be 80%)"); anything else leaves
+// the phrase as text.
 func (p *parser) applyAvgSuffix(n *types.ReqNode, t token) *types.ReqNode {
 	var codes []string
 	if n != nil && n.Type == types.NodeAnd && !slices.ContainsFunc(n.Items, func(it *types.ReqNode) bool { return it.Type != types.NodeCourse }) {

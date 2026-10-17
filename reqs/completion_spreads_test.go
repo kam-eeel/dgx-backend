@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleSpreads checks spreads, choices and shares among lists
-// (completion_spreads.go) on real snippets.
+// TestCompletionRuleSpreads checks spreads, choices and shares among lists.
 func TestCompletionRuleSpreads(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"range lines over two parts of lists that share a course, and a languages line as content (ASMAJ2665, shortened)",

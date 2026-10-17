@@ -9,15 +9,15 @@ import (
 var (
 	parenNoteRe   = regexp.MustCompile(`(?i)\(\s*note\b(?:[^()]|\([^()]*\))*\)`) // may hold one level of brackets
 	recommendedRe = regexp.MustCompile(`(?i)\brecommended\b`)
-	// bareRecRe is a bracket that only says "(recommended)" about the code
+	// bareRecRe matches bracket content that only says "recommended" about the code
 	// before it.
 	bareRecRe = regexp.MustCompile(`(?i)^\s*recommended\s*$`)
-	// "… BCH377H1 Students in the BCH Majors need to email …": a sentence
-	// that starts right after a code with its "." missing.
+	// missingStopRe matches a sentence starting right after a code with its "."
+	// missing: "BCH377H1 Students in the BCH Majors need to email ...".
 	missingStopRe = regexp.MustCompile(`(` + codePat + `)\s+((?:Students|Please)\b)`)
 
-	// noteBreakRe finds a "NOTE:"/"Notes:"/"*Note:" that starts mid-sentence,
-	// so it can become a sentence of its own.
+	// noteBreakRe matches a "NOTE:" that starts mid-sentence, so it can become a
+	// sentence of its own.
 	noteBreakRe = regexp.MustCompile(`[\s,;]*\s\*?(NOTES?|Notes?):`)
 
 	contactRe   = regexp.MustCompile(`(?i)encouraged|\bcontact\b|\bconsult\b|\bvisit\b|\bemail\b|may be required|strongly recommended|can be combined|not accepted|do(?:es)? not provide|not be taken concurrently|\bwaiver\b`)
@@ -29,10 +29,9 @@ var (
 // abbreviations whose trailing "." does not end a sentence.
 var abbreviations = map[string]bool{"e.g": true, "i.e": true, "dept": true, "st": true, "etc": true, "approx": true, "vs": true}
 
-// extractNotes takes normalized text and separates the parts that are
-// requirements from advisory text. The returned requirement text has its
-// sentences joined with "; " so sentence boundaries become the lowest-
-// precedence AND. notes is nil when there are none.
+// extractNotes splits normalized text into requirements and advisory notes (nil
+// if none). Requirement sentences are joined with "; ", the lowest-precedence
+// AND.
 func extractNotes(s string) (req string, notes []string) {
 	for _, m := range parenNoteRe.FindAllString(s, -1) {
 		notes = append(notes, cleanNote(m[1:len(m)-1]))
@@ -82,13 +81,9 @@ func extractNotes(s string) (req string, notes []string) {
 	return strings.Join(reqs, "; "), notes
 }
 
-// advisoryParens moves advice inside brackets to notes, so it can't make the
-// whole sentence around it advisory: "AST222H1 (or equivalent readings;
-// consult the instructor)" keeps "(or equivalent readings)", and "PHY256H1/
-// (CHM222H1, CHM223H1), (PHY256H1 recommended)" loses the bracket. A bare
-// "(recommended)" on one alternative ("STA288H1 (Recommended)/ STA220H1") is
-// dropped; on a course standing alone ("BCH370H1 (recommended)") the course
-// itself is only a recommendation and goes to notes with it.
+// advisoryParens moves advice in brackets to notes, so it can't make the whole
+// sentence advisory. A bare "(recommended)" on an alternative is dropped; on a
+// course standing alone the course itself goes to notes with it.
 func advisoryParens(s string, notes *[]string) string {
 	var b strings.Builder
 	last := 0

@@ -10,30 +10,16 @@ import (
 	"degree-explorer/types"
 )
 
-// Named lists (design 3.2). The lines that set out lists are read as they
-// come (listDef) and kept as notes. Once every row is read (namedLists):
-//   - the definitions with a name ("Group A: ...", "Cluster B - ..." under
-//     "Group 1 - Psychology Courses", "Core Group: ...") become lists; a list
-//     defined on several lines is their union, and a heading over named
-//     sub-lists (PSY Group 1 over Clusters A-C, ANT Group C over Subgroups
-//     C(i) and C(ii)) is the list of them;
-//   - a row of text that draws on lists by name ("1.5 credits from Group A",
-//     "0.5 credit in PSY at the 300/400-level from Group 1 in Cluster A",
-//     "at least 1.0 credit at the 300-/400-level from Group A") is read
-//     again with the lists filter (listRefs);
-//   - the lists some row refers to join the envelope, and their lines leave
-//     the notes; a list nothing refers to stays a note.
-//
-// A reference that can't be read whole, or names a list that isn't defined
-// (or whose members aren't all codes and filters), stays text.
+// Named lists: the lines that set out lists become lists once every row is
+// read, and rows of text that draw on them by name are read again.
 
-// compListDef is one line (or block) that sets out a list.
+// compListDef is one line or block that sets out a list.
 type compListDef struct {
-	title   string     // the heading or label as written: "Group A (Ethics)", "Cluster A - Development, ..."
-	members string     // the members as written: "CSC209H1; any 300-/ 400-level CSC course ..."
+	title   string     // the heading or label as written: "Group A (Ethics)"
+	members string     // the members as written: "CSC209H1; any 300-/ 400-level CSC course"
 	note    string     // the note it was kept as
 	block   *compBlock // the line, for the headings over it; nil for a sentence
-	row     *compRow   // the row whose note it is; nil for the program's (or a sentence's)
+	row     *compRow   // the row whose note it is; nil for the program's or a sentence's
 }
 
 // listDef keeps a line that sets out a list as a note on row (the program's
@@ -50,31 +36,28 @@ type compList struct {
 	notes  []string // its definitions' notes, which leave the notes when it is used
 	bad    bool     // a member isn't a code or a filter: the list can't be used
 	used   bool
-	parent string   // the key of the list over it (PSY Cluster A under Group 1)
-	except []string // keys of lists whose codes its filters exclude ("except those listed in Group B")
+	parent string   // the key of the list over it (Cluster A under Group 1)
+	except []string // keys of lists whose codes its filters exclude
 	defs   []*compListDef
 	titled bool   // named by its title ("Pre-1800 British Literature"), not "Group A"
-	line   int    // the first line that defines it or heads it, -1 for none: the lists are stored in this order
-	perm   string // a member a person decides ("another suitable course with permission from ..."): a route on the rows that use the list
+	line   int    // the first line defining or heading it, -1 for none: the storage order
+	perm   string // a member a person decides: a route on the rows using the list
 }
 
 var (
-	// complListIDPat: a list's letter, number or numeral, with a sub-list's
-	// numeral after it: "A", "1", "IV", "C (ii)".
+	// complListIDPat matches a list's letter, number or numeral, with a
+	// sub-list's numeral after it: "C (ii)".
 	complListIDPat = `(?-i:[A-Z]|\d{1,2}|[IVX]{1,4})\b(?:\s*\(\s*(?-i:i{1,3}|iv|v|vi)\s*\))?`
-	// complListKindPat: the kind of a list's name: "Group", "Clusters",
-	// "Sub-group".
+	// complListKindPat matches the kind of a list's name: "Sub-group".
 	complListKindPat = `(?:groups?|lists?|clusters?|sub-?groups?|categor(?:y|ies))`
-	// complListNameRe: a list's name at the start of its title: "Group A",
-	// "Cluster B" in "Cluster B - Learning, ...", "Subgroup C (i)",
-	// "(Sub-group: Africa)" has none.
+	// complListNameRe matches a list's name at the start of its title: "Cluster
+	// B" in "Cluster B - Learning".
 	complListNameRe = regexp.MustCompile(`(?i)^(?:the\s+)?(?:course\s+|disciplinary/thematic\s+)?(` + complListKindPat + `)\s+(` + complListIDPat + `)(?:\s*$|\s*[-–:(]|\s+\()`)
-	// complCoreGroupRe: "the Core Group", a list named by a word.
+	// complCoreGroupRe matches "the Core Group", a list named by a word.
 	complCoreGroupRe = regexp.MustCompile(`(?i)^(?:the\s+)?(core)\s+group\b`)
 )
 
-// complListKey is the form a list's name is matched in: "group a", "subgroup
-// c(ii)", "core group".
+// complListKey is the form a list's name is matched in: "subgroup c(ii)".
 func complListKey(kind, id string) string {
 	kind = strings.ToLower(strings.ReplaceAll(kind, "-", ""))
 	switch {
@@ -92,8 +75,7 @@ func listName(title string) (name, key string) {
 	t := strings.TrimSpace(stripEmphasis(title))
 	if m := complListNameRe.FindStringSubmatch(t); m != nil {
 		key := complListKey(m[1], m[2])
-		// The kind as the key normalises it ("Groups", "Sub-group",
-		// "Categories"), capitalised.
+		// the kind as the key normalises it, capitalised
 		kind := strings.Fields(key)[0]
 		kind = strings.ToUpper(kind[:1]) + kind[1:]
 		id := strings.Join(strings.Fields(strings.NewReplacer("(", " (", ")", ")").Replace(m[2])), " ")
@@ -112,8 +94,8 @@ func (l *compList) at(line int) {
 	}
 }
 
-// complTitleKey is the key of a list named by its title: lower case,
-// without "courses": "pre-1800 british literature".
+// complTitleKey is the key of a list named by its title: lower case, without
+// "courses".
 func complTitleKey(title string) string {
 	t := strings.ToLower(strings.Join(strings.Fields(title), " "))
 	return "title:" + strings.TrimSpace(strings.TrimSuffix(t, " courses"))
@@ -135,8 +117,8 @@ func (a *compAssembler) buildLists() []*compList {
 	}
 	titles := map[string][]string{}
 	defs := append(slices.Clone(a.listDefs), a.memberLines()...)
-	// titleName: the name and key of a list named by its title: "Pre-1800
-	// British Literature:", "_Medievalism:_", "Approved Economics courses:".
+	// titleName is the name and key of a list named by its title: "Pre-1800
+	// British Literature:".
 	titleName := func(d *compListDef) (string, string) {
 		name := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(stripEmphasis(d.title)), ":"))
 		if name == "" || d.block == nil || blkNoteLabelRe.MatchString(name) {
@@ -144,9 +126,8 @@ func (a *compAssembler) buildLists() []*compList {
 		}
 		return name, complTitleKey(name)
 	}
-	// Sub-lists of different lists with one title ("Geography: GGR341H1"
-	// in List A, "Geography: JGE321H1" in List B) are different lists:
-	// their keys and names are their lists'.
+	// sub-lists of different lists with one title ("Geography:" in List A and
+	// List B) are different lists, keyed by their parents
 	parents := map[string]map[string]bool{}
 	for _, d := range defs {
 		if _, key := listName(d.title); key == "" {
@@ -198,8 +179,7 @@ func (a *compAssembler) buildLists() []*compList {
 		}
 		switch {
 		case !ok && complListTitleOnlyRe.MatchString(strings.TrimSpace(d.members)) && !complAnyCodeRe.MatchString(d.members):
-			// "**Group A:** Theoretical and Methods 1: Theoretical" before its
-			// line of codes: the name of a part of the list.
+			// "**Group A:** Theoretical and Methods 1: Theoretical": a part's name
 		case !ok:
 			l.bad = true
 		case items == nil && codeRe.MatchString(d.members):
@@ -221,10 +201,8 @@ func (a *compAssembler) buildLists() []*compList {
 	return out
 }
 
-// listParent returns the list over definition d, whose key is key: the
-// first heading over it with a list name ("Group 1 - Psychology Courses"
-// over "Cluster A - ..."), when that list is of another kind; "" when there
-// is none.
+// listParent returns the list over definition d: the first heading over it
+// with a list name, when that list is of another kind; "" when there is none.
 func listParent(d *compListDef, key string) (name, pkey string, h *compBlock) {
 	if d.block == nil {
 		return "", "", nil
@@ -244,48 +222,41 @@ func listParent(d *compListDef, key string) (name, pkey string, h *compBlock) {
 }
 
 var (
-	// complListLevelsPat: levels in a list's filter: "300-/ 400", "200/300/400",
-	// "300+".
+	// complListLevelsPat matches levels in a list's filter: "300-/ 400".
 	complListLevelsPat = `[1-4]00(?:\s*\+|(?:\s*-?\s*/\s*|\s*,\s*|\s+(?:or|and)\s+)[1-4]00)*\+?`
-	// complListFilterRe: a member by filter: "any 300-/ 400-level CSC course
-	// except those listed in Group B", "any 300-/400-level MAT course except
-	// MAT329Y1, MAT390H1, MAT391H1", "any ETH200+", "Any other GGR, JGE, JIG,
-	// JUG courses at the 200/300/400-level not listed in Group A".
+	// complListFilterRe matches a member by filter: "any 300-/ 400-level CSC
+	// course except those listed in Group B".
 	complListFilterRe = regexp.MustCompile(`(?i)\bany\s+(?:other\s+)?(?:(` + complListLevelsPat + `)\s*-?\s*level\s+)?((?-i:[A-Z]{3})(?:\s*(?:,|/|or|and)\s*(?-i:[A-Z]{3}))*)(?:\s*(` + complListLevelsPat + `)|\s+courses?(?:\s+at\s+the\s+(` + complListLevelsPat + `)\s*-?\s*level)?)(?:\s+(?:(?:except|excluding)\s+(?:((?:` + codePat + `)(?:\s*(?:,|and|or)\s*(?:` + codePat + `))*),?(?:\s+and\s+)?)?(those\s+listed\s+in\s+` + complListKindPat + `\s+` + complListIDPat + `)?|(not\s+listed\s+in\s+` + complListKindPat + `\s+` + complListIDPat + `)))?`)
-	// complListWeightRe: a member that counts part of its weight:
-	// "HIS219Y1(.50)", "HIS100Y1 (.50)".
+	// complListWeightRe matches a member counting part of its weight:
+	// "HIS219Y1(.50)".
 	complListWeightRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*0?\.50?\s*\)`)
-	// complBareDesigRe: a designator alone, as a list member: "CSB".
+	// complBareDesigRe matches a designator alone, as a list member: "CSB".
 	complBareDesigRe = regexp.MustCompile(`^[A-Z]{3}$`)
-	// complListRestRe: what may be left of a list's members once its codes
-	// and filters are read: separators.
+	// complListRestRe matches the separators that may be left of a list's
+	// members once its codes and filters are read.
 	complListRestRe = regexp.MustCompile(`(?i)^(?:[\s,;:/()\[\].*+&]|\band\b|\bor\b)*$`)
 )
 
-// complListTitleOnlyRe: what a definition's line has when it only names a
-// part of the list: a few capitalised words, no rule ("Theoretical and
-// Methods 1: Theoretical").
+// complListTitleOnlyRe matches a definition line that only names a part of
+// the list: "Theoretical and Methods 1: Theoretical".
 var complListTitleOnlyRe = regexp.MustCompile(`^(?:[A-Z][\w'’-]*|and|of|the|in|&|\d{1,2}|[:,–-])(?:\s+(?:[A-Z][\w'’-]*|and|of|the|in|&|\d{1,2}:?|[:,–-]))*$`)
 
-// complListPermRe: a list's last member that a person decides: "another
-// suitable course with permission from the Associate Chair, Undergraduate",
-// "an independent studies course approved by the Program Committee".
+// complListPermRe matches a list's last member that a person decides:
+// "another suitable course with permission from the Associate Chair".
 var complListPermRe = regexp.MustCompile(`(?i)(?:[,;/]\s*|\s+)(?:or\s+)?((?:an(?:other)?|any)\s+(?:other\s+)?[\w\s-]*?\bcourses?\s+(?:with\s+(?:the\s+)?(?:prior\s+)?(?:permission|approval)|approved\s+by)\b[^;]*)$`)
 
-// complListPermCodesRe: a list's last members that count only with a
-// person's permission, named by code: "..., and with permission of the
-// director: TRN300H1, ..., TRN477H1, 1.0 credit from TRN160Y1, TRN161Y1,
-// TRN171Y1, TRN172Y1" (ASMAJ1618 Group D).
+// complListPermCodesRe matches a list's last members counting only with a
+// person's permission, by code: ", and with permission of the director:
+// TRN300H1".
 var complListPermCodesRe = regexp.MustCompile(`(?i)(?:[,;]\s*|\s+)(?:and\s+)?(with\s+(?:the\s+)?(?:prior\s+)?(?:written\s+)?(?:permission|approval)\s+of\s+the\s+[\w\s,]+?:\s*(.+))$`)
 
-// complListPermRestRe: what the codes after complListPermCodesRe may
-// leave: separators and an amount from some of them ("1.0 credit from"),
-// which the permission's text keeps.
+// complListPermRestRe matches what the codes after complListPermCodesRe may
+// leave: separators and an amount ("1.0 credit from"), which the text keeps.
 var complListPermRestRe = regexp.MustCompile(`(?i)^(?:[\s,;/]|\band\b|\bor\b|\d+(?:\.\d+)?\s+credits?\s+from\b)*$`)
 
 // permCodes splits from list members s a tail of courses that count only
-// with a person's permission (complListPermCodesRe), as the list's maybe
-// item (design 3.2): and(credits{courses}, text{permission}).
+// with a person's permission, as the list's maybe item: and(credits{courses},
+// text{permission}).
 func permCodes(s string) (rest string, maybe *types.ReqNode) {
 	m := complListPermCodesRe.FindStringSubmatchIndex(s)
 	if m == nil {
@@ -299,27 +270,21 @@ func permCodes(s string) (rest string, maybe *types.ReqNode) {
 	return s[:m[0]], andNode(&types.ReqNode{Type: types.NodeCredits, Courses: dedupe(codes)}, textNode(types.TextPermission, s[m[2]:m[3]]))
 }
 
-// listMembersPerm reads a list's members: codes, filters and weighted
-// codes, as list items (credits filters without an amount). except names
-// the lists a filter excludes ("except those listed in Group B"), by key;
-// their codes are added once every list is read. perm is the member a
-// person decides, which no filter can hold (complListPermRe): a row drawing
-// on the list gets it as its route. Courses named as counting only with a
-// person's permission (permCodes) are the list's maybe item instead. ok is
-// false when something else is left: the list stays a note.
+// listMembersPerm reads a list's members into items. except holds the keys of
+// lists a filter excludes, and perm a member a person decides. ok is false
+// when something else is left: the list stays a note.
 func listMembersPerm(s string) (items []*types.ReqNode, except []string, perm string, ok bool) {
 	s = strings.TrimSpace(stripEmphasis(s))
 	s = strings.TrimSuffix(s, ".")
 	s = repairCodes(spacedCode.ReplaceAllString(charReplacer.Replace(s), "$1$2"))
 	s, maybe := permCodes(s)
-	s = complNotAlreadyRe.ReplaceAllString(s, "") // the claims rule (completion_cross.go)
+	s = complNotAlreadyRe.ReplaceAllString(s, "") // the claims rule
 	if m := complListPermRe.FindStringSubmatchIndex(s); m != nil && !complAnyCodeRe.MatchString(s[m[2]:m[3]]) {
 		perm = cleanNote(s[m[2]:m[3]])
 		s = s[:m[0]]
 	}
 	if m := complSubListNameRe.FindStringSubmatch(s); m != nil && !complAnyCodeRe.MatchString(m[1]) && complListTitleOnlyRe.MatchString(m[1]) {
-		// "Latin American Societies: ANT320H1, ..." under "List A": the
-		// part's name.
+		// "Latin American Societies: ANT320H1, ...": the part's name
 		s = s[len(m[0]):]
 	}
 	var codes []string
@@ -353,8 +318,7 @@ func listMembersPerm(s string) (items []*types.ReqNode, except []string, perm st
 		items = append(items, f)
 	}
 	s = complListFilterRe.ReplaceAllString(s, " ")
-	// "CJH332H1; CSB; EEB; EHJ352H1": a designator alone between
-	// semicolons is its courses.
+	// "CJH332H1; CSB; EEB": a designator between semicolons is its courses
 	if strings.Contains(s, ";") {
 		var desigs []string
 		parts := strings.Split(s, ";")
@@ -369,9 +333,8 @@ func listMembersPerm(s string) (items []*types.ReqNode, except []string, perm st
 			s = strings.Join(parts, ";")
 		}
 	}
-	// A title in brackets says nothing about the courses: "TRN409H1 (Nuclear
-	// Weapons and International Politics)"; "(formerly SMC218Y1)" names the
-	// course's old code, which counts too.
+	// a bracketed title says nothing about the courses; a bracket with a code
+	// ("(formerly SMC218Y1)") is the old code, which counts too
 	s = complTitleParenRe.ReplaceAllStringFunc(s, func(p string) string {
 		if complAnyCodeRe.MatchString(p) {
 			return p
@@ -395,14 +358,13 @@ func listMembersPerm(s string) (items []*types.ReqNode, except []string, perm st
 	return items, except, perm, true
 }
 
-// complListPairRe: two courses that count only together among a list's
-// members: "( MAT235H1, MAT236H1)", "( GER370H1 and GER372H1)", "ENG358H1 +
-// ENG359H1".
+// complListPairRe matches two courses that count only together among a
+// list's members: "( MAT235H1, MAT236H1)".
 var complListPairRe = regexp.MustCompile(`\(\s*(` + codePat + `)\s*(?:,|\+|\band\b)\s*(` + codePat + `)\s*\)|(` + codePat + `)\s*\+\s*(` + codePat + `)`)
 
-// listPairs takes the pairs (complListPairRe) out of list members s, as
-// pair items and(course, course) (schema "Course lists"): flattened, either
-// half would count alone. A "+" chain of more than two courses is left.
+// listPairs takes the pairs out of list members s as and(course, course):
+// flattened, either half would count alone. A "+" chain of three or more is
+// left.
 func listPairs(s string) (string, []*types.ReqNode) {
 	var pairs []*types.ReqNode
 	var b strings.Builder
@@ -425,11 +387,11 @@ func listPairs(s string) (string, []*types.ReqNode) {
 	return b.String(), pairs
 }
 
-// complFormerlyRe: the words of "(formerly SMC218Y1)", "(previously ...)".
+// complFormerlyRe matches the word in "(formerly SMC218Y1)".
 var complFormerlyRe = regexp.MustCompile(`(?i)\b(?:formerly|previously)\b`)
 
-// mergeListItems joins the plain course items of a list into its first
-// one, keeping the other items in order.
+// mergeListItems joins a list's plain course items into the first one,
+// keeping the other items in order.
 func mergeListItems(items []*types.ReqNode) []*types.ReqNode {
 	var out []*types.ReqNode
 	var plain *types.ReqNode
@@ -450,15 +412,13 @@ func mergeListItems(items []*types.ReqNode) []*types.ReqNode {
 	return out
 }
 
-// complListRefPat: a reference to lists by name: "Group A", "Groups A and/or
-// B", "Groups A, B, C, D", "Groups A-D", "Groups B through G", "Group A or
-// Group B", "Group B/Group C", "Subgroups C(i) or C(ii)", "the Core Group".
+// complListRefPat matches a reference to lists by name: "Groups A and/or B".
 var complListRefPat = `\b(?:(?:the\s+)?core\s+group|` + complListKindPat + `\s+` + complListIDPat + `)(?:\s*(?:,\s*(?:and/or|and|or)?|/|\s+and/or|\s+and|\s+or|\s*-|\s*–|\s+through|\s+to)\s*(?:(?:the\s+)?core\s+group|(?:` + complListKindPat + `\s+)?` + complListIDPat + `))*`
 
 var complListRefRe = regexp.MustCompile(`(?i)` + complListRefPat)
 
-// complListRefTokRe: one word of a reference: "the Core Group", a kind, a
-// range word, a separator or an ID.
+// complListRefTokRe matches one word of a reference: "the Core Group", a
+// kind, a range word, a separator or an ID.
 var complListRefTokRe = regexp.MustCompile(`(?i)^\s*(?:((?:the\s+)?core\s+group\b)|(` + complListKindPat + `)\s+|(-|–|through\b|to\b)|(,|/|and/or\b|and\b|or\b)|(` + complListIDPat + `))`)
 
 // listRefNames returns the keys of the lists a reference names, in order;
@@ -492,7 +452,7 @@ func listRefNames(ref string) []string {
 		default:
 			key := complListKey(kind, m[5])
 			if from != "" {
-				// "Groups B through G": the letters or numbers between.
+				// "Groups B through G": the letters or numbers between
 				lo, hi := strings.Fields(from), strings.Fields(key)
 				if lo[0] != hi[0] || len(lo[1]) != 1 || len(hi[1]) != 1 || hi[1][0] <= lo[1][0] || hi[1][0]-lo[1][0] > 12 {
 					return nil
@@ -529,70 +489,60 @@ func (ls compListRefs) resolve(keys []string) []string {
 }
 
 var (
-	// complFromListRefRe: a reference after "from" or "in", with what may
-	// come around it: "from Groups A and/or B", "from either Group A, B or
-	// C", "from among the courses in Group A, B, and C", "from Group 1 in
-	// Cluster A", "from Group A below", "from Group 1 (any Cluster)", "in
-	// Group A or B courses".
+	// complFromListRefRe matches a reference after "from" or "in", with what
+	// may come around it: "from either Group A, B or C".
 	complFromListRefRe = regexp.MustCompile(`(?i)\s*\b(?:from|in)\s+(?:among\s+|either\s+|any\s+of\s+)?(?:the\s+)?(?:courses\s+(?:listed\s+)?in\s+(?:the\s+)?)?(` + complListRefPat + `)(?:\s+in\s+(` + complListRefPat + `))?(?:\s+courses)?(?:\s+(?:below|above|listed\s+below))?(?:\s*\(([^()]*)\))?`)
-	// complListParenDropRe: a bracket after a reference that restates it: "(any
-	// Cluster)", "(any of Clusters A, B, and C)", "(Clusters A, B, and C)".
+	// complListParenDropRe matches a bracket after a reference that restates
+	// it, inside the brackets: "any Cluster".
 	complListParenDropRe = regexp.MustCompile(`(?i)^(?:any(?:\s+of)?\s+)?(?:clusters?|sub-?groups?)\b[a-z\s,]*$`)
-	// complExcludingCodesRe: the codes a bracket after a reference leaves
-	// out: "(any Cluster, excluding PSY304Y1, ..., and PSY406Y1)".
+	// complExcludingCodesRe matches the codes a bracket after a reference leaves
+	// out: "excluding PSY304Y1, and PSY406Y1".
 	complExcludingCodesRe = regexp.MustCompile(`(?i)(?:^|[,;]?\s+)excluding\s+((?:` + codePat + `)(?:\s*(?:,\s*(?:and\b|or\b)?|/|\band\b|\bor\b)\s*(?:` + codePat + `))*)\s*$`)
-	// complListNoteParenRe: a remark in brackets: "(note: some of these
-	// courses have prerequisites)", "(see below for definitions)".
+	// complListNoteParenRe matches a remark in brackets, inside them: "see below
+	// for definitions".
 	complListNoteParenRe = regexp.MustCompile(`(?i)^(?:note\b|see\b)`)
-	// complAlreadyCountedRe: "(excluding those already counted)", "which
-	// has not previously been taken to fulfill program requirements": what a
-	// course claimed by another row already means.
+	// complAlreadyCountedRe matches the claims rule restated: "(excluding those
+	// already counted)".
 	complAlreadyCountedRe = regexp.MustCompile(`(?i)\s*\(?\s*excluding\s+those\s+already\s+counted\s*\)?|\s+(?:that|which)\s+(?:has|have)\s+not\s+(?:previously\s+)?been\s+(?:used|taken)\s+to\s+fulfill\s+(?:the\s+above|program)\s+requirements\b`)
-	// complAnyCoursesAmountRe: "Any 5 courses (2.5 credits)", "Any course
-	// (0.5 credit)": the amount is the one in brackets.
+	// complAnyCoursesAmountRe matches "Any 5 courses (2.5 credits)": the amount
+	// is the one in brackets.
 	complAnyCoursesAmountRe = regexp.MustCompile(`(?i)^any\s+(?:\d+\s+|one\s+)?courses?\s*\(\s*(\d+(?:\.\d+)?\s+credits?)\s*\)`)
-	// complListPoolWordRe: the words a pool drawn from lists may have
-	// besides the lists: an amount, levels, designators.
+	// complListPoolWordRe matches a word a pool drawn from lists may have
+	// besides the lists: "credits".
 	complListPoolWordRe = regexp.MustCompile(`(?i)^(?:an?|one|additional|more|further|credits?|courses?|of|in|total|at|the|levels?|any|selected|chosen|taken|from|(?-i:[A-Z]{3}(?:/[A-Z]{3})*/?)|\d+(?:\.\d+)?|[-/+]*(?:[1-4]00[-/+]*)+(?:-?level)?|-level|\+|-|/)$`)
-	// complListTailRe: where a clause after a pool begins: a floor or a cap
-	// on it.
+	// complListTailRe matches where a floor or cap clause after a pool begins:
+	// ", including at least".
 	complListTailRe = regexp.MustCompile(`(?i)(?:,\s*|\s+|;\s*|\(\s*)(?:(?:and\s+|with\s+|but\s+)?(?:(?:including|of\s+which)(?:\s+at\s+least|\s+a\s+minimum\s+of)?|no\s+more\s+than|only\s+a\s+maximum|a\s+maximum|up\s+to|at\s+most|at\s+least)\b)`)
-	// complListFillerRe: words of a pool that say nothing about its courses:
-	// "3.0 credits of courses in total selected from ...".
+	// complListFillerRe matches pool words that say nothing about its courses:
+	// " in total".
 	complListFillerRe = regexp.MustCompile(`(?i)\s+(?:of\s+courses|in\s+total|selected|chosen|taken|of\s+which)\b`)
-	// complLevelOrRe: "300- or 400-level": one level phrase.
+	// complLevelOrRe matches "300- or 400-level": one level phrase.
 	complLevelOrRe = regexp.MustCompile(`(?i)\b([1-4]00)\s*-?\s+(?:or|and)\s+([1-4]00)\b`)
-	// complListCapLeadRe: a clause that caps: "no more than 1.5 credits from
-	// Group B", "up to 1.0 credit can be from Group B", "only a maximum 1.0
-	// credit can be from Group G".
+	// complListCapLeadRe matches a clause that caps: "no more than 1.5 credits
+	// from Group B".
 	complListCapLeadRe = regexp.MustCompile(`(?i)^(?:and\s+|with\s+|but\s+)?(?:only\s+)?(?:no\s+more\s+than|a\s+maximum(?:\s+of)?|up\s+to|at\s+most)\s+`)
-	// complListFloorLeadRe: a clause that is a floor: "including at least
-	// 0.5 credit at the 400-level", "of which 2.0 credits must be at the
-	// 300/400-level", "at least 1.0 credit at the 300-/400-level from Group A".
+	// complListFloorLeadRe matches the lead of a floor clause: "including at
+	// least".
 	complListFloorLeadRe = regexp.MustCompile(`(?i)^(?:and\s+|with\s+)?(?:including|of\s+which)?\s*(?:at\s+least|a\s+minimum\s+of)?\s*`)
-	// complListModalRe: "must be", "can be", "may be", "must come" inside a
-	// clause, which says nothing about the courses.
+	// complListModalRe matches "must be" inside a clause, which says nothing
+	// about the courses.
 	complListModalRe = regexp.MustCompile(`(?i)\s+(?:must|can|may|should)\s+(?:be|come)\b(?:\s+taken)?|\s+(?:must|can|may)\s+be\s+(?:counted|used)\b`)
 )
 
-// listRefPool reads text that draws an amount from lists ("1.5 credits from
-// Group A", "0.5 credit in PSY at the 300/400-level from Group 1 in Cluster
-// A") into a credits node with the lists filter. With optional, text that
-// names no list is read too ("0.5 credit from a 400-level CSC course"). It
-// returns the notes in brackets it set aside, and ok false when it can't
-// read all of it.
+// listRefPool reads text drawing an amount from lists ("1.5 credits from
+// Group A") into a credits node with the lists filter; with optional, also
+// text naming no list. It returns bracketed notes; ok is false if any is unread.
 func listRefPool(text string, ls compListRefs, optional bool) (n *types.ReqNode, notes []string, ok bool) {
 	return listRefPoolOf(text, ls, optional, nil)
 }
 
-// listRefPoolOf is listRefPool for text whose lists are already known
-// (names), the reference taken out of it.
+// listRefPoolOf is listRefPool for text whose lists names are already known,
+// the reference taken out of it.
 func listRefPoolOf(text string, ls compListRefs, optional bool, names []string) (n *types.ReqNode, notes []string, ok bool) {
 	t := strings.TrimSpace(complAlreadyCountedRe.ReplaceAllString(text, ""))
 	if names == nil {
 		if u, name, ok := ls.titleRef(t); ok {
-			// "0.5 credit from Pre-1800 British Literature courses from the
-			// list below": a list named by its title.
+			// "from Pre-1800 British Literature courses": a list named by its title
 			t, names = u, []string{name}
 		}
 	}
@@ -609,7 +559,7 @@ func listRefPoolOf(text string, ls compListRefs, optional bool, names []string) 
 		m := locs[0]
 		keys := listRefNames(t[m[2]:m[3]])
 		if m[4] >= 0 {
-			// "Group 1 in Cluster A": the cluster, which is in the group.
+			// "Group 1 in Cluster A": the cluster, which is in the group
 			inner := listRefNames(t[m[4]:m[5]])
 			if len(keys) != 1 || len(inner) == 0 || slices.ContainsFunc(inner, func(k string) bool { return ls[k] == nil || ls[k].parent != keys[0] }) {
 				return nil, nil, false
@@ -622,8 +572,7 @@ func listRefPoolOf(text string, ls compListRefs, optional bool, names []string) 
 		if m[6] >= 0 {
 			p := strings.TrimSpace(t[m[6]:m[7]])
 			if e := complExcludingCodesRe.FindStringSubmatchIndex(p); e != nil {
-				// "(any Cluster, excluding PSY304Y1, PSY306Y0, ...)": the
-				// codes the pool leaves out.
+				// "(any Cluster, excluding PSY304Y1, ...)": codes left out
 				excludeCodes = codeRe.FindAllString(p[e[2]:e[3]], -1)
 				p = strings.TrimSpace(strings.TrimRight(p[:e[0]], ",; "))
 			}
@@ -633,7 +582,7 @@ func listRefPoolOf(text string, ls compListRefs, optional bool, names []string) 
 			case complListNoteParenRe.MatchString(p):
 				notes = append(notes, cleanNote(p))
 			case len(keys) == 1 && ls[keys[0]].list.Title != "" && strings.Contains(strings.ToLower(ls[keys[0]].list.Title), strings.ToLower(p)):
-				// "Group 2 (Value Theory)": the list's title.
+				// "Group 2 (Value Theory)": the list's title
 			default:
 				if lv := complExcludingLevelRe.FindStringSubmatch(p); lv != nil && len(lv[0]) == len(p) {
 					excludeLevels = parseLevels(lv[1] + "-level")
@@ -678,8 +627,7 @@ func listRefPoolOf(text string, ls compListRefs, optional bool, names []string) 
 }
 
 // namedLists reads the rows of text that draw on lists by name and builds
-// the lists they use (the pass in finish; see the top of this file). It
-// returns the lists to store.
+// the lists they use. It returns the lists to store.
 func (a *compAssembler) namedLists() []*types.CourseList {
 	a.inlineListNotes()
 	built := areaLists(a.buildLists())
@@ -693,7 +641,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 			a.belowRows++ // not "1.0 credit from the following: MST406H1/ ..."
 		}
 	}
-	// A sub-list that can't be used makes the list over it unusable too.
+	// a sub-list that can't be used makes the list over it unusable too
 	for _, l := range built {
 		if l.bad && l.parent != "" && ls[l.parent] != nil {
 			ls[l.parent].bad = true
@@ -714,13 +662,13 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 	a.program = append(walk(a.program), a.programRows...)
 	a.spreadFloors(ls)
 	a.weights(ls)
-	a.poolGrammar(ls) // pool and list grammar (completion_pools.go)
+	a.poolGrammar(ls)
 	a.leftoverPools(ls)
-	a.groupPools(ls)   // groups of alternatives and one-off pools (completion_groups.go)
-	a.plusParts(ls)    // completion_streams.go
-	a.titledFloors(ls) // completion_oneoffs.go
+	a.groupPools(ls) // groups of alternatives and one-off pools
+	a.plusParts(ls)
+	a.titledFloors(ls)
 	a.listSubCaps(ls)
-	// The lists used, and the lists they use.
+	// the lists used, and the lists they use
 	built = append(built, a.unions...)
 	var mark func(name string)
 	mark = func(name string) {
@@ -747,7 +695,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 	collect(a.program)
 	collect(a.floors)
 	if a.total != nil {
-		rows = append(rows, a.total) // its own pool may draw on lists (additionalLists)
+		rows = append(rows, a.total) // its own pool may draw on lists
 	}
 	for _, r := range rows {
 		walkReq(r.r.Req, func(n *types.ReqNode) {
@@ -771,7 +719,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 			continue
 		}
 		for _, k := range l.except {
-			// "any 300-/ 400-level CSC course except those listed in Group B".
+			// "any 300-/ 400-level CSC course except those listed in Group B"
 			for _, it := range l.list.Items {
 				if it.Designators != nil && ls[k] != nil {
 					for _, x := range ls[k].list.Items {
@@ -785,8 +733,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 			drop[n] = true
 		}
 	}
-	// "ANT390H1 may be placed in either Group A or B or C depending on the
-	// topic": a member that counts only as "maybe" on the lists it is on.
+	// "ANT390H1 may be placed in either Group A or B ...": a maybe member
 	var used []*compList
 	for _, l := range built {
 		if l.used {
@@ -801,7 +748,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 		return true
 	}
 	// "If ARH312Y1 is completed, it will be considered a Group A course": a
-	// member the list's lines don't name.
+	// member the list's lines don't name
 	member := func(t string) bool {
 		m := complListMemberRe.FindStringSubmatch(complClean(t))
 		if m == nil {
@@ -827,15 +774,12 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 	for _, n := range a.starredTopics(used) {
 		drop[n] = true
 	}
-	// "2.0 credits of 100- or 200-level ESS courses or 200-level JEG courses
-	// (…). It is however recommended to include at least ESS262H1/ EEB240H1/
-	// JEG100H1 and ESS224H1": the recommended courses its pool doesn't name
-	// may be meant to count (two readings): a maybe member (Review), not
-	// NotMet.
+	// "It is however recommended to include at least ESS262H1/ ...": courses
+	// the pool doesn't name may be meant to count, so a maybe member (Review)
 	for _, r := range rows {
 		a.recommendedMembers(r, ls)
 	}
-	// A membership sentence may wait as a program route (it has no target).
+	// a membership sentence with no target may wait as a program route
 	a.programRoutes = slices.DeleteFunc(a.programRoutes, member)
 	for _, r := range rows {
 		for _, n := range r.r.Notes {
@@ -846,8 +790,7 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 	prune = func(rs []*compRow) []*compRow {
 		return slices.DeleteFunc(rs, func(r *compRow) bool {
 			r.children = prune(r.children)
-			// "ANT390H1 may not be available in Course Group B, depending on
-			// the topic ...", a rule of text: the list says it now.
+			// "ANT390H1 may not be available in Course Group B ...": now on the list
 			return r.r.Kind == types.RequirementConstraint && r.r.Req != nil && r.r.Req.Type == types.NodeText && len(r.children) == 0 && topical(complClean(r.r.Req.Text))
 		})
 	}
@@ -866,11 +809,11 @@ func (a *compAssembler) namedLists() []*types.CourseList {
 }
 
 // listRefRow reads row again when its body is text that draws on lists by
-// name, and returns the rows it becomes: itself, or for a constraint of
-// text, the floors and caps it states.
+// name, and returns the rows it becomes: itself, or for a text constraint the
+// floors and caps it states.
 func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 	if rows, ok := a.spreadRow(row, ls); ok {
-		return rows // spreads, choices and shares among lists (completion_spreads.go)
+		return rows // spreads, choices and shares among lists
 	}
 	n := row.r.Req
 	if n == nil {
@@ -888,12 +831,12 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 		}
 		if text.Type == types.NodeText && text.Kind == types.TextOther {
 			if text != n && a.additionalLists(row, text.Text, n.Items[1:], ls) || text == n && a.additionalLists(row, text.Text, nil, ls) {
-				return nil // Req 1's own pool (crossRules)
+				return nil // Req 1's own pool
 			}
 			if rows, ok := a.oneOffRow(row, text, ls); ok {
-				return rows // completion_fixes.go
+				return rows
 			}
-			t := rewriteListOneOffs(text.Text) // completion_oneoffs.go
+			t := rewriteListOneOffs(text.Text)
 			body, rules, notes, ok := a.listRefAlloc(row, t, ls)
 			if !ok {
 				body, rules, ok = a.unionList(row, t, ls)
@@ -912,16 +855,15 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 				}
 				row.r.Notes = append(row.r.Notes, notes...)
 				for _, perm := range ls.perms(body.Lists) {
-					// "another suitable course with permission from the
-					// Associate Chair": the list's route, on the row.
+					// the list's permission route, on the row
 					row.r.Req = orNode(row.r.Req, textNode(types.TextPermission, perm))
 				}
 			}
 			return []*compRow{row}
 		}
 		if n.Type == types.NodeAnd && len(n.Items) == 2 && n.Items[0].Type == types.NodeCredits && n.Items[1].Type == types.NodeText && complFromListRefRe.MatchString(n.Items[1].Text) {
-			// "0.5 credit at the 400-level from Group B", which the grammar
-			// reads as and(credits, text "from Group B"): the sentence again.
+			// "0.5 credit at the 400-level from Group B", read as and(credits, text
+			// "from Group B"): the sentence again
 			if sents := splitComplSentences(complClean(rawHead(row.r))); len(sents) == 1 {
 				if body, rules, notes, ok := a.listRefAlloc(row, sents[0], ls); ok {
 					row.r.Req = body
@@ -934,9 +876,8 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 			}
 		}
 		if n.Type == types.NodeAnd && len(n.Items) == 2 && n.Items[1].Type == types.NodeText && complFromTextRe.MatchString(n.Items[1].Text) {
-			// "1.0 ENG credits from Pre-1800 British Literature courses from
-			// list below", which the grammar reads as and(credits{ENG},
-			// text{from Pre-1800 …}): the item's whole text again.
+			// "1.0 ENG credits from Pre-1800 British Literature courses", read as
+			// and(credits{ENG}, text): the item's whole text again
 			if body, rules, notes, ok := a.listRefAlloc(row, complItemLabelRe.ReplaceAllString(complClean(rawHead(row.r)), ""), ls); ok && rules == nil {
 				row.r.Req = body
 				row.r.Notes = append(row.r.Notes, notes...)
@@ -944,8 +885,7 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 			}
 		}
 		if n.Type == types.NodeAnd {
-			// "2.5 credits from Group A below" and a note of text: each part
-			// on its own, with no rules of its own.
+			// "2.5 credits from Group A below" and a note: each part on its own
 			for i, it := range n.Items {
 				if it.Type != types.NodeText || it.Kind != types.TextOther {
 					continue
@@ -955,10 +895,8 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 					row.r.Notes = append(row.r.Notes, notes...)
 				}
 			}
-			// "2.5 credits from Group A below. Note: Students taking ENV421Y1
-			// or ENV491Y1 for requirement 3 only need to take 2.0 credits
-			// from Group A in requirement 4": a smaller amount for some
-			// students, Review for them, not a text every student needs.
+			// "Students taking ENV421Y1 ... only need to take 2.0 credits ...": a
+			// smaller amount for some, Review for them, not text for everyone
 			if len(n.Items) == 2 && n.Items[0].Type == types.NodeCredits && n.Items[1].Type == types.NodeText {
 				if m := complOnlyNeedRe.FindStringSubmatch(n.Items[1].Text); m != nil {
 					if v, _ := strconv.ParseFloat(m[1], 64); v > 0 && v < n.Items[0].Amount {
@@ -975,11 +913,9 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 			return []*compRow{row}
 		}
 		if m := complHalfCoursesCapRe.FindStringSubmatch(complClean(n.Text)); m != nil {
-			// "The total number of half courses from Group I (including
-			// 300-level courses) must not exceed 3 (1.5 credits)".
-			// It counts the list's courses wherever they are used ("including
-			// 300-level courses": not only the item it is written in), so
-			// it is the program's limit, under the total.
+			// "The total number of half courses from Group I (including 300-level
+			// courses) must not exceed 3": it counts the list's courses wherever
+			// used, so it is the program's limit
 			if names := ls.resolve(listRefNames(m[1])); names != nil {
 				v, _ := strconv.ParseFloat(m[2], 64)
 				row.r.Kind = types.RequirementLimit
@@ -1023,14 +959,12 @@ func (a *compAssembler) listRefRow(row *compRow, ls compListRefs) []*compRow {
 	return []*compRow{row}
 }
 
-// complFollowingListsRe: a lead over the lists set out under it: "from
-// among the following groups", "from the following lists".
+// complFollowingListsRe matches a lead over the lists set out under it: "from
+// among the following groups".
 var complFollowingListsRe = regexp.MustCompile(`(?i)\bfrom\s+(?:among\s+)?the\s+following\s+(?:groups|lists?)\s*:?\s*$`)
 
-// followingLists names, in a lead over the lists set out under it ("3.0
-// credits of courses in total selected from among the following groups:"
-// then "- Group A: ...", "- Group B: ..."), the lists whose lines are row's
-// notes: "from Group A, Group B, Group C".
+// followingLists rewrites a lead over the lists set out under it to name the
+// lists whose lines are row's notes: "from Group A, Group B, Group C".
 func (a *compAssembler) followingLists(row *compRow, head string, ls compListRefs) string {
 	loc := complFollowingListsRe.FindStringIndex(head)
 	if loc == nil {
@@ -1049,40 +983,37 @@ func (a *compAssembler) followingLists(row *compRow, head string, ls compListRef
 }
 
 var (
-	// complFromColonRe: "2.5 credits from: Group A".
+	// complFromColonRe matches "from: " in "2.5 credits from: Group A".
 	complFromColonRe = regexp.MustCompile(`(?i)\bfrom\s*:\s*`)
-	// complSpacedSlashRe: designators joined by a slash with spaces.
+	// complSpacedSlashRe matches designators joined by a spaced slash: "ENG /JWE".
 	complSpacedSlashRe = regexp.MustCompile(`\b([A-Z]{3})\s+/\s*([A-Z]{3})\b`)
-	// complRefParenRe: a bracket inside a reference that restates the
-	// sub-lists: "Group 1 (any Cluster) and/or Group 2", "Group 1 (Clusters A,
-	// B, and C)". Not one that names codes: "(any Cluster, excluding
-	// PSY304Y1, ...)" leaves them out (listRefPoolOf).
+	// complRefParenRe matches a bracket in a reference restating its sub-lists:
+	// "(any Cluster)". Not one naming codes, which it leaves out.
 	complRefParenRe = regexp.MustCompile(`(?i)\s*\((?:any(?:\s+of)?\s+)?(?:clusters?|sub-?groups?)\b[^()0-9]*\)`)
-	// complAnyLevelRe: ", at any level", which says nothing.
+	// complAnyLevelRe matches ", at any level", which says nothing.
 	complAnyLevelRe = regexp.MustCompile(`(?i),?\s+at\s+any\s+level\b`)
-	// complLeadFloorRe: an item's "At least" before its amount: what it claims
-	// is at least that anyway.
+	// complLeadFloorRe matches an item's "At least" before its amount: what it
+	// claims is at least that anyway.
 	complLeadFloorRe = regexp.MustCompile(`(?i)^(?:at\s+least|a\s+minimum\s+of)\s+`)
-	// complFromRefCodesRe: "1.0 credit (from Cluster A) PSY210H1, PSY220H1,
-	// ...": a pool of courses on a list.
+	// complFromRefCodesRe matches a pool of courses on a list: "1.0 credit (from
+	// Cluster A) PSY210H1, PSY220H1".
 	complFromRefCodesRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?)\s*\(\s*from\s+(` + complListRefPat + `)\s*\)\s*(.+)$`)
-	// complDescRefRe: "from Drama, Theatre, and Performance Studies courses
-	// (Group A)": the list named after its description.
+	// complDescRefRe matches a list named after its description: "from Drama,
+	// Theatre, and Performance Studies courses (Group A)".
 	complDescRefRe = regexp.MustCompile(`(?i)\bfrom\s+([A-Z][^()]*?)\s+courses\s*\(\s*(` + complListRefPat + `)\s*\)`)
-	// complRefTitleRe: "Group G: Cross-Listed": a reference with its list's
-	// title after a colon.
+	// complRefTitleRe matches a reference with its list's title after a colon:
+	// "Group G: Cross-Listed".
 	complRefTitleRe = regexp.MustCompile(`((?i:` + complListRefPat + `))\s*:\s*([A-Z][\w ,&'’-]*)$`)
-	// complOrFromRe: "One 0.5 credit from Group A or one 0.5 credit from
-	// Group B below", "1.5 additional credits in any area from the Core
-	// Group, or 1.5 credits from Groups A, B, C, D": one amount from either.
+	// complOrFromRe matches one amount from either list: "One 0.5 credit from
+	// Group A or one 0.5 credit from Group B below".
 	complOrFromRe = regexp.MustCompile(`(?i)^(.+?)\s+from\s+(` + complListRefPat + `),?\s+or\s+(.+?)\s+from\s+(` + complListRefPat + `)(.*)$`)
-	// complAmountWordsRe: the words of an amount that don't change it.
+	// complAmountWordsRe matches the words of an amount that don't change it:
+	// "additional".
 	complAmountWordsRe = regexp.MustCompile(`(?i)\b(?:one|an?|additional|in\s+any\s+area)\b`)
 )
 
 // titleWords reports whether every word of desc is in the title of the one
-// list ref names: "Drama, Theatre, and Performance Studies" and "Group A:
-// Drama, Theatre and Performance Studies".
+// list ref names.
 func titleWords(desc, ref string, ls compListRefs) bool {
 	keys := listRefNames(ref)
 	if len(keys) != 1 || ls[keys[0]] == nil {
@@ -1097,8 +1028,8 @@ func titleWords(desc, ref string, ls compListRefs) bool {
 	return title != ""
 }
 
-// normalizeListRef rewrites the ways of writing a reference that
-// listRefPool doesn't read into ones it does.
+// normalizeListRef rewrites the ways of writing a reference that listRefPool
+// doesn't read into ones it does.
 func normalizeListRef(s string, ls compListRefs) string {
 	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), ":"))
 	s = complFromColonRe.ReplaceAllString(s, "from ")
@@ -1122,16 +1053,13 @@ func normalizeListRef(s string, ls compListRefs) string {
 	return s
 }
 
-// listRefAlloc reads an allocation's text that draws on lists by name, or
-// a pool with floors and caps the grammar doesn't read ("2.0 credits of
-// electives chosen from the following courses below, of which at least 1.0
-// credit must be at the 300- or 400-level: ..."): its body, and the floors
-// and caps (rows under it).
+// listRefAlloc reads an allocation's text that draws on lists by name, or a
+// pool with floors and caps the grammar doesn't read, into its body and the
+// floors and caps under it.
 func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs) (body *types.ReqNode, rules []*types.Requirement, notes []string, ok bool) {
 	t := normalizeListRef(complClean(text), ls)
 	if m := complFromRefCodesRe.FindStringSubmatch(t); m != nil {
-		// "1.0 credit (from Cluster A) PSY210H1, ...": the courses, all on
-		// the list.
+		// "1.0 credit (from Cluster A) PSY210H1, ...": courses all on the list
 		names := ls.resolve(listRefNames(m[2]))
 		n, _ := parseCompletionText(m[1] + " from: " + m[3])
 		if names == nil || !isPool(n) || n.Designators != nil || n.Levels != nil || slices.ContainsFunc(n.Courses, func(c string) bool { return !ls.lists(names, c) }) {
@@ -1146,11 +1074,11 @@ func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs)
 		body, notes, ok = listRefPoolOf(rest, ls, false, names)
 	}
 	if !ok {
-		// The lists below, or else by name or title.
+		// the lists below, or else by name or title
 		body, notes, ok = listRefPool(head, ls, false)
 	}
 	if !ok && tails != nil && codeRe.MatchString(head) {
-		// A pool of courses with its floors and caps written in it.
+		// a pool of courses with its floors and caps written in it
 		var caps []*types.ReqNode
 		var more []string
 		body, caps, more, ok = qualifiedPool(head)
@@ -1165,11 +1093,8 @@ func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs)
 		return nil, nil, nil, false
 	}
 	if body.Lists != nil && len(body.Lists) > 1 && complFromEitherRe.MatchString(head) {
-		// "2.5 credits at the 300+ level from either Group A, B or C, or
-		// Subgroups C(i) or C(ii)": from one of the lists, not their union
-		// (the next item asks for "a Group other than that used to meet
-		// requirement #5"). A sub-list whose list is named too is part of
-		// that choice.
+		// "... from either Group A, B or C": from one of the lists, not their
+		// union. A sub-list whose list is named too is part of that choice.
 		var alts []*types.ReqNode
 		for _, name := range body.Lists {
 			if ls.within(name, body.Lists) {
@@ -1193,8 +1118,8 @@ func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs)
 		}
 		for _, r := range rs {
 			if r.Kind == types.RequirementLimit && r.Req.Lists != nil && slices.ContainsFunc(r.Req.Lists, func(l string) bool { return !slices.Contains(body.Lists, l) }) {
-				// "Any 5 courses (2.5 credits) from Group A; up to 1.0 credit
-				// can be from Group B": Group B's share joins the pool, capped.
+				// "...; up to 1.0 credit can be from Group B": B's share joins the
+				// pool, capped
 				if !complUpToRe.MatchString(tail) || body.Lists == nil || body.Courses != nil || body.Designators != nil || body.Levels != nil || r.Req.Designators != nil || r.Req.Levels != nil {
 					return nil, nil, nil, false
 				}
@@ -1208,9 +1133,8 @@ func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs)
 		}
 		notes = append(notes, more...)
 	}
-	// "At least 1.5 credits from the following, of which 0.5 credit must be
-	// at the 400-level: …, MSE540H1": a listed course above the floor's top
-	// level may be meant to count toward it (two readings).
+	// "... of which 0.5 credit must be at the 400-level: ..., MSE540H1": a
+	// listed course above the floor's level may be meant to count (two readings)
 	var above []string
 	for _, c := range body.Courses {
 		if len(c) == 8 && c[3] >= '5' && c[3] <= '9' {
@@ -1227,8 +1151,8 @@ func (a *compAssembler) listRefAlloc(row *compRow, text string, ls compListRefs)
 	return body, rules, notes, true
 }
 
-// lists reports whether code is listed by code on one of the named lists
-// or the lists under them.
+// lists reports whether code is listed by code on one of the named lists or
+// the lists under them.
 func (ls compListRefs) lists(names []string, code string) bool {
 	for _, l := range ls {
 		if !slices.Contains(names, l.list.Name) {
@@ -1244,8 +1168,8 @@ func (ls compListRefs) lists(names []string, code string) bool {
 }
 
 // titleRef finds in t a reference to one list named by its title ("from
-// Pre-1800 British Literature courses from the list below", "in courses from
-// the Literature concentration below") and returns t without it.
+// Pre-1800 British Literature courses from the list below") and returns t
+// without it.
 func (ls compListRefs) titleRef(t string) (rest, name string, ok bool) {
 	found := 0
 	for _, l := range ls {
@@ -1254,8 +1178,8 @@ func (ls compListRefs) titleRef(t string) (rest, name string, ok bool) {
 		}
 		title := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(l.list.Name), " courses"))
 		title = strings.TrimSuffix(title, " Courses")
-		// "Cultural, Postcolonial, and Transnational studies" names
-		// "Cultural, Postcolonial & Transnational Studies".
+		// "Cultural, Postcolonial, and Transnational studies" names "Cultural,
+		// Postcolonial & Transnational Studies"
 		q := strings.NewReplacer(" & ", `,?\s+(?:&|and)\s+`, " and ", `,?\s+(?:&|and)\s+`).Replace(regexp.QuoteMeta(title))
 		re := regexp.MustCompile(`(?i)\s*\b(?:from|in)\s+(?:courses\s+(?:from|in)\s+)?(?:the\s+)?` + q +
 			`(?:\s+(?:courses?|concentration|area|group|list))?(?:\s+(?:from\s+)?(?:the\s+)?list\s+below|\s+below|\s+listed\s+below)?\b`)
@@ -1271,25 +1195,20 @@ func (ls compListRefs) titleRef(t string) (rest, name string, ok bool) {
 }
 
 var (
-	// complBelowListsRe: a pointer to the lists set out below an item, by
-	// none of their names: "from the following elective courses", "from any
-	// of the courses below", "from the list below", "from approved Munk
-	// School, Economics, Political Science, and other cognate courses as
-	// listed below", "(list below)".
+	// complBelowListsRe matches a pointer to the lists set out below an item, by
+	// none of their names: "from the following elective courses".
 	complBelowListsRe = regexp.MustCompile(`(?i)\s*(?:\bfrom\s+(?:any\s+of\s+)?the\s+(?:courses\s+)?(?:list(?:ed)?\s+)?below\b|\bfrom\s+any\s+of\s+the\s+courses\s+(?:listed\s+)?below\b|\bfrom\s+the\s+following(?:\s+(?:elective|eligible|approved))?(?:\s+(?:courses|list))?\b|\bfrom\s+(?:approved\s+)?(?-i:[A-Z])[\w\s,&-]*?\s+courses\s+as\s+listed\s+below\b|\(\s*list\s+below\s*\))`)
-	// complListBelowParenRe: "(list below)", after a description of the
-	// list: "0.5 credit with a significant emphasis on ethics and social
-	// responsibility (list below)".
+	// complListBelowParenRe matches "(list below)" after a description of the
+	// list.
 	complListBelowParenRe = regexp.MustCompile(`(?i)\(\s*list\s+below\s*\)`)
-	// complAmountOnlyRe: an amount and a description of the list it is from.
+	// complAmountOnlyRe matches an amount and a description of its list: "0.5
+	// credit with a significant emphasis on ethics".
 	complAmountOnlyRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?)\s+with\s+[^()]*$`)
 )
 
-// belowLists reads text that points at the lists set out below it ("4.0
-// credits from the following elective courses" over "_Course Groups_" and
-// its lists) as drawing on all of them: the lists defined at the program
-// level after row, when row is the only row that points below. "(list
-// below)" names one list. ok is false when text doesn't point below.
+// belowLists reads text pointing at the lists set out below it as drawing on
+// the program-level lists defined after row, when row alone points below.
+// "(list below)" names one list. ok is false when text doesn't point below.
 func (a *compAssembler) belowLists(row *compRow, text string, ls compListRefs) (rest string, names []string, ok bool) {
 	loc := complBelowListsRe.FindStringIndex(text)
 	if loc == nil || a.belowRows != 1 {
@@ -1326,8 +1245,8 @@ func (a *compAssembler) belowLists(row *compRow, text string, ls compListRefs) (
 	return rest, names, true
 }
 
-// sortedLists returns the lists that have definitions, in the order of
-// their first definition's line.
+// sortedLists returns the lists that have definitions, in the order of their
+// first definition's line.
 func (a *compAssembler) sortedLists(ls compListRefs) []*compList {
 	var out []*compList
 	for _, l := range ls {
@@ -1352,8 +1271,8 @@ func complDefLine(d *compListDef) int {
 	return d.block.line
 }
 
-// perms returns the routes of the named lists and the lists under them
-// (compList.perm).
+// perms returns the permission routes of the named lists and the lists under
+// them.
 func (ls compListRefs) perms(names []string) []string {
 	var out []string
 	for _, l := range ls {
@@ -1371,19 +1290,14 @@ func (ls compListRefs) perms(names []string) []string {
 	return dedupe(out)
 }
 
-// unionList reads text that the grammar reads as a union pool of courses
-// and filters ("1.0 credit from HMB430H1/ HMB470H1/ HMB472H1; JPM400Y1;
-// PSL304H1, ..., PSL400-series courses"): a course counts if it is listed
-// or matches a filter, which one credits node can't hold (its filters
-// narrow its courses). The union is a list of its own (design 3.2), named
-// by what the lead calls it ("electives in music history, culture, and
-// theory, and music and health") or by the row's label, and the row draws
-// its amount from it. The caps on its "/" pairs are limits under the row.
+// unionList reads text the grammar reads as a union pool of courses and
+// filters, which one credits node can't hold, as a list of its own the row
+// draws its amount from. Caps on its "/" pairs are limits under the row.
 func (a *compAssembler) unionList(row *compRow, text string, ls compListRefs) (*types.ReqNode, []*types.Requirement, bool) {
 	t := complClean(text)
 	n, _ := parseCompletionText(t)
 	if f := filterUnion(t); f != nil {
-		n = f // "2.0 credits of 100- or 200-level ESS courses or 200-level JEG courses"
+		n = f // "100- or 200-level ESS courses or 200-level JEG courses"
 	}
 	if n == nil || hasText(n) {
 		return nil, nil, false
@@ -1409,10 +1323,10 @@ func (a *compAssembler) unionList(row *compRow, text string, ls compListRefs) (*
 	return body, rules, true
 }
 
-// complFromEitherRe: a choice of one of the lists named after it.
+// complFromEitherRe matches a choice of one of the lists after it: "from
+// either Group A, B or C".
 var complFromEitherRe = regexp.MustCompile(`(?i)\bfrom\s+either\s+(?:the\s+)?` + complListRefPat)
 
-// within reports whether the list named name is under another of names.
 func (ls compListRefs) within(name string, names []string) bool {
 	for _, l := range ls {
 		if l.list.Name != name || l.parent == "" || ls[l.parent] == nil {
@@ -1423,34 +1337,28 @@ func (ls compListRefs) within(name string, names []string) bool {
 	return false
 }
 
-// complOnlyNeedRe: a smaller amount for some students: "Students taking
-// ENV421Y1 or ENV491Y1 for requirement 3 only need to take 2.0 credits
-// from Group A in requirement 4", "students need only take an additional
-// 2.5 credits for this requirement".
+// complOnlyNeedRe matches a smaller amount for some students: "only need to
+// take 2.0 credits".
 var complOnlyNeedRe = regexp.MustCompile(`(?i)\b(?:only\s+need\s+to|need\s+only)\s+(?:take|complete)\s+(?:an\s+additional\s+)?(\d+(?:\.\d+)?)\s+credits?\b`)
 
-// complFromTextRe: the part of an item the grammar left as text that names
-// where its courses come from: "from Pre-1800 British Literature courses
-// from list below".
+// complFromTextRe matches the text the grammar left of an item that names
+// where its courses come from: "from Pre-1800 British Literature courses".
 var complFromTextRe = regexp.MustCompile(`(?i)^from\s+\S`)
 
-// complItemLabelRe: an item's number before its text: "5. ".
+// complItemLabelRe matches an item's number before its text: "5. ".
 var complItemLabelRe = regexp.MustCompile(`^\s*(?:\d{1,2}[a-z]?|[a-z])[.)]\s+`)
 
-// complListMemberRe: a sentence that puts a course on a list: "If
+// complListMemberRe matches a sentence that puts a course on a list: "If
 // ARH312Y1 is completed, it will be considered a Group A course".
 var complListMemberRe = regexp.MustCompile(`(?i)^if\s+(` + codePat + `)\s+is\s+(?:completed|taken),\s+it\s+will\s+be\s+considered\s+(?:an?\s+)?(` + complListRefPat + `)\s+course\.?$`)
 
-// complTopicMemberRe: a course whose list depends on its topic: "ANT390H1
-// may be placed in either Group A or B or C depending on the topic which
-// will vary from year to year", "ANT390H1 may not be available in Course
-// Group B, depending on the topic".
+// complTopicMemberRe matches a course whose list depends on its topic:
+// "ANT390H1 may be placed in either Group A or B or C depending on the topic".
 var complTopicMemberRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+may\s+(?:be\s+placed\s+in|not\s+be\s+available\s+in)\b[^.]*\bdepending\s+on\s+the\s+topic\b`)
 
-// topicMember makes the course of a complTopicMemberRe sentence a "maybe"
-// member of each used list that lists it (design 3.2): its plain item no
-// longer lists it, and the list gets and(credits{the course}, text
-// permission) with the sentence. It reports whether a list took it.
+// topicMember makes the course of a complTopicMemberRe sentence a maybe
+// member, and(course, permission text), of each used list that lists it. It
+// reports whether a list took it.
 func topicMember(used []*compList, sentence string) bool {
 	code := complTopicMemberRe.FindStringSubmatch(sentence)[1]
 	took := false
@@ -1474,25 +1382,21 @@ func topicMember(used []*compList, sentence string) bool {
 }
 
 var (
-	// complUnionFromRe: a pool whose source follows "from": "1.5
-	// additional credits from: Group B and/or ANT406H1, ANT415Y1, ARH312Y1",
-	// "1.5 credits from PHL271H1 / PHL275H1 / Group 2 (Value Theory)"; or
-	// leads it: "From Group A, B, C or other DRM: 2.0 credits to make up the
-	// total of 8.0 credits".
+	// complUnionFromRe matches a pool whose source follows "from": "1.5
+	// additional credits from: Group B and/or ANT406H1". complUnionLeadFromRe
+	// matches one it leads: "From Group A, B, C or other DRM: 2.0 credits".
 	complUnionFromRe     = regexp.MustCompile(`(?i)^(.*?)\s+from:?\s+(.+)$`)
 	complUnionLeadFromRe = regexp.MustCompile(`(?i)^from\s+(.+?):\s*(\d+(?:\.\d+)?\s+credits?)(?:\s+to\s+make\s+up\s+the\s+total\s+of\s+\d+(?:\.\d+)?\s+credits?)?$`)
-	// complUnionRestRe: what a union's source may have besides its lists,
-	// codes and "other DRM": separators.
+	// complUnionRestRe matches the separators a union's source may have besides
+	// its lists, codes and "other DRM".
 	complUnionRestRe = regexp.MustCompile(`(?i)^(?:[\s,/]|\band/or\b|\band\b|\bor\b)*$`)
-	// complOtherDesigRe: "other DRM": the designator's courses.
+	// complOtherDesigRe matches "other DRM": the designator's courses.
 	complOtherDesigRe = regexp.MustCompile(`\b(?:(?i:other)\s+)([A-Z]{3})\b(?:\s+(?i:courses))?`)
 )
 
-// listUnion reads a pool drawn from lists and courses together ("1.5
-// additional credits from: Group B and/or ANT406H1, ANT415Y1, ARH312Y1"):
-// the union is a list of its own (design 3.2), named after the row, with
-// an item for each list, the courses and any "other DRM" designator. A
-// list's title in brackets after it is dropped.
+// listUnion reads a pool drawn from lists and courses together as a list of
+// its own, named after the row, with an item for each list, the courses and
+// any "other DRM" designator.
 func (a *compAssembler) listUnion(row *compRow, head string, ls compListRefs) (*types.ReqNode, bool) {
 	var amount, source string
 	if m := complUnionLeadFromRe.FindStringSubmatch(head); m != nil {
@@ -1528,9 +1432,8 @@ func (a *compAssembler) listUnion(row *compRow, head string, ls compListRefs) (*
 	}
 	for _, m := range complOtherDesigRe.FindAllStringSubmatch(rest, -1) {
 		items = append(items, &types.ReqNode{Type: types.NodeCredits, Designators: []string{m[1]}})
-		// "From Group A, B, C or other DRM" beside a list titled "Other
-		// Topics & Independent Studies" (UNI102H1, SMC145Y1, DRM299Y1, …):
-		// the program's other courses are that list's too.
+		// "other DRM" beside a list titled "Other Topics ...": the program's other
+		// courses are that list's too
 		for _, l := range a.sortedLists(ls) {
 			if l.titled && !l.bad && strings.HasPrefix(strings.ToLower(l.list.Name), "other ") {
 				items = append(items, &types.ReqNode{Type: types.NodeCredits, Lists: []string{l.list.Name}})
@@ -1553,11 +1456,9 @@ func (a *compAssembler) listUnion(row *compRow, head string, ls compListRefs) (*
 	return n, true
 }
 
-// memberLines returns, as list definitions, the lines under a heading that
-// names a list ("Group C" then "Any other GGR, JGE, JIG, JUG courses at the
-// 200/300/400-level not listed in Group A.") that the reading kept as some
-// other note: a line of codes, or one that says what the list holds
-// (complMemberLineRe). Its note is whichever form the reading kept.
+// memberLines returns, as list definitions, lines under a heading naming a
+// list that the reading kept as some other note: a line of codes, or one
+// saying what the list holds. Its note is whichever form the reading kept.
 func (a *compAssembler) memberLines() []*compListDef {
 	seen := map[*compBlock]bool{}
 	for _, d := range a.listDefs {
@@ -1602,26 +1503,23 @@ func (a *compAssembler) memberLines() []*compListDef {
 }
 
 var (
-	// complUpToListRe: an alternative on a pool that adds a list's share:
-	// "Up to 1.5 credits from Group I", "Any course (0.5 credit) from Group
-	// I".
+	// complUpToListRe matches an alternative adding a list's share to a pool:
+	// "Up to 1.5 credits from Group I".
 	complUpToListRe = regexp.MustCompile(`(?i)^(?:up\s+to\s+(\d+(?:\.\d+)?)\s+credits?|any\s+course\s+\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\))\s+(?:can\s+be\s+(?:used\s+)?)?from\s+(` + complListRefPat + `)$`)
-	// complReqAltRe: an alternative on a pool that adds another
-	// requirement's: "any courses from program requirement (1) above".
+	// complReqAltRe matches an alternative adding another requirement's courses
+	// to a pool: "any courses from program requirement (1) above".
 	complReqAltRe = regexp.MustCompile(`(?i)^any\s+courses?\s+from\s+(?:program\s+)?requirement\s+\(?#?(\d{1,2})\)?(?:\s+above)?$`)
-	// complListMembersAltRe: an alternative on a pool that adds a list's
-	// members: "400-level courses in Group I", "courses from Group C".
+	// complListMembersAltRe matches an alternative adding a list's members to a
+	// pool: "400-level courses in Group I".
 	complListMembersAltRe = regexp.MustCompile(`(?i)^(?:and\s+)?(?:any\s+)?(?:([1-4]00(?:[-/+\s]*[1-4]00)*[-+]?)\s*-?\s*level\s+)?courses?\s+(?:in|from)\s+(` + complListRefPat + `)$`)
-	// complBareListAltRe: an alternative on a pool that is a list, with its
-	// title in brackets: "Group 2 (Value Theory)".
+	// complBareListAltRe matches an alternative that is a list, with its title
+	// in brackets: "Group 2 (Value Theory)".
 	complBareListAltRe = regexp.MustCompile(`(?i)^(` + complListRefPat + `)(?:\s*\(\s*([^()]*?)\s*\))?$`)
 )
 
-// poolListAlts reads the alternatives on row's pool that add courses from
-// lists ("Up to 1.5 credits from Group I", "400-level courses in Group I"),
-// which were or(pool, text) until lists were read: the pool and the lists'
-// shares become one list (design 3.2) the row draws its amount from, and a
-// share with a cap is a limit under the row. Other alternatives stay.
+// poolListAlts merges row's pool with the or'd alternatives that add
+// courses from lists into one list the row draws its amount from; a capped
+// share is a limit under the row. Other alternatives stay.
 func (a *compAssembler) poolListAlts(row *compRow, ls compListRefs) {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeOr || len(n.Items) < 2 {
@@ -1654,7 +1552,6 @@ func (a *compAssembler) poolListAlts(row *compRow, ls compListRefs) {
 			continue
 		}
 		if m := complReqAltRe.FindStringSubmatch(t); m != nil {
-			// "any courses from program requirement (1) above".
 			r := a.labelled(m[1])
 			if r == nil || r == row {
 				return
@@ -1665,8 +1562,7 @@ func (a *compAssembler) poolListAlts(row *compRow, ls compListRefs) {
 			continue
 		}
 		if m := complBareListAltRe.FindStringSubmatch(t); m != nil && (m[2] == "" || titleWords(m[2], m[1], ls)) {
-			// "1.0 credit from PHL271H1 / PHL275H1 / Group 2 (Value
-			// Theory)": the list itself, with its title.
+			// "... / Group 2 (Value Theory)": the list itself, with its title
 			names := ls.resolve(listRefNames(m[1]))
 			if names == nil {
 				return
@@ -1706,14 +1602,13 @@ func (a *compAssembler) poolListAlts(row *compRow, ls compListRefs) {
 	}
 }
 
-// complFilterUnionRe: an amount of two filters joined by "or", which one
-// filter can't hold (complFilterOrFilterRe), with the codes either
-// excludes: "2.0 credits of 100- or 200-level ESS courses or 200-level JEG
-// courses (excluding ESS103H1, ESS104H1, ESS105H1, and ESS205H1)".
+// complFilterUnionRe matches an amount of two filters joined by "or", with
+// the codes either excludes: "2.0 credits of 100- or 200-level ESS courses or
+// 200-level JEG courses (excluding ESS103H1)".
 var complFilterUnionRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+(?:of|from|in)\s+(.+?)(?:\s*\(\s*excluding\s+([^()]*)\))?$`)
 
-// filterUnion reads a complFilterUnionRe pool as credits whose items are
-// the two filters (unionList makes them a list), or returns nil.
+// filterUnion reads a complFilterUnionRe pool as credits whose items are the
+// two filters, or returns nil.
 func filterUnion(t string) *types.ReqNode {
 	m := complFilterUnionRe.FindStringSubmatch(t)
 	if m == nil {
@@ -1746,13 +1641,9 @@ func filterUnion(t string) *types.ReqNode {
 	return n
 }
 
-// addUnion records items as a list of row's own, for a pool the grammar
-// reads as a union (design 3.2), and returns its name. The name follows one
-// rule: "Requirement <label> courses", from the row's calendar label, then
-// "Requirement <label> courses (2)", "(3)" for another of the same row; a
-// label that ends in "Courses" ("Fourth Year Courses") isn't given another.
-// A row with no label gets none (ok false): its text stays, unless the
-// rule reading it names the list by the row's number (rowUnion).
+// addUnion records items as a list of row's own and returns its name:
+// "Requirement <label> courses", then "(2)", "(3)" for more of one row. A row
+// with no label gets none (ok false).
 func (a *compAssembler) addUnion(row *compRow, items []*types.ReqNode, ls compListRefs) (name string, l *compList, ok bool) {
 	if row.r.Label == "" {
 		return "", nil, false
@@ -1774,12 +1665,13 @@ func (a *compAssembler) addUnion(row *compRow, items []*types.ReqNode, ls compLi
 // complUnionKey is the key a list addUnion made is stored under.
 func complUnionKey(name string) string { return "union:" + strings.ToLower(name) }
 
-// complIncludeRecommendRe: advice on an item to include courses.
+// complIncludeRecommendRe matches advice to include courses: "recommended to
+// include".
 var complIncludeRecommendRe = regexp.MustCompile(`(?i)\brecommended\s+to\s+include\b`)
 
-// recommendedMembers adds to the list a row's pool was made into
-// (addUnion) the courses the row's advice recommends including that the
-// list doesn't hold, as an ambiguity maybe item.
+// recommendedMembers adds to the list a row's pool became the courses the
+// row's advice recommends that the list doesn't hold, as an ambiguity maybe
+// item.
 func (a *compAssembler) recommendedMembers(r *compRow, ls compListRefs) {
 	n := r.r.Req
 	if r.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeCredits || len(n.Lists) != 1 {
@@ -1806,8 +1698,8 @@ func (a *compAssembler) recommendedMembers(r *compRow, ls compListRefs) {
 	}
 }
 
-// filterHolds reports whether list item it matches course code by its
-// courses or by its designators and levels (not its lists).
+// filterHolds reports whether list item it matches code by its courses or
+// by its designators and levels (not its lists).
 func filterHolds(it *types.ReqNode, code string) bool {
 	if it.Type != types.NodeCredits || slices.Contains(it.Exclude, code) || slices.Contains(it.ExcludeDesignators, code[:3]) ||
 		it.MaxCourseAmount != 0 && courseWeight(code) > it.MaxCourseAmount {
@@ -1819,14 +1711,12 @@ func filterHolds(it *types.ReqNode, code string) bool {
 	return it.Designators != nil && slices.Contains(it.Designators, code[:3]) && levelMatches(it.Levels, code)
 }
 
-// complInlineListRe: the total's pool naming a list below whose codes it
-// reads inline (namedListCodes): "Additional HIS, ... or Equivalent courses
-// (listed below) to a total of 7.0 credits".
+// complInlineListRe matches the total's pool naming a list below whose codes
+// it reads inline: "or Equivalent courses (listed below)".
 var complInlineListRe = regexp.MustCompile(`(?i)\bor\s+([A-Z][\w\s]*?)\s+courses\s+\(listed\s+below\)`)
 
-// inlineListNotes drops the definition of a complInlineListRe list from the
-// notes once the total's pool holds all its codes: it is encoded, as widen
-// encodes "the Equivalent Courses list below".
+// inlineListNotes drops a complInlineListRe list's definition from the notes
+// once the total's pool holds all its codes: it is encoded.
 func (a *compAssembler) inlineListNotes() {
 	if a.total == nil || a.total.r.Req == nil {
 		return
@@ -1856,14 +1746,12 @@ func (a *compAssembler) inlineListNotes() {
 	}
 }
 
-// complListSubCapRe: a cap on some of a list's members, at the end of its
-// definition: "..., and with permission of the director: TRN300H1, ...,
-// TRN477H1, 1.0 credit from TRN160Y1, TRN161Y1, TRN171Y1, TRN172Y1".
+// complListSubCapRe matches a cap on some of a list's members at the end of
+// its definition: ", 1.0 credit from TRN160Y1, TRN161Y1".
 var complListSubCapRe = regexp.MustCompile(`(?i),\s*(\d+(?:\.\d+)?)\s+credits?\s+from\s+((?:` + codePat + `)(?:\s*,\s*(?:` + codePat + `))+)\s*\.?\s*$`)
 
-// listSubCaps makes a complListSubCapRe cap on a list's members a limit
-// under each allocation that draws on the list by name: the list's items
-// can't hold it.
+// listSubCaps makes a complListSubCapRe cap a limit under each allocation
+// drawing on the list by name, since the list's items can't hold it.
 func (a *compAssembler) listSubCaps(ls compListRefs) {
 	for _, l := range a.sortedLists(ls) {
 		if l.bad || len(l.defs) != 1 {

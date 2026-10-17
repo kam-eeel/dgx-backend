@@ -9,28 +9,16 @@ import (
 	"degree-explorer/types"
 )
 
-// A focus's own requirements (ASSPE2270, decision 2026-10-17). The foci
-// ASFOC2270A-Q are not in the programs table: the calendar writes their
-// requirements only in the Specialist's text, one line each, "Health Studies
-// (ASFOC2270A): (2.0 credits) HMB342H1, at least 0.5 credit from ...". So
-// focusChoices makes each focus's alternative and(program{focus}, its line's
-// requirement), read with the item grammar (focusPart), or and(program,
-// text{the line}) where the grammar can't read all of it. The alternative is
-// the focus row's: an allocation, so what it claims is claimed against the
-// Specialist's other rows ("plus a disciplinary focus requiring 2.0-3.5
-// credits": the focus's credits are on top of the Specialist's).
+// A focus's own requirements, for ASSPE2270: its foci ASFOC2270A-Q aren't in
+// the programs table, so each focus's line in its text is read here.
 
 var (
-	// complFocusAmountRe: the focus's amount after its code: "(2.0 credits)",
-	// "(2.5 or 3.0 credits)".
+	// complFocusAmountRe matches a focus's amount after its code: "(2.0
+	// credits)".
 	complFocusAmountRe = regexp.MustCompile(`(?i)^\((\d+(?:\.\d+)?)(?:\s+or\s+\d+(?:\.\d+)?)?\s+credits?\)\s*`)
-	// complFocusWordings: a focus line's wordings the item grammar writes
-	// otherwise. "( SOC100H1, SOC150H1) with a combined minimum grade
-	// average of 65%" is "with an average grade of 65%"; "0.5 credit 300+
-	// series ECO course with the exception of ECO374H1 and ECO375H1" is "0.5
-	// credit from 300+ level ECO courses excluding ..."; "2.0 credits from
-	// (with at least a 0.5 credit at the 400-level) ..." is "2.0 credits
-	// (with ...) from ...".
+	// complFocusWordings rewrites a focus line's wordings into the item
+	// grammar's: "with a combined minimum grade average of" is "with an average
+	// grade of".
 	complFocusWordings = []struct {
 		re   *regexp.Regexp
 		with string
@@ -41,9 +29,8 @@ var (
 	}
 )
 
-// focusLineAt returns the focus line at a.lines[i] with its requirement: the
-// rest of the line, or, when the line ends at the amount ("Biochemistry
-// (ASFOC2270O): (3.0 credits)"), the next line, when that is no focus.
+// focusLineAt returns the focus line at a.lines[i] split into head and
+// requirement; a line ending at its amount takes the next line, if no focus.
 func (a *compAssembler) focusLineAt(i int, m []string) (head, body string) {
 	l := strings.TrimSpace(a.lines[i])
 	head, body = l, ""
@@ -60,14 +47,10 @@ func (a *compAssembler) focusLineAt(i int, m []string) (head, body string) {
 	return head, body
 }
 
-// focusPart is the alternative of the focus (its program node p) whose line
-// is head and body: and(p, the requirement), its notes and limits (the rows
-// it adds under the focus row), or and(p, text{the line}) when the item
-// grammar leaves text, a row it can't place, or an amount the requirement
-// doesn't make. A requirement that falls short of the amount ("(2.0 credits)
-// HMB342H1, at least 0.5 credit from A, and at least 0.5 credit from B") has
-// the amount from all its courses beside it. The focus's note (focusLine:
-// the line) goes; the row's raw holds it.
+// focusPart returns the focus alternative and(p, requirement), with its notes
+// and limits, or the fallback and(p, text{line}) when the grammar can't read it
+// all. A requirement short of the amount gets the amount from all its courses
+// beside it.
 func (a *compAssembler) focusPart(row *compRow, p *types.ReqNode, head, body string) (part, fallback *types.ReqNode, notes []string, limits []*types.Requirement) {
 	note := cleanNote(head + " " + body)
 	lead := rawWords(p.Text + " (" + p.Programs[0] + "): (")
@@ -91,8 +74,7 @@ func (a *compAssembler) focusPart(row *compRow, p *types.ReqNode, head, body str
 	}
 	n, rows, ns, ok := a.focusBody(body, note)
 	if !ok {
-		// "BIO120H1, BIO220H1; 2.0 credits from (with at least a 0.5 credit
-		// at the 400-level) ...": its parts, one at a time.
+		// read the parts between semicolons one at a time
 		n, rows, ns = nil, nil, nil
 		for _, s := range splitTop(body, ';') {
 			x, rs, xs, ok := a.focusBody(strings.TrimPrefix(strings.TrimSpace(s), "and "), note)
@@ -107,8 +89,7 @@ func (a *compAssembler) focusPart(row *compRow, p *types.ReqNode, head, body str
 	case !ok || got > amount+1e-9:
 		return fallback, fallback, nil, nil
 	case got < amount-1e-9:
-		// The amount from the requirement's courses, beside it: it can't
-		// say which courses make the rest.
+		// the text can't say which courses make the rest
 		codes := dedupe(nodeCodes(n))
 		if !listedOnly(n) || len(codes) == 0 {
 			return fallback, fallback, nil, nil
@@ -122,10 +103,8 @@ func (a *compAssembler) focusPart(row *compRow, p *types.ReqNode, head, body str
 }
 
 // focusBody reads s, a focus's requirement or a part of it, with the item
-// grammar: its node, its limits (the caps beside a pool, from a group of
-// alternatives in it: "at least 1.0 from PSY320H1/ PSY321H1/ PSY322H1,
-// PSY324H1/ ..."), and its notes. ok is false when the node has text or a
-// row other than a limit is left (poolFloors).
+// grammar. ok is false when the node has text or a row other than a limit is
+// left.
 func (a *compAssembler) focusBody(s, raw string) (n *types.ReqNode, limits []*types.Requirement, notes []string, ok bool) {
 	n, rows, notes := a.itemBody(s)
 	if n == nil || hasText(n) {
@@ -145,13 +124,8 @@ func (a *compAssembler) focusBody(s, raw string) (n *types.ReqNode, limits []*ty
 	return inner.r.Req, rows, notes, true
 }
 
-// poolFloors puts a pool's floor rows into the pool's node, as the pool's
-// courses at the floor's levels beside it: "2.0 credits from (with at least
-// a 0.5 credit at the 400-level) EEB319H1/ ..., EEB428H1/ EEB440H1 or
-// EEB240H1/ ENV432H1" is and(credits{2.0, the courses}, credits{0.5,
-// EEB428H1, EEB440H1, ENV432H1}). A focus's
-// requirement is an alternative of the focus row, where a constraint row
-// would hold for every focus. Other rows are kept.
+// poolFloors moves a pool's level floors into its node as credits from its
+// courses at those levels: a constraint row would hold for every focus.
 func poolFloors(n *types.ReqNode, rows []*types.Requirement) (*types.ReqNode, []*types.Requirement) {
 	var keep []*types.Requirement
 	for _, r := range rows {
@@ -176,9 +150,8 @@ func poolFloors(n *types.ReqNode, rows []*types.Requirement) (*types.ReqNode, []
 	return n, keep
 }
 
-// focusCredits is nodeCredits with an average beside the courses it is over
-// ("( SOC100H1, SOC150H1) with an average grade of 65%") and a floor on a
-// pool beside it, some of its courses (poolFloors), which add none.
+// focusCredits is nodeCredits, except that an average and a floor on some of a
+// pool's courses add nothing.
 func focusCredits(n *types.ReqNode) (float64, bool) {
 	if n.Type != types.NodeAnd {
 		return nodeCredits(n)
@@ -203,8 +176,8 @@ func focusCredits(n *types.ReqNode) (float64, bool) {
 	return sum, true
 }
 
-// listedOnly reports whether n names courses only: courses, and pools of
-// listed courses with no other filter.
+// listedOnly reports whether n names courses only: courses, and pools of listed
+// courses with no other filter.
 func listedOnly(n *types.ReqNode) bool {
 	ok := true
 	walkReq(n, func(x *types.ReqNode) {
@@ -219,10 +192,9 @@ func listedOnly(n *types.ReqNode) bool {
 	return ok
 }
 
-// focusLimitsSafe reports whether the limits a focus's requirement adds
-// under the focus row (they trim what the row counts, whichever focus the
-// student completes) leave every other focus's alternative (others) able to
-// count what it needs from the limited courses: at most the limit's amount.
+// focusLimitsSafe reports whether the limits a focus adds under the focus row,
+// which apply whichever focus is taken, still let every other focus count the
+// credits it needs from the limited courses.
 func focusLimitsSafe(limits []*types.Requirement, others []*types.ReqNode) bool {
 	for _, l := range limits {
 		set := map[string]bool{}
@@ -241,10 +213,8 @@ func focusLimitsSafe(limits []*types.Requirement, others []*types.ReqNode) bool 
 	return true
 }
 
-// sharedNeed is the most credits from set that n may need: a course's
-// weight, a pool's amount when it lists one of them, the heaviest of an or's
-// alternatives. ok is false for a node it can't weigh (text over the
-// courses, an average).
+// sharedNeed returns the most credits from set that n may need. ok is false for
+// a node it can't weigh, such as an average over those courses.
 func sharedNeed(n *types.ReqNode, set map[string]bool) (float64, bool) {
 	switch n.Type {
 	case types.NodeProgram, types.NodeText:

@@ -9,112 +9,97 @@ import (
 	"unicode/utf8"
 )
 
-// The scraper stores completion text like enrolment text (scraper/blocks.go):
-// one block per line, "- " bullets, "1." / "a." numbering, a nested list
-// indented two spaces per level and an item's continuation lines indented to
-// its text ("1. " gives three spaces), **bold** and _italic_. Calendar authors
-// also number by hand ("1)", "(a)", "i)") and put the number inside the
-// emphasis ("**1. Students cannot …**").
-//
-// completionBlocks reads the text into a tree of blocks, one per line. An
-// indented line hangs under the line above it. A heading gives the blocks
-// after it a section, until the next heading among its siblings. Items carry
-// the calendar's own label: "4", "Higher Years 2" when the numbering starts
-// again under a heading, "4a" for a nested item.
+// The block tree of completion text: one block per line, nested by indent,
+// with "- " bullets, markers as written ("1)", "(a)", "i)") and emphasis.
 
 type blockKind int
 
 const (
 	blockProse    blockKind = iota // a paragraph
-	blockHeading                   // "First Year:", "_First year_ (2.5 credits):", "**Group A**", "Notes:"
-	blockItem                      // a numbered or lettered item: "1.", "1)", "(a)", "i)"
+	blockHeading                   // "First Year:", "**Group A**", "Notes:"
+	blockItem                      // a numbered or lettered item: "1.", "(a)"
 	blockBullet                    // "- "
-	blockLabelled                  // "**Group A:** CSC209H1; …", "Note: …", "- Computer Science: …"
+	blockLabelled                  // "**Group A:** CSC209H1; …", "Note: …"
 )
 
-// isNotes reports whether a heading's name ends in notes: "Notes:", "**Important
-// Notes:**", "_Applied Genetics and Biotechnology Major Notes:_".
+// isNotes reports whether a heading's name ends in notes: "Important Notes:".
 func (b *compBlock) isNotes() bool { return blkEndsInNotesRe.MatchString(b.section) }
 
 type compBlock struct {
 	kind   blockKind
-	marker string // items and bullets: the marker as written, "1.", "(a)", "ii)", "-"
-	// Items: the calendar's label, "4", "Higher Years 2", "4a". Labelled lines:
-	// the text before the colon, "Group A", "First Year (3.0 credits)".
+	marker string // items and bullets: the marker as written, "(a)", "-"
+	// Items: the calendar's label, "Higher Years 2". Labelled lines: the text
+	// before the colon.
 	label  string
 	text   string // the line without indent, marker, label and emphasis
 	indent int    // leading spaces
 	line   int    // index of the line in the raw text
-	// The innermost heading the block sits under, without a credit
-	// parenthetical or footnote asterisk, for display. A heading's own section
-	// is its name, and a labelled line naming a year ("First Year (3.0
-	// credits): …") is a section of its own.
+	// The innermost heading's name, without credits or footnote asterisk. A
+	// heading's section is its name; a labelled line naming a year is its own.
 	section string
-	// The innermost heading the block sits under; for a heading, the heading
-	// it sits under (PSY "Cluster A" under "Group 1"). Nil at the top.
+	// The innermost heading the block sits under (for a heading, the one it
+	// sits under); nil at the top.
 	heading *compBlock
-	// Headings: the rank that decides which heading ends which, smaller is
-	// higher (blkHeadingLevel).
+	// Headings: the rank deciding which heading ends which; smaller is higher.
 	level    int
 	children []*compBlock // the indented lines below, and lists adopted by their lead-in
-	// cont: the raw lines a hard-wrapped paragraph continues on (blkJoinWraps).
+	// the raw lines a hard-wrapped paragraph continues on
 	cont []int
 }
 
 var (
-	// Emphasis opened before an item's marker: "**1. Students …**".
+	// blkLeadEmphRe matches emphasis opened before an item's marker: "**1.
+	// Students …**".
 	blkLeadEmphRe = regexp.MustCompile(`^(?:\*\*|_)+`)
-	// "1.", "1)", "(1)", "a.", "a)", "(a)", "A.", "ii)", "(iv)", "III.".
+	// blkItemRe matches an item marker: "ii) ".
 	blkItemRe     = regexp.MustCompile(`^(\d{1,2}[.)]|\(\d{1,2}\)|[a-zA-Z][.)]|\([a-zA-Z]\)|(?:[ivx]{2,4}|[IVX]{2,4})[.)]|\((?:[ivx]{2,4}|[IVX]{2,4})\))(?:\*\*|_)*\s+`)
 	blkBulletRe   = regexp.MustCompile(`^[-•]\s+`)
 	blkBoldSpanRe = regexp.MustCompile(`\*\*.*?\*\*`)
-	// An italic span, its underscores next to a space or punctuation:
-	// "_First year_ (2.5 credits):", "any 300-/ 400-level CSC course _except_".
+	// blkItalicSpanRe matches an italic span, its underscores next to a space
+	// or punctuation: "_First year_ (2.5 credits)".
 	blkItalicSpanRe = regexp.MustCompile(`(^|[\s(\[/,;:.*])_.*?_($|[\s)\]/,;:.*])`)
-	// A bracketed span with none inside it: "(3.0 credits)", "[( SLA107Y1/ …)]"
-	// goes from the inside out.
+	// blkInnerParenRe matches a bracketed span with none inside it, so
+	// replacing goes from the inside out: "(3.0 credits)".
 	blkInnerParenRe = regexp.MustCompile(`\([^()]*\)|\[[^\[\]]*\]`)
 	blkCreditRe     = regexp.MustCompile(`(?i)\bcredits?\b`)
 	blkAmountRe     = regexp.MustCompile(`(?i)\d+(?:\.\d+)?\s*(?:credits?|fces?)\b`)
 	blkDecimalRe    = regexp.MustCompile(`\d\.\d`) // "7.0", ".50" doesn't count
-	// A total or an amount, not a name: "(8.0 credits)", "3.0 credits".
+	// blkStartsAmountRe matches a line starting with an amount: "(8.0 credits)".
 	blkStartsAmountRe = regexp.MustCompile(`^\(?\s*\d`)
-	// Words that make a line ending in ":" a lead-in rather than a heading:
-	// "At least two of the following four options:", "Of these:".
+	// blkLeadInRe matches words that make a line ending in ":" a lead-in, not a
+	// heading: "Of these:".
 	blkLeadInRe = regexp.MustCompile(`(?i)\b(?:following|follows|below|above|include|includes|including|must|should|may|requires?|choose|chosen|selected|of these|one of|plus|suggest|complete)\b`)
-	// A note's label: "Note", "Note 1", "NOTES".
+	// blkNoteLabelRe matches a note's label: "Note 1".
 	blkNoteLabelRe = regexp.MustCompile(`(?i)^\*?notes?(?:\s+\d+)?$`)
-	// A heading that is only notes: "Notes", "Important Notes", "N.B.".
+	// blkNotesHeadingRe matches a heading that is only notes: "Notes".
 	blkNotesHeadingRe = regexp.MustCompile(`(?i)^\*?(?:(?:important|advising)\s+)?(?:notes?|n\.\s?b\.?)$`)
-	// "First Year", "Higher Years", "Third or Fourth Year", "Second Year and
-	// Higher", "Years 3 & 4", "In first year or higher".
+	// blkYearPhraseRe matches a phrase naming years: "Third or Fourth Year".
 	blkYearPhraseRe = regexp.MustCompile(`(?i)^(?:(?:first|second|third|fourth|fifth|1st|2nd|3rd|4th|higher|later|upper|lower|early|senior|subsequent|any|in|and|or|years?|\d)(?:[\s,/&*-]+|$))+$`)
 	blkHasYearRe    = regexp.MustCompile(`(?i)\byears?\b`)
-	// "1.1.0 credit from …": a marker glued to an amount.
+	// blkGluedItemRe matches a marker glued to an amount: "1.1.0 credit".
 	blkGluedItemRe = regexp.MustCompile(`^(\d{1,2}\.)\d+\.\d`)
-	// A label that is a number, not a name: "2.0 credits", "4.5 of …".
+	// blkNumberWordRe matches a label starting with a number: "4.5 of".
 	blkNumberWordRe = regexp.MustCompile(`^\d+(?:\.\d+)?(?:\s|$)`)
-	// Headings ranked below a group: PSY "Cluster A", ANT "Subgroup C (i)",
-	// HIS "(Sub-group: Africa)".
+	// blkSubHeadingRe matches a heading ranked below a group: "Cluster A".
 	blkSubHeadingRe = regexp.MustCompile(`(?i)^\(?(?:cluster|sub-?group)\b`)
-	// Bullets of advice that end a list (ASSPE0151 "- It is highly recommended
-	// that Religion Specialists …", "- Please note that UTM and UTSC courses …").
+	// blkAdviceRe matches a bullet of advice, which ends a list: "Please note
+	// that UTM and UTSC courses …".
 	blkAdviceRe = regexp.MustCompile(`(?i)^(?:it is (?:highly |strongly )?recommended|please note|note that|students are (?:encouraged|advised))\b`)
-	// A heading over focuses: ASSPE2270 "**Disciplinary Focuses**".
+	// blkFociRe matches a heading over focuses: "**Disciplinary Focuses**".
 	blkFociRe = regexp.MustCompile(`(?i)\bfocuses\b|\bfoci\b`)
-	// The program's notes: ASMAJ1053 "Applied Genetics and Biotechnology Major
-	// Notes".
+	// blkProgramNotesRe matches the program's notes: "Applied Genetics and
+	// Biotechnology Major Notes".
 	blkProgramNotesRe = regexp.MustCompile(`(?i)\b(?:major|minor|specialists?|program)\s+notes?$`)
-	// A heading name ending in notes: "Notes", "Important Notes", "… Major
-	// Notes", "N.B.".
+	// blkEndsInNotesRe matches a heading name ending in notes: "… Major Notes".
 	blkEndsInNotesRe = regexp.MustCompile(`(?i)(?:^|\s)(?:notes?|n\.\s?b\.?)$`)
-	// Words that make an item ending without a colon lead into the bullets
-	// after it (ASMAJ1240 "0.5 credit from each of the three Thematic
-	// Clusters.").
+	// blkListWordRe matches words that make an item with no colon lead into the
+	// bullets after it: "0.5 credit from each of the three Thematic Clusters."
 	blkListWordRe = regexp.MustCompile(`(?i)\b(?:following|below|each of the|clusters?)\b`)
 )
 
-// completionBlocks reads completion text into a block tree.
+// completionBlocks reads completion text into a tree of blocks, one per line;
+// an indented line hangs under the line above. Headings set sections, and items
+// get the calendar's own label: "4", "Higher Years 2", "4a".
 func completionBlocks(raw string) []*compBlock {
 	var top, open []*compBlock
 	for i, l := range strings.Split(raw, "\n") {
@@ -139,24 +124,16 @@ func completionBlocks(raw string) []*compBlock {
 	return top
 }
 
-// blkAdoptSubItems hangs lists written flush left under the line that leads into
-// them:
-//   - bullets after a lead-in ending in ":" (ASMAJ1689 "3. 3.0 credits of
-//     courses in total selected from among the following groups:" then "-
-//     **Group A:** …");
-//   - a lettered list after a numbered item or a lead-in (ASSPE0652 "**1.
-//     Geographic Distribution (200+ level):**" then "a) …", "b) …").
-//
-// A heading ending in ":" isn't a lead-in: the lines after it get its section.
-// Nor is a bullet whose list is already indented under it: the bullets
-// flush with it are the next items of its own list (ASMAJ0151 "- 1.0 credit
-// of related courses ... The list of eligible courses includes:", its
-// indented list, then "- Up to two language courses ...").
+// blkAdoptSubItems hangs flush-left lists under the line leading into them:
+// bullets after a lead-in or a numbered item, a lettered list after either.
+// A heading leads into nothing: its section covers the lines after it.
 func blkAdoptSubItems(top []*compBlock) []*compBlock {
 	var out []*compBlock
 	for i := 0; i < len(top); i++ {
 		p := top[i]
 		out = append(out, p)
+		// a bullet with its own list indented under it leads into nothing: the
+		// flush bullets after it are its peers
 		leadIn := p.kind != blockHeading && strings.HasSuffix(p.text, ":") && !(blkIsBullet(p.marker) && len(p.children) > 0)
 		j := i + 1
 		if j < len(top) && blkIsBullet(top[j].marker) && (leadIn || blkLeadsIntoBullets(p)) {
@@ -179,27 +156,16 @@ func blkAdoptSubItems(top []*compBlock) []*compBlock {
 	return out
 }
 
-// blkLeadsIntoBullets reports whether a numbered item that doesn't end in ":"
-// still owns the bullets after it: it doesn't end a sentence ("1. Completion
-// of either", "7. 4.0 additional SPA credits"), or it points at them ("0.5
-// credit from each of the three Thematic Clusters."). It is deliberately
-// permissive: bullets right after an item are about it far more often than
-// not, and the advice bullets that end the run are cut off by blkAdviceRe.
+// blkLeadsIntoBullets reports whether a numbered item not ending in ":" owns
+// the bullets after it: it ends mid-sentence or points at them. Permissive on
+// purpose: such bullets are nearly always the item's; blkAdviceRe ends them.
 func blkLeadsIntoBullets(p *compBlock) bool {
 	return blkNumbered(p) && (!strings.HasSuffix(p.text, ".") || blkListWordRe.MatchString(p.text))
 }
 
-// blkAdoptItemBodies hangs the flush-left lines after a numbered item ending
-// in ":" under it, up to the next numbered item, a heading or a year line:
-// labelled lines and lettered items (ASMAJ1205 "2. 2.0 credits of language
-// coursework in one language area chosen from the list below:" then
-// "_Czech and Slovak:_ …"), lead-ins, and prose with a course code or an
-// amount (ASMAJ1019 "2. Higher years:" then "3.0 to 4.0 credits from any NMC
-// courses"). Other prose ends the body, unless it is the first line of an
-// item with nothing under it yet (ASMAJ2745 "3. 2.5 credits of elective
-// courses:" then "**In addition to the above core courses, …**"). A lettered
-// item in the body takes the prose after it (ASMAJ2745 "a) Earth Surface
-// Processes" then its courses).
+// blkAdoptItemBodies hangs the flush-left lines after a numbered item ending in
+// ":" under it, up to a line that ends its body (blkEndsItemBody). A lettered
+// item in the body takes the prose after it.
 func blkAdoptItemBodies(top []*compBlock) []*compBlock {
 	var out []*compBlock
 	for i := 0; i < len(top); i++ {
@@ -219,10 +185,8 @@ func blkAdoptItemBodies(top []*compBlock) []*compBlock {
 }
 
 // blkEndsItemBody reports whether line c ends the body of item p: a heading, a
-// numbered item, a year line, a footnote (ASMAJ1533 "*Students admitted to
-// the program with ECO101H1/ …"), or prose with no course code or amount
-// that isn't a lead-in, unless it is the first line of an item with nothing
-// under it yet.
+// numbered item, a year line, a footnote, or prose with no code or amount that
+// isn't a lead-in, unless c comes first and p has no children yet.
 func blkEndsItemBody(p, c *compBlock, first bool) bool {
 	switch {
 	case c.kind == blockHeading || blkNumbered(c) || blkStartsSection(c) || strings.HasPrefix(c.text, "*"):
@@ -233,8 +197,7 @@ func blkEndsItemBody(p, c *compBlock, first bool) bool {
 	return !codeRe.MatchString(c.text) && !blkStartsAmountRe.MatchString(c.text) && !strings.HasSuffix(c.text, ":")
 }
 
-// blkLetteredBodies hangs the prose and bullets after a lettered item under
-// it.
+// blkLetteredBodies hangs the prose and bullets after a lettered item under it.
 func blkLetteredBodies(bs []*compBlock) []*compBlock {
 	var out []*compBlock
 	var item *compBlock
@@ -264,29 +227,24 @@ func blkNumbered(b *compBlock) bool {
 	return style == blkStyleNumber
 }
 
-// blkWrapEndRe: a line that ends mid-sentence: no full stop, colon or
-// semicolon.
+// blkWrapEndRe matches a line that ends mid-sentence, with no full stop, colon
+// or semicolon: "before being admitted".
 var blkWrapEndRe = regexp.MustCompile(`[^.:;!?)]\s*$|,\s*$`)
 
-// blkWrapStartRe: a line that continues the sentence above: a lowercase word
-// or a code.
+// blkWrapStartRe matches a line that continues the sentence above: "to the
+// Minor".
 var blkWrapStartRe = regexp.MustCompile(`^(?:[a-z]|` + codePat + `)`)
 
-// blkWrapWordEndRe, blkWrapWordStartRe: a sentence broken between two
-// lowercase words ("... and/or STA261H1 before being admitted" then "to the
-// Minor, ..."), a wrap even when the line above has codes enough to look
-// like a list (mostlyCodes).
+// blkWrapWordEndRe and blkWrapWordStartRe match a sentence broken between two
+// lowercase words, a wrap even after a line of codes: "admitted" then "to".
 var (
 	blkWrapWordEndRe   = regexp.MustCompile(`\b[a-z]{2,}\s*$`)
 	blkWrapWordStartRe = regexp.MustCompile(`^[a-z]{2,}\b`)
 )
 
-// blkJoinWraps joins a paragraph hard-wrapped over several lines ("**Note:**
-// If you completed STA238H1 ... before being admitted" then "to the Minor,
-// please note that ...") into one block: a line of prose (or a note) that
-// ends mid-sentence, followed at the same indent by a line of prose that
-// starts with a lowercase word or a code. Lines of codes are steps of a
-// list, not a wrapped sentence.
+// blkJoinWraps joins a hard-wrapped paragraph into one block: prose (or a note)
+// ending mid-sentence, then prose at the same indent that starts lowercase or
+// with a code. Lines of codes are steps of a list, not a wrapped sentence.
 func blkJoinWraps(bs []*compBlock) []*compBlock {
 	var out []*compBlock
 	for _, b := range bs {
@@ -307,10 +265,8 @@ func blkJoinWraps(bs []*compBlock) []*compBlock {
 	return out
 }
 
-// blkItemText is an item's or bullet's text without emphasis. An italic
-// note after a code ("( CHM135H1 and CHM136H1)/ CHM151Y1 _Transfer credits
-// will be accepted ..._") becomes a sentence of its own, so it can't
-// swallow the item.
+// blkItemText is an item's or bullet's text without emphasis. An italic note
+// after a code becomes a sentence of its own, so it can't swallow the item.
 func blkItemText(s string) string {
 	return stripEmphasis(complItalicNoteRe.ReplaceAllString(s, "$1. $2"))
 }
@@ -347,7 +303,7 @@ func blkReadLine(i int, raw string) *compBlock {
 	case labelled && blkIsYearPhrase(label) && blkYearHeadingBody(body):
 		b.kind, b.text, b.section = blockHeading, text, blkSectionName(label)
 		b.level = blkHeadingLevel(blkEmphOf(t, emph), b.section)
-	// "Second Year: (3.0 credits)" names a section.
+	// a body of only brackets is a heading's: "Second Year: (3.0 credits)"
 	case labelled && !blkOnlyParens(body) && (!emph || blkEmphLabelled(label, body)):
 		b.kind, b.label, b.text = blockLabelled, label, body
 	case blkIsHeading(text, emph):
@@ -360,20 +316,15 @@ func blkReadLine(i int, raw string) *compBlock {
 }
 
 // blkYearHeadingBody reports whether the body after a year label only titles
-// the year, so the line is the year's heading: "Year 2: Foundations in
-// environment and health". "First year: No specific first-year requirements"
-// and "Fourth Year: Additional … to a total of 7.0 credits" don't.
+// the year, making the line its heading: "Year 2: Foundations in environment
+// and health". "First year: No specific first-year requirements" doesn't.
 func blkYearHeadingBody(body string) bool {
 	return !codeRe.MatchString(body) && !blkAmountRe.MatchString(body) && !blkDecimalRe.MatchString(body) &&
 		!strings.HasPrefix(body, "No ")
 }
 
-// blkSplitLabel splits "Label: body" at the first colon outside brackets.
-// The label is at most six words outside brackets, not counting "&" or
-// dashes, with no course code anywhere and no amount outside brackets ("First
-// Year (3.0 credits)" is a label, "2.0 credits from" isn't), and doesn't end
-// in a word that leads into a list ("One of:", "Choose from:"). Footnote
-// asterisks are dropped from it ("*NOTE 1").
+// blkSplitLabel splits "Label: body" at the first colon outside brackets, when
+// the label passes blkIsLabel. Footnote asterisks are dropped from the label.
 func blkSplitLabel(s string) (label, body string, ok bool) {
 	depth := 0
 	for i, r := range s {
@@ -407,7 +358,7 @@ func blkIsLabel(s string) bool {
 		blkNumberWordRe.MatchString(s) || strings.Contains(s, ". ") || strings.Count(s, "(") != strings.Count(s, ")") {
 		return false
 	}
-	// "1st year required courses", "200-level physics, math, and earth sciences".
+	// a label starts with a letter or a digit: "1st year required courses"
 	if r, _ := utf8.DecodeRuneInString(s); !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 		return false
 	}
@@ -419,12 +370,9 @@ func blkIsLabel(s string) bool {
 	return true
 }
 
-// blkIsHeading reports whether a line without a marker is a heading:
-//   - a line in emphasis as a whole, with credits after it allowed
-//     ("_First year_ (2.5 credits):", "**Group A**");
-//   - a short line ending in ":" that isn't a lead-in ("Higher Years:");
-//   - a short line naming years, notes, or a group with its credits ("Year 4
-//     (0.5 credit)", "N.B.", "Required Courses (8.0 credits)", "Group C").
+// blkIsHeading reports whether a line without a marker is a heading: in
+// emphasis as a whole, short and ending in ":" with no lead-in word, or short
+// and in title case, naming years or with its credits: "Year 4 (0.5 credit)".
 func blkIsHeading(text string, emph bool) bool {
 	if blkStartsAmountRe.MatchString(text) {
 		return false
@@ -433,9 +381,8 @@ func blkIsHeading(text string, emph bool) bool {
 	colon := strings.HasSuffix(strings.TrimSpace(bare), ":")
 	name := blkSectionName(text)
 	out := strings.TrimSpace(blkOutsideParens(name))
-	// A code in a credit parenthetical doesn't make the line an item:
-	// "_Later years (6.5 credits/7.0 credits for students who have not
-	// completed STA130H1 (see 4.))_".
+	// a code in a credit parenthetical doesn't make the line an item: "_Later
+	// years (6.5 credits/7.0 credits for students who have not ... STA130H1)_"
 	if name == "" || codeRe.MatchString(bare) {
 		return false
 	}
@@ -453,8 +400,8 @@ func blkIsHeading(text string, emph bool) bool {
 		!blkAmountRe.MatchString(out) && (blkIsYearPhrase(name) || bare != text || blkTitleCase(out))
 }
 
-// blkWholeEmphasis reports whether a line is emphasised as a whole, apart from a
-// parenthetical and a colon after the emphasis.
+// blkWholeEmphasis reports whether a line is emphasised as a whole, apart from
+// a parenthetical and a colon after the emphasis.
 func blkWholeEmphasis(t string) bool {
 	if !strings.HasPrefix(t, "**") && !strings.HasPrefix(t, "_") {
 		return false
@@ -471,12 +418,8 @@ func blkWholeEmphasis(t string) bool {
 }
 
 // blkEmphLabelled reports whether a line in emphasis as a whole splits into a
-// label and a body: the body states a course code or an amount outside
-// brackets ("**Total credits: 7.0**"; a date isn't one), or the label is a
-// note's ("_Note 1: …_"). Otherwise the line names a section ("_Group A:
-// Ancient, Medieval_") or is a sentence with a colon in it ("**Admission to
-// the Christianity and Culture: Major Program in Religious Education has
-// …**").
+// label and a body: the body has a code or an amount outside brackets, or the
+// label is a note's. Otherwise the line names a section: "_Group A: Ancient_".
 func blkEmphLabelled(label, body string) bool {
 	out := blkOutsideParens(body)
 	return codeRe.MatchString(body) || blkAmountRe.MatchString(out) || blkDecimalRe.MatchString(out) ||
@@ -499,8 +442,7 @@ func blkSectionName(s string) string {
 }
 
 // blkStripCreditParens removes parentheticals that mention credits, nested ones
-// included: "Later years (6.5 credits/7.0 credits for students who have not
-// completed STA130H1 (see 4.))".
+// included.
 func blkStripCreditParens(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -595,13 +537,9 @@ func blkEmphOf(line string, whole bool) int {
 	return blkEmphItalic
 }
 
-// blkHeadingLevel ranks a heading by its emphasis and name; a smaller level
-// is higher. So year headings nest under the heading before them in the same
-// style (ASMAJ0135 "**Recommended Sequence of Courses:**" holds "First Year:"
-// and "Second Year:", ASSPE2737 "Core Biological Physics Courses" holds "Third
-// or Fourth Year"), and a notes heading never holds a year or a group. A year
-// in the name counts: "To be completed before the end of Second Year" is a
-// year heading.
+// blkHeadingLevel ranks a heading by its emphasis and name; smaller is higher.
+// Year headings (any name with a year) nest under the heading before them in
+// the same style, and a notes heading never holds a year or a group.
 func blkHeadingLevel(emph int, name string) int {
 	sub := blkSubHeadingRe.MatchString(name) || blkHasYearRe.MatchString(name) || blkEndsInNotesRe.MatchString(name)
 	return blkLevel(emph, sub)
@@ -609,10 +547,7 @@ func blkHeadingLevel(emph int, name string) int {
 
 // blkSetSections links each block to the heading it sits under and sets its
 // section. A heading lasts until a heading of the same or a higher level among
-// its siblings, so a heading inside an item doesn't reach past the item, and
-// headings nest: PSY "Group 1 - Psychology Courses" holds "Cluster A …" and
-// "Cluster B …". A labelled line naming a year is a plain year heading for one
-// line.
+// its siblings, so one inside an item doesn't reach past the item.
 func blkSetSections(bs []*compBlock, parent *compBlock, outer string) {
 	w := &blkSectionWalk{parent: parent, outer: outer, holds: map[*compBlock]int{}}
 	var prev *compBlock
@@ -625,9 +560,8 @@ func blkSetSections(bs []*compBlock, parent *compBlock, outer string) {
 			b.heading, _ = w.current()
 			b.section = blkYearPrefix(b.label)
 		default:
-			// A labelled list closes the notes before it, though a labelled note
-			// or bullet doesn't: ASMAJ0826 "Note:", its items, then "**Group A:**
-			// CRI300H1/ …".
+			// a labelled list closes the notes before it; a labelled note or
+			// bullet doesn't
 			if blkListLine(b) {
 				w.closeOpenNotes()
 			}
@@ -678,10 +612,7 @@ func (w *blkSectionWalk) closeTo(level int) {
 }
 
 // closeNotes closes what a notes heading at level ends: every heading but a
-// higher year heading (ASMAJ1689 "Notes:" under "_First year_ (2.5
-// credits):") or a heading over focuses that each have their notes (ASSPE2270
-// "**Disciplinary Focuses**"). Notes aren't part of a list (ASMAJ1707 "Notes:"
-// after "**Group B (Courses with African Studies Content):**").
+// higher year heading or one over focuses that each have their notes.
 func (w *blkSectionWalk) closeNotes(level int) {
 	for n := len(w.open); n > 0; n = len(w.open) {
 		if h := w.open[n-1]; h.level < level && !h.isNotes() &&
@@ -703,16 +634,11 @@ func (w *blkSectionWalk) closeOpenNotes() {
 // headings it ends.
 func (w *blkSectionWalk) openHeading(b, prev *compBlock) {
 	switch {
-	// A heading with nothing under it holds the heading after it, whatever
-	// their styles, and that heading's peers: ASMAJ1231 "_Course Groups_" then
-	// "_Medievalism:_", "_History:_"; ASSPE0509 "Recommended Course
-	// Combinations:" then "**Students interested in Mineral Exploration:**". Its
-	// own peers still close it (ASSPE1868 "First or second year:" holds
-	// "Foundational courses (5.0 credits total)" until "Upper years:").
+	// a heading with nothing under it holds the next heading, whatever their
+	// styles, and that heading's peers; its own peers still close it
 	case prev != nil && len(w.open) > 0 && w.open[len(w.open)-1] == prev && !b.isNotes() && !prev.isNotes():
 		w.holds[prev] = b.level
-	// The program's notes close every heading: ASMAJ1053 "_Applied Genetics
-	// and Biotechnology Major Notes:_".
+	// the program's notes close every heading
 	case blkProgramNotesRe.MatchString(b.section):
 		w.open = w.open[:0]
 	case b.isNotes():
@@ -725,17 +651,14 @@ func (w *blkSectionWalk) openHeading(b, prev *compBlock) {
 }
 
 // blkStartsSection reports whether a labelled line names a year: "First Year
-// (3.0 credits): …", "1st year required courses (2.0 credits): …", "First
-// year: No specific first-year requirements". It is a section of its own and
-// closes the plain year and notes headings before it, as the next lines
-// needn't belong to that year.
+// (3.0 credits): …". It is a section of its own and closes the plain year and
+// notes headings before it, as the next lines needn't belong to that year.
 func blkStartsSection(b *compBlock) bool {
 	return b.kind == blockLabelled && blkYearPrefix(b.label) != ""
 }
 
 // blkYearPrefix is the year phrase a label starts with: "1st year" in "1st
-// year required courses (2.0 credits)", "First Year" in "First Year (3.0
-// credits)".
+// year required courses (2.0 credits)".
 func blkYearPrefix(label string) string {
 	words := strings.Fields(blkOutsideParens(label))
 	for n := len(words); n > 0; n-- {
@@ -767,20 +690,9 @@ type blkItemRun struct {
 	ords    []int
 }
 
-// blkLabelItems labels items by their markers. Runs of top-level items whose
-// numbers follow on from each other across headings are one numbering
-// (ASMAJ1689: 1 under First year, 2 under Second year). A numbering that
-// starts at 1 (or a, or i) under a heading is prefixed with the heading when
-// its numbers are the heading's own:
-//   - it restarts, as an earlier numbering in the style also started at 1
-//     ("Notes 1" after the program's items 1–6);
-//   - or it is a single run under a heading that names years, as these number
-//     their own lines ("Higher Years 2"; ASMAJ1003A cites "lines 1-3 of Higher
-//     Years").
-//
-// So a program's first list under "Required Courses:" keeps its numbers. A
-// nested item is prefixed with its parent item's label ("4a", "Higher Years
-// 2.1").
+// blkLabelItems labels items by their markers; runs whose numbers follow on
+// across headings are one numbering. A numbering from 1 that restarts, or is
+// one run under a year heading, is prefixed with the heading: "Higher Years 2".
 func blkLabelItems(top []*compBlock) {
 	var runs []*blkItemRun
 	group, prevStyle, prevOrd := 0, 0, 0
@@ -809,7 +721,6 @@ func blkLabelItems(top []*compBlock) {
 		r.items = append(r.items, b)
 		r.ords = append(r.ords, ord)
 	}
-	// Chain the runs into numberings.
 	var chains [][]*blkItemRun
 	last := map[int]int{} // style -> index of its latest chain
 	for _, r := range runs {
@@ -860,10 +771,8 @@ func blkLabelChildren(p *compBlock) {
 // blkMarkerLabel is a marker without its punctuation: "(a)" is "a".
 func blkMarkerLabel(marker string) string { return strings.Trim(marker, "().") }
 
-// blkItemOrdinal gives a label's numbering style and position. Roman
-// numerals are read in either case ("ii", "III"). A single "i", "v" or "x"
-// is a letter or a numeral depending on the item before: "i" after "h" is a
-// letter, "v" after "iv" a numeral; "I", "V" and "X" likewise.
+// blkItemOrdinal gives a label's numbering style and position. A lone "i" is a
+// numeral unless it follows "h"; a lone "v" or "x" is one only after a numeral.
 func blkItemOrdinal(label string, prevStyle, prevOrd int) (style, ord int) {
 	if n, err := strconv.Atoi(label); err == nil {
 		return blkStyleNumber, n

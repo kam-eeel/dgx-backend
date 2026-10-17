@@ -7,14 +7,13 @@ import (
 	"testing"
 )
 
-// The completion assembler's rules, by topic, on snippets of real programs
-// (from the Task 6 spec review and output audit). Each want is the
-// envelope written compactly (complCompact). A case whose want keeps a list
-// as a note, or a reference to one as text, says why above it.
+// The completion assembler's rules, by topic, on snippets of real programs.
+// Each want is the envelope written compactly (complCompact). A case whose
+// want keeps a list as a note, or a reference to one as text, says why.
 //
-// To fill a want, run the cases with -update-review: each case's output and
-// its rows' raw are printed instead of checked, and the cases fail. Check
-// the output by eye before copying it: the wants are goldens.
+// To fill a want, run with -update-review: outputs are printed instead of
+// checked and the cases fail. Check them by eye before copying; wants are
+// goldens.
 //
 //	go test ./reqs -run 'TestCompletionRule|TestLinkCompletion' -update-review
 
@@ -143,10 +142,8 @@ func TestCompletionRuleLayout(t *testing.T) {
 				`1 allocation {"type":"or","items":[{"type":"text","kind":"other","text":"EITHER 2.5 credits from Group A or B"},{"type":"text","kind":"other","text":"2.0 credits if taking 1.5 credits from CAR215H1, CAR220H1"}]}`,
 			},
 			nil},
-		// The language courses' share ("Up to two language courses totaling 1.0
-		// credit in Pali (...)") stays a text alternative: a cap counted in
-		// courses over named groups of courses (Task 8 doesn't read it either,
-		// in the full program; left for Task 10).
+		// The language courses' share stays a text alternative: a cap counted in
+		// courses over named groups of courses isn't read.
 		{"a bullet after a lead with an indented list is the next note, not part of the lead (ASMAJ0151, shortened)",
 			"(6.5 credits)\n5. 2.0 credits chosen from other Department for the Study of Religion courses carrying any of the following designators: RLG, JAR, JCR, JRC, JNR, JRN, JPR, JSR\nNotes:\n- 1.0 credit of related courses offered by other academic units may be counted towards the fulfillment of the program. The list of eligible courses includes:\n  - ANT356H1, ANT386H1, ANT426H1, FAH215H1, FAH216H1\n- Up to two language courses totaling 1.0 credit in Pali ( RLG264H1, RLG265H1) or Modern Hebrew ( MHB155H1, MHB156H1) will count toward the Department for the Study of Religion courses required to complete any Major Program in Religion.",
 			[]string{
@@ -295,10 +292,8 @@ func TestCompletionRuleItemBodies(t *testing.T) {
 	})
 }
 
-// TestCompletionRuleLists checks that lines setting out lists and sub-lists
-// the items draw on are never required courses: they are an item's pool, its
-// alternatives, named lists the rows that refer to them use, or notes when
-// nothing refers to them.
+// TestCompletionRuleLists checks that list lines are never required courses:
+// they are an item's pool, its alternatives, named lists, or notes.
 func TestCompletionRuleLists(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a reference to requirements whose pool is partly text (\"offered by the Canadian Studies program\") is the list's maybe item, the closed ones plain (ASMAJ0728, shortened)",
@@ -499,9 +494,7 @@ func TestCompletionRuleLists(t *testing.T) {
 				`1 allocation {"type":"or","items":[{"type":"and","items":[{"type":"course","code":"EST100H1"},{"type":"course","code":"EST101H1"}]},{"type":"course","code":"GER100Y1"},{"type":"and","items":[{"type":"course","code":"SLA106H1"},{"type":"course","code":"SLA116H1"}]}]}`,
 			},
 			nil},
-		// The areas stay notes in this shortened snippet, which keeps two of the
-		// four areas; the full program reads "so that courses are from at least
-		// two of the four areas" as a spread across lists (Task 8).
+		// The areas stay notes: this snippet keeps only two of the four areas.
 		{"a lead with a condition over sub-lists is text, the sub-lists its notes (ASFOC1689B)",
 			"2. 2.5 credits from the following, so that courses are from at least two of the four areas:\n  a. CSC401H1, CSC485H1\n  b. CSC320H1, CSC420H1",
 			[]string{
@@ -530,9 +523,7 @@ func TestCompletionRuleLists(t *testing.T) {
 				`4 constraint p3 {"type":"credits","amount":1,"levels":[300]}`,
 			},
 			nil},
-		// The sub-groups stay notes: "At least 0.5 credit, but no more than 1.0
-		// credit from each subgroup" is a rule per unnamed list (not read in
-		// Task 8, in the full program either; left for Task 10).
+		// The sub-groups stay notes: a rule per unnamed list isn't read.
 		{"a label repeated under another heading: the sub-lists under a lead are lists, the labelled lines under a heading with an amount are required (ASSPE0509, shortened)",
 			"(14.0 credits)\n**Compulsory Foundation Geosciences (3.5 credits):**\n- Field techniques: ESS234H1\n- Mineralogy and Petrology: ESS222H1/ ESS224H1\n- Sedimentation and Stratigraphy: ESS331H1\n- Structural Geology: ESS241H1\n- Additionally: JEG100H1/ ESS262H1, ESS221H1/ ESS321H1, ESS324H1\n**Additional Foundation Geosciences (2.5 credits):**\nAt least 0.5 credit, but no more than 1.0 credit from each subgroup:\n- Geochemistry and Geophysics: ESS223H1, JGA305H1\n- Mineralogy and Petrology: ESS322H1, ESS424H1\n- Sedimentology, Glacial Geology, Geomorphology, Remote Sensing: ESS431H1, GGR201H1/ JEG201H1, GGR301H1/ JEG301H1, GGR315H1",
 			[]string{
@@ -669,9 +660,7 @@ func TestCompletionRuleLists(t *testing.T) {
 				`note: plus a disciplinary focus requiring 2.0-3.5 credits`,
 			},
 			nil},
-		// The groups stay notes in this shortened snippet, which keeps two of
-		// the eight groups; the full program reads "in at least two of the
-		// following groups" as a spread across lists (Task 8).
+		// The groups stay notes: this snippet keeps only two of the eight groups.
 		{"a line that says what a list holds, under its heading, is a list member (ASMAJ2207, shortened)",
 			"(7.0 credits including at least 2.0 credits at the 300+ level, 0.5 of which must be at the 400-level)\nHigher Years:\n3. 1.5 credits in URB or JGU courses at the 300-level or above, including at least 0.5 credit at the 400-level.\n4. 2.5 credits in at least two of the following groups, including at least 0.5 credit at the 300-level or above\nUrban Studies:\nAny URB or JGU courses not already taken to fulfill requirement 3.\nEconomics:\nECO305H1/ ECO310H1/ ECO313H1/ ECO314H1/ ECO316H1/ ECO320H1/ ECO322H1/ ECO324H1/ ECO332H1/ ECO333H1/ ECO334H1/ ECO336H1/ ECO338H1/ ECO339H1/ ECO340H1/ ECO341H1/ ECO342H1/ ECO362H1/ ECO364H1/ ECO372H1/ ECO401H1/ IRE339H1",
 			[]string{
@@ -694,9 +683,7 @@ func TestCompletionRuleLists(t *testing.T) {
 				`4 allocation p1 {"type":"credits","amount":1.5,"courses":["ANT441H1","ANT456H1","ANT474H1","CAS360H1","CIN213H1","CIN336H1","CLA319H1","CRI380H1","EAS236H1","EAS389H1","ENG273Y1","GGR456H1","HIS192H1","HIS417Y1","ITA315H1","ITA332H1","JNH350H1","JNS450H1","JPS315H1","JPS378H1","JSR312H1","JSU237H1","JSU325H1","CSE240H1","CSE241Y1","CSE344H1","NMC357H1","NMC358H1","PHL243H1","PHS300H1","POL338H1","PSY323H1","RLG235H1","RLG311H1","RLG312H1","RLG313H1","SDS199H1","SDS246H1","SDS255H1","SDS256H1","SDS279H1","SDS345H1","SDS355H1","SDS365H1","SDS375H1","SDS376H1","SDS377H1","SDS378H1","SDS380H1","SDS381H1","SDS382H1","SDS385H1","SDS425H1","SDS455H1","SDS456Y1","SDS458H1","SDS459Y1","SDS460Y1","SDS465H1","SDS470H1","SDS478H1","SDS485H1","SDS490Y1","SOC209H1","SOC309H1","SOC409H1","REN343H1","WGS160Y1","WGS275H1","WGS369H1","WGS374H1","WGS480H1","WGS481H1"]}`,
 			},
 			nil},
-		// The clusters stay notes in this shortened snippet, which keeps two of
-		// the three clusters; the full program reads "0.5 credit from each of
-		// the three Thematic Clusters" as one part per list (Task 8).
+		// The clusters stay notes: this snippet keeps only two of the three clusters.
 		{"a sub-list's name on the line above its codes is one note with them (ASMIN1240, shortened)",
 			"(4.0 credits)\n2. Thematic Clusters (1.5 credits): 0.5 credit from each of the three Thematic Clusters. May substitute a 0.5 credit in this requirement from the list of Capstone courses (all 400-level SDS and JNS courses).\n- Politics & Policy\n  JSU237H1, SDS345H1, SDS365H1, JPS378H1, SDS378H1, JPS315H1, SDS425H1\n- Formations & Practices\n  JSR312H1, SDS377H1, SDS380H1, SDS381H1, SDS382H1, SDS385H1, JNS450H1, SDS465H1",
 			[]string{
@@ -709,9 +696,8 @@ func TestCompletionRuleLists(t *testing.T) {
 	})
 }
 
-// TestCompletionRuleRoutes checks approval routes and alternatives: on the
-// item they are written in, or, for the program's, on the rows they name,
-// replace or describe (placeProgramRoutes), else a note.
+// TestCompletionRuleRoutes checks approval routes and alternatives: on their
+// item, on the rows a program route names, or else a note.
 func TestCompletionRuleRoutes(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a list or, with permission, a wider list is a bounded alternative (ASMAJ1469)",
@@ -926,10 +912,9 @@ func TestCompletionRuleRoutes(t *testing.T) {
 				`6 allocation p1 {"type":"or","items":[{"type":"text","kind":"other","text":"An additional 2.5 credits from Requirements 1, 3, 4, 5, or 6, with up to 1.0 credit from ENG215H1, ENG252H1, ENG254H1, FAH248H1, FOR200H1, FRE210H1, GGR240H1, GGR246H1, HIS262H1, HIS264H1, INS231H1, LIN201H1, POL214Y1, SLA238H1, SOC218H1, SOC220H1, TRN235H1"},{"type":"text","kind":"permission","text":"Additional courses with significant Canadian content may be considered for approval for Requirement 7 by the Program Director (canadian.studies@utoronto.ca)"}]}`,
 			},
 			nil},
-		// "either from courses not already taken to fulfill Requirement 2, or
-		// from any of the following:" is a union of the requirement's pool
-		// (what row 3 claims it can't take: the claims rule) and the
-		// sub-lists' courses (Task 8).
+		// "either from courses not already taken to fulfill Requirement 2, or from
+		// any of the following:" is a union of the requirement's pool and the
+		// sub-lists' courses.
 		{"a route about what the list above leaves out goes on the item that lists courses (ASCER0828, shortened)",
 			"(2.5 credits)\n1. HIS265Y1\n2. 0.5 credit from CAR429H1/ CDN335H1/ CDN440H1/ CSE347H1/ ENG356Y1/ ENG358H1/ ENG359H1/ WGS390H1\n3. 1.0 additional credit, either from courses not already taken to fulfill Requirement 2, or from any of the following:\n- Anthropology: ANT464H1\n- African Studies: AFR150Y1/ AFR250Y1/ AFR351Y1/ AFR353H1\n- Art History: FAH251H1/ FAH451H1\n_Notes:_\n- An elective course (maximum of 1.0 credit) dealing with some aspect of Black Canadian Studies not captured in the above list may be accepted with approval of the Canadian Studies Program Director at University College at canadian.studies@utoronto.ca.",
 			[]string{
@@ -940,9 +925,8 @@ func TestCompletionRuleRoutes(t *testing.T) {
 				`list: Requirement 3 courses: [{"type":"credits","requirements":[3]},{"type":"credits","courses":["ANT464H1","AFR150Y1","AFR250Y1","AFR351Y1","AFR353H1","FAH251H1","FAH451H1"]}]`,
 			},
 			nil},
-		// "Additional courses ... from Groups A and C for a total of 8.0
-		// credits" is the total's own pool, no row of its own (Task 8), and the
-		// route naming only Group C is the pool's.
+		// "Additional courses ... from Groups A and C for a total of 8.0 credits" is
+		// the total's own pool, and the route naming only Group C is the pool's.
 		{"\"Groups A and C\" is the total's pool, with the route about Group C; items drawing on Groups A and B use the lists (ASMAJ0826, shortened)",
 			"Students must complete a total of 8.0 credits including a minimum of 2.0 credits from 300+level CRI courses, of these 0.5 CRI credit must be at the 400-level.\n3. At least 2.0 credits at the 300+ level from Group A, at least 0.5 credit must be at the 400-level\n4. At least 0.5 credit from Group B\n5. Additional courses (excluding those already counted) from Groups A and C for a total of 8.0 credits\n**Group A:** CRI300H1/ CRI322H1/ CRI335H1/ CRI340H1/ CRI343H1/ CRI345H1/ CRI364H1/ CRI365H1/ CRI370H1/ CRI372H1/ CRI380H1/ CRI383H1/ CRI385H1/ CRI386H1/ CRI387H1/ CRI390H1/ CRI391H1/ CRI392H1/ CRI393H1/ CRI394H1/ CRI395H1/ CRI396H1/ CRI420H1/ CRI422H1/ CRI423H1/ CRI425H1/ CRI427H1/ CRI428H1/ CRI429H1/ CRI431H1/ CRI435H1/ CRI480H1/ CRI482H1/ CRI483H1/ CRI485H1/ CRI487H1/ CRI490H1/ CRI491H1/ CRI492H1/ CRI493H1/ CRI494H1/ CRI498H1\n**Group B:** PSY201H1/ PSY202H1/ SOC202H1/ CRI350H1/ POL222H1\n**Group C:** HIS375H1/ HIS411H1/ PHL271H1/ PHL370H1/ PSY220H1/ PSY240H1/ PSY328H1/ SOC205H1/ SOC212H1/ SOC313H1/ SOC315H1/ SOC413H1/ TRN412H1/ CRI389Y0\n**Important Notes:**\n2. Students who have completed criminology/sociolegal type courses in the Faculty of Arts and Science (not included in Group C) may email the Program Coordinator to find out if theses courses can be used towards the Group C requirements.",
 			[]string{
@@ -957,9 +941,8 @@ func TestCompletionRuleRoutes(t *testing.T) {
 				`list: Group C: [{"type":"credits","courses":["HIS375H1","HIS411H1","PHL271H1","PHL370H1","PSY220H1","PSY240H1","PSY328H1","SOC205H1","SOC212H1","SOC313H1","SOC315H1","SOC413H1","TRN412H1","CRI389Y0"]}]`,
 			},
 			nil},
-		// "in one language area chosen from the list below" is the or of the
-		// areas' pools; the culture item's correspondence to the chosen area is
-		// text (Task 8).
+		// "in one language area chosen from the list below" is the or of the areas'
+		// pools; the culture item's correspondence to the area stays text.
 		{"a substitution's source (\"with ... credits in requirement 3\") is not the row it goes on (ASMAJ1205, shortened)",
 			"(6.5 credits, with at least 2.0 credits at the 300+ level, including 0.5 credit at the 400-level)\n1. 1.0 credit of Common Core: SLA200H1, SLA201H1, SLA231H1, SLA232H1, and SLA256H1\n2. 2.0 credits of language coursework in one language area chosen from the list below:\n_Czech and Slovak:_ SLA105Y1, SLA204Y1, SLA214H1\n_Estonian:_ EST100H1, EST101H1, EST200H1, EST201H1, EST300H1, EST301H1\nNote: In consultation with the Undergraduate Coordinator, and based on results in language placement tests, some students may substitute language courses with the equivalent number of credits in requirement 3 (below).\n3. 2.0 credits from culture courses corresponding to the student’s chosen language area:\n_Czech and Slovak:_ SLA200H1, SLA215H1, SLA225H1, SLA254H1/ JSM354H1, SLA333H1, SLA335H1, SLA405H1\n_Estonian:_ EST205H1, EST206H1, EST207H1, EST208H1; FIN225H1, FIN240H1, FIN260H1, FIN310H1; HIS331H1; SLA200H1, SLA254H1/ JSM354H1",
 			[]string{
@@ -981,8 +964,8 @@ func TestCompletionRuleRoutes(t *testing.T) {
 				`list: Requirement 2 courses: [{"type":"credits","courses":["AFR460H1","ANT364H1","ENV333H1","ENV362H1","ENV464H1","PHL273H1","TRN312H1","ENV350H1","ENV441H1","GGR332H1","GGR349H1","HIS300H1","JHU473H1","POL384H1","POL413H1","TRN350H1","ECO314H1","ECO414H1","ENV237H1","ENV238H1","ENV335H1","ENV462H1","FOR302H1","FOR303H1","FOR310H1","FOR410H1","PHY392H1","PHY492H1","RSM436H1","RSM466H1"]},{"type":"credits","courses":["ENV465Y1"],"weight":0.5}]`,
 			},
 			nil},
-		// The clusters are lists: "chosen from at least two of the four clusters
-		// below" is a spread across them (Task 8).
+		// "chosen from at least two of the four clusters below" is a spread across
+		// the clusters.
 		{"\"not listed in the above clusters\" is about the item above the sentence, not the one after it (ASCER1500)",
 			"(2.5 credits)\n_Foundations Course (0.5 credit):_\n- ENV222H1\n_Elective Courses (1.5 credits):_\n1.5 credits, chosen from at least two of the four clusters below:\n- Cluster 1 - Environment/ Ecology/ Climate: ENV221H1, ENV200H1, ESS205H1, EEB208H1, INS250H1, HIS218H1, INS240Y1, INS241H1, INS242H1, ENV322H1, GGR314H1\n- Cluster 2 - Equity/ Ethics/ Culture: CRE271H1, WGS273H1, PHL273H1, ANT204H1, HPS200H1, CSE240H1, JIG322H1, ENV333H1, FOR302H1, TRN312H1, PHL373H1, ANT366H1\n- Cluster 3 - Economics/ Development/Resources: CAS202H1, GGR223H1, ENV360H1, POL205H1, GGR334H1, FOR303H1, JGE331H1, POL384H1, ENV307H1, TRN350H1, ECO313H1, ENV341H1\n- Cluster 4 - Food/ Health/ Wellbeing: ENV463H1, BIO220H1, NFS284H1, CSB202H1, MCS326H1, GGR329H1, INS355H1, WGS367H1, ENV341H1, CSE342H1\nNote: One 0.5 credit course at the 300- or 400-level not listed in the above clusters may count towards the elective requirement through a nomination process. Students must submit a nomination package to the Undergraduate Associate Director of the School of the Environment including: (1) the relevant cluster; (2) the course code and description; (3) the course syllabus (for completed courses); (4) a brief rationale (500 words max) addressing why this course belongs to the relevant cluster, how it addresses multiple dimensions of sustainability (environmental, social, political, ethical, cultural, or economic), and how it satisfies a gap in the student's Certificate learning objectives. Nominations for completed courses must be made at least one semester before graduation. A nomination for a course the student has not yet taken must be submitted at least one semester in advance.\n_Capstone Course (0.5 credit):_\n- 0.5 credit from: ENV411H1, ENV421Y1, ENV461H1, ENV463H1, ENV465Y1",
 			[]string{
@@ -1001,9 +984,7 @@ func TestCompletionRuleRoutes(t *testing.T) {
 				`note: A nomination for a course the student has not yet taken must be submitted at least one semester in advance`,
 			},
 			nil},
-		// The categories stay notes: "with no more than 1.0 credit from the same
-		// category" is a cap per unnamed list (not read in Task 8, in the full
-		// program either; left for Task 10).
+		// The categories stay notes: a cap per unnamed list isn't read.
 		{"advanced courses split between two sections are the sections' alternative (ASSPE0509, shortened)",
 			"(14.0 credits)\n**Compulsory Foundation Sciences (1.5 credits):**\nCHM135H1, MAT130H1/ MAT135H1, PHY131H1\n**Additional Foundation Sciences (3.0 credits):**\nAny 3.0 credits from the following, with no more than 1.0 credit from the same category:\n- Biology: BIO120H1, BIO130H1\n- Chemistry: CHM136H1, CHM220H1, CHM222H1\nNotes:\n1. Advanced courses, like CHM151Y1, PHY151H1, ( MAT148H1, MAT149H1/ MAT137Y1) or ( MAT158H1, MAT159H1/ MAT157Y1), can be used as credits for both foundation sciences sections, meaning, half of the credit will count for Compulsory Foundation Sciences, and the other half will count for Additional Foundation Sciences.",
 			[]string{
@@ -1085,9 +1066,8 @@ func TestCompletionRuleFloorsAndCaps(t *testing.T) {
 				`5 constraint p4 {"type":"credits","amount":0.5,"levels":[400]}`,
 			},
 			nil},
-		// A limit naming rows by `requirements` applies to what those rows
-		// claim together (Task 8); under the total alone it would cap the
-		// program.
+		// A limit naming rows by `requirements` caps what those rows claim together;
+		// under the total alone it would cap the program.
 		{"a cap on two numbered requirements together is a limit naming them (ASSPE1003, shortened)",
 			"(12.5 credits, including at least 1.0 credit at the 400-level)\nHigher Years:\n5. 1.0 credit from: BCH422H1, BCH426H1, BCH444H1, BCH445H1, CSB427H1, CSB428H1, CSB429H1, CSB430H1, CSB431H1, CSB435H1, CSB450H1, CSB451H1, CSB452H1, CSB454H1, CSB457H1, CSB458H1, CSB459H1, CSB460H1, CSB471H1, CSB472H1, CSB473H1, CSB474H1, CSB475H1, CSB483H1\n6. 2.5 credits from: BCH422H1, BCH426H1, BCH440H1, BCH444H1, BCH445H1, CJH332H1, CSB299Y1, CSB327H1, CSB328H1, CSB329H1, CSB330H1, CSB331H1, CSB340H1, CSB350H1, CSB351Y1, CSB352H1, CSB353H1, CSB360H1, CSB397Y0, CSB399Y1, CSB427H1, CSB428H1, CSB429H1, CSB430H1, CSB431H1, CSB435H1, CSB447H1, CSB450H1, CSB451H1, CSB452H1, CSB453H1, CSB454H1, CSB457H1, CSB458H1, CSB459H1, CSB460H1, CSB471H1, CSB472H1, CSB473H1, CSB474H1, CSB475H1, CSB483H1, CSB490H1, CSB491H1, CSB492H1, CSB497H1, CSB498Y1, CSB499Y1, HMB496Y1/ HMB499Y1, MGY441H1, MGY480Y1.\nNOTE: No more than 0.5 credit in BCH can be used towards requirements 5. and 6.",
 			[]string{
@@ -1165,8 +1145,7 @@ func TestCompletionRuleFloorsAndCaps(t *testing.T) {
 }
 
 // TestCompletionRuleTotals checks the header total, its pool and sub-totals,
-// and the Review markers on counts the rows can't be seen to make up
-// (markIncomplete).
+// and the Review markers on counts the rows can't be seen to make up.
 func TestCompletionRuleTotals(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a special-topics course named twice with its topics is a maybe, which leaves the total unmarked (ASFOC1469A)",
@@ -1224,8 +1203,8 @@ func TestCompletionRuleTotals(t *testing.T) {
 				"note: including PHL100Y1/ PHL101Y1 if taken",
 			},
 			nil},
-		// The Equivalent Courses list joins the total's pool through the widening
-		// (namedListCodes); its line stays a note.
+		// The Equivalent Courses list joins the total's pool through the widening;
+		// its line stays a note.
 		{"\"Additional ... or Equivalent courses (listed below) to a total of N\": the list joins the pool, capped (ASSPE0652, shortened)",
 			"A total of 10.0 credits of which no more than 1.0 credit can be at the 100-level and of which at least 5.0 credits must be at the 300+ level, including 1.5 credits at the 400-level. Some courses may contribute to both the Geographic Distribution and Temporal requirements (requirements 1 and 2).\n**4.** Additional HIS, JIH, JHA, JHM, JHN, JMH, JSH or Equivalent courses (listed below) to a total of 10.0 credits. No more than 1.0 credit from the Equivalent courses can contribute to program completion.\n**Equivalent Courses**\nAFR290H1, AFR370H1, CDN230H1, CDN280H1, CDN340H1, CDN390H1, CLT337H1, CLT341H1, CLT348H1, CLT377H1, CLT378H1, CLT413H1, CLT416H1, CLT444H1, EAS245H1, EAS246H1, EAS247H1, EAS271H1, EAS285H1, EAS348H1, EAS364H1, EAS372H1, EAS374H1, EAS459Y1, EAS473H1, EAS475Y1, EUR200Y1, INS200H1, INS201Y1, INS201H1, INS202H1, INS300Y1, INS305H1, INS306H1, INS352H1, JPI201H1, NMC275H1, NMC278H1, NMC355H1, NMC372H1, NMC373H1, NMC376H1, NMC378H1, NMC386H1, NMC475H1, NMC477H1, NMC479H1, REN240Y1, REN348Y0, REN441H1, TRN250Y1, WGS481H1",
 			[]string{

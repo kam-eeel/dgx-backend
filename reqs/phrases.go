@@ -9,16 +9,15 @@ import (
 	"degree-explorer/types"
 )
 
-// A phrase matcher looks at the start of s. If it recognizes its phrase it
-// returns a token whose end is the number of bytes consumed (start is 0; the
-// lexer shifts both to absolute positions).
+// phraseMatcher matches its phrase at the start of s and returns a token whose
+// end is the bytes consumed (start is 0; the lexer shifts both).
 type phraseMatcher func(s string) (token, bool)
 
 var (
 	courseRe = regexp.MustCompile(`^` + codePat)
 
-	// "75% or higher in", "minimum of 77% in", "Minimum 70% in required courses:".
-	// The last group marks a list the grade applies to as a whole.
+	// gradePrefixRe matches a grade before courses: "minimum of 77% in". The last
+	// group marks a list the grade applies to as a whole.
 	gradePrefixRe = regexp.MustCompile(`^(?i:(?:a\s+)?(?:(?:minimum|final)\s+)*(?:(?:grade|mark)\s+)?(?:of\s+)?(?:at\s+least\s+)?)?(\d{2})%\s+(?i:(?:or\s+(?:higher|above|better|greater)|is\s+required)\s+)?(?i:in)\b(\s+(?i:each\s+of|all\s+of|required\s+courses\s*:))?`)
 
 	condRe      = regexp.MustCompile(`^(?:For\s+[^:;.()]{1,60}|[A-Z][A-Za-z]+\s+students|[A-Z][a-z]+\s+[A-Z][a-z]+):`)
@@ -27,16 +26,14 @@ var (
 	// condCommaRe is a label that ends in a comma: "For FASE students, A, B".
 	condCommaRe = regexp.MustCompile(`^For\s+[^:;.(),]{0,60}?\bstudents,`)
 
-	// Count pools: "one of", "two of", "Any of", "1 course from", "a course in
-	// statistics from", "Two HIS courses from the following:".
+	// poolCountRe matches a count pool: "two of".
 	poolCountRe = regexp.MustCompile(`^(?i:(?:completion\s+of\s+)?(?:at\s+least\s+)?)` +
 		`(?i:(a|an|one|any|two|three|four|[1-4]))\s+(?:[A-Z]{3}\s+)?(?i:courses?\s+)?(?i:in\s+[a-z]+\s+)?(?i:of|from)\b` +
 		`(?i:\s+either)?(?i:\s+the\s+following(?:\s+(?:courses|combinations|options))?)?(?i:\s+is\s+required)?(?:\s*:)?`)
-	// "of which at least one course needs to be A/ B/ C"
+	// poolOfWhichCountRe matches a count after a pool: "of which at least one
+	// course needs to be".
 	poolOfWhichCountRe = regexp.MustCompile(`^(?i:of\s+which\s+at\s+least\s+)(?i:(one|two|three|four|[1-4]))\s+(?i:(?:courses?\s+)?(?:needs?\s+to\s+be|must\s+be|is|are|from|of))\b(?:\s*:)?`)
-	// Credit pools: "1.0 credit from: A, B", "at least 1.0 credit from:", "0.5 from A/ B",
-	// "0.5 additional credit from A", "0.5 credits in A/ B",
-	// "1.0 credit from 300-level French literature courses: A, B".
+	// poolFromRe matches a credit pool: "1.0 credit from:".
 	poolFromRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:additional\s+)?(?:[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s+)?` +
 		`(?i:(?:credits?|courses?)\s+)?(?i:from|among|in)\b(?:(?:\s+(?:[A-Za-z][A-Za-z-]*|\d00(?:-level|\+)?))*\s*:|(?i:\s+the\s+following))?`)
 	poolOfWhichRe = regexp.MustCompile(`^(?i:of\s+which\s+(?:at\s+least\s+)?)(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?(?:(?:must|should)\s+be\s+)?(?:in|from))(?:\s*:)?`)
@@ -45,20 +42,18 @@ var (
 	breadthRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?of\s+which\s+(?:should|must)\s+be\s+in\s+(?:the\s+)?)(?:[A-Z]{3}\s*/\s*)?BR\s*=\s*([1-5](?:\s*/\s*[1-5])*)`)
 
 	scopePat = `(?:[A-Z]{2,}|[A-Z][a-z]+)(?:\s+(?:and\s+)?(?:[A-Z]{2,}|[A-Z][a-z]+|program|courses?|credits?))*`
-	// "Minimum GPA of 3.5 in ...", "Cumulative GPA of at least 2.70", "with a
-	// CGPA of at least 2.5", "a minimum cGPA of 3.0 in all CHM credits".
+	// gpaRe matches a GPA requirement: "Cumulative GPA of at least 2.70".
 	gpaRe = regexp.MustCompile(`^(?i:(?:with\s+)?(?:an?\s+)?(?:(?:minimum|cumulative|overall)\s+(?:of\s+)?)*)?(?i:c?gpa)\s+(?i:of\s+)?(?i:at\s+least\s+)?` +
 		`(\d\.\d+|[A-D][+-]?)(?:\s+(?i:or\s+(?:higher|above|better)))?(?:\s+(?i:required))?(?:\s+(?i:in|for)\s+(?i:all\s+)?(` + scopePat + `))?`)
-	// "3.0 GPA in Political Science courses", "3.0 CGPA required".
+	// gpaNumFirstRe matches a GPA written number first: "3.0 CGPA required".
 	gpaNumFirstRe = regexp.MustCompile(`^(\d\.\d+)\s+(?i:c?gpa)(?:\s+(?i:required))?(?:\s+(?i:in|for)\s+(?i:all\s+)?(` + scopePat + `))?`)
 
 	yearNumRe = regexp.MustCompile(`^(?i:(?:in\s+|enrolled\s+as\s+a\s+)?year\s+([1-4])(?:\s+(?:students?|standing|or\s+higher|or\s+above))*)\b`)
 	yearOrdRe = regexp.MustCompile(`^(?i:(first|second|third|fourth|1st|2nd|3rd|4th)(?:\s*(?:and|or|/|,)\s*(?:first|second|third|fourth|1st|2nd|3rd|4th))*[- ]year\s+(?:students?|standing|status)(?:\s+only)?)\b`)
 	ordinalRe = regexp.MustCompile(`(?i)first|second|third|fourth|1st|2nd|3rd|4th`)
 
-	// Prefixes may repeat: "Completion of at least 4.0 credits". A prefix may
-	// also name designators or a level: "Any CSC 0.5 credit", "a 300+ level
-	// 0.5 credit" (see headPrefixRe).
+	// creditHeadRe matches a credit phrase's head, whose prefixes may repeat or name
+	// designators or a level: "Any CSC 0.5 credit".
 	creditHeadRe = regexp.MustCompile(
 		`^(?:(?i:(?:completion(?:\s+of)?|(?:(?:students\s+)?(?:who\s+|must\s+)?ha(?:ve|s)\s+)?(?:completed|taken)|(?:at\s+)?least|(?:a\s+)?(?:combined\s+)?minimum(?:\s+of)?|any|an\s+additional|additional|another|other|one|a\s+further|a\s+total\s+of)\s+)|` +
 			`(?i:any\s+)[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s+|(?i:an?\s+)\d00\+?(?:\s*-?\s*(?i:level))?\s+)*` +
@@ -70,31 +65,29 @@ var (
 
 	headPrefixDesigRe = regexp.MustCompile(`(?i:any)\s+([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\b`)
 
-	// Words naming a kind of course between a credit phrase's qualifiers and
-	// "course": "ITA literature course", "300+ FRE Linguistics/Literature/Second
-	// Language Learning course", "300/ 400-level lecture course".
+	// topicRe matches words naming a kind of course before "course": the
+	// " literature course" of "ITA literature course".
 	topicRe     = regexp.MustCompile(`^\s+([A-Za-z]+(?:(?:\s*/\s*|\s+)[A-Za-z]+){0,4})\s+(?i:courses?)\b`)
 	topicWordRe = regexp.MustCompile(`[A-Za-z]+`)
 	topicStopRe = regexp.MustCompile(`^(?i:and|or|in|at|of|from|the|with|any|to|for|by|other|additional|credits?|courses?|levels?|including|plus|which|must|should|be|is|are|not|but|each|all|this|these|that|than|more|higher|above|their|program|programs)$|^an?$`) // "Group A" is a name
-	// "in Physics (PHY/ JPE)": designators spelling out a subject name.
+	// subjectParenRe matches designators spelling out a subject: " (PHY/ JPE)".
 	subjectParenRe = regexp.MustCompile(`^\s*\(\s*([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\s*\)`)
 
 	anyCourseHeadRe = regexp.MustCompile(`^(?i:(?:(?:a\s+)?minimum\s+of\s+|at\s+least\s+)?(?:a|an|any|one))\s+`)
-	// "a full course in PHL/CSC/MAT", "a half-course equivalent in ...".
+	// fullCourseRe matches "full course" or "half-course equivalent".
 	fullCourseRe = regexp.MustCompile(`^(?i:(full|half)[- ]course(?:\s+equivalent)?)\b`)
 	levelLedRe   = regexp.MustCompile(`^\d00`)
 	courseWordRe = regexp.MustCompile(`(?i)\bcourses?\b`)
 
-	// A connector (, / or and ", or" ", and" ", /" from "and/or") is only allowed when immediately
-	// followed by a designator or level — this is what stops the span from
-	// eating "2.0 ENG credits and any 4.0 credits".
+	// qualSpanRe matches a run of qualifiers. A connector must be followed by a
+	// designator or level, so "2.0 ENG credits and any 4.0 credits" isn't one span.
 	qualSpanRe = regexp.MustCompile(
 		`^(?:\s*(?:(?i:in|at|the|from|of|any|additional)\b|(?i:-?\s*levels?)\b|(?i:courses?)\b|(?i:or\s+(?:higher|above))\b|` +
 			qualItemPat + `|\d00\s*\+?|-|` +
 			`(?:,\s*(?:(?i:or|and)|/)?|/|(?i:or)|(?i:and))\s*(?:` + qualItemPat + `|\d00)))*`)
 
-	// Subject names and year words that may stand in for designators and
-	// levels: "first-year math, or physics courses", "HIS/REL/Peace and Conflict".
+	// Subject names and year words may stand in for designators and levels:
+	// "first-year math, or physics courses".
 	subjectPat     = `(?i:mathematics|math|physics|chemistry|biology|philosophy|economics|history|psychology|sociology|anthropology|astronomy|geography|linguistics|computer\s+science|political\s+science|peace\s+and\s+conflict|study\s+of\s+religion|religion|canadian\s+studies|jewish\s+studies)\b`
 	yearWordPat    = `(?i:first|second|third|fourth)-year\b`
 	qualItemPat    = `(?:[A-Z]{3}\b|` + subjectPat + `|` + yearWordPat + `)`
@@ -103,8 +96,8 @@ var (
 	desigSubjectRe = regexp.MustCompile(`\b[A-Z]{3}\s+(` + subjectPat + `)\s*$`)
 	yearWordRe     = regexp.MustCompile(`(?i)(first|second|third|fourth)-year`)
 
-	// Qualifier words with nothing after them belong to whatever follows:
-	// "any 300-level course in Society" must leave "in Society" as text.
+	// trailingQualRe matches qualifier words ending a span, which belong to what
+	// follows: the " in" of "any 300-level course in Society".
 	trailingQualRe = regexp.MustCompile(`(?i)(?:\s*-|\s+(?:in|at|the|from|of|any))+\s*$`)
 
 	excludingRe  = regexp.MustCompile(`^\s*\(\s*(?i:excluding|except)\s+([^)]*)\)|^\s*,?\s*(?i:excluding|except)\s+(` + codePat + `(?:\s*(?:,|/|and|or)\s*` + codePat + `)*)`)
@@ -141,9 +134,8 @@ var letterGPA = map[string]float64{
 	"C+": 2.3, "C": 2.0, "C-": 1.7, "D+": 1.3, "D": 1.0, "D-": 0.7,
 }
 
-// phraseMatchers in the order the lexer tries them (design §4.3). Order
-// matters: earlier phrases protect "or"/"and" words from the operator
-// matchers, and pools must be tried before plain credit phrases.
+// phraseMatchers in the order the lexer tries them. Earlier phrases protect
+// "or"/"and" words from the operators; pools come before plain credit phrases.
 var phraseMatchers = []phraseMatcher{
 	matchCond,
 	matchProgram,
@@ -161,9 +153,8 @@ var phraseMatchers = []phraseMatcher{
 }
 
 // matchCourse reads a course code and a grade qualifier right after it:
-// "STA247H1(70%)", "EAS110Y1 (63% minimum)", "HIS250Y1 (B or higher)",
-// "MAT136H1 with a minimum mark of 77". A qualifier that ends in "in each"
-// covers more than this course, so it is left for the parser.
+// "STA247H1(70%)". A qualifier ending in "in each" covers more than this
+// course, so it is left for the parser.
 func matchCourse(s string) (token, bool) {
 	code := courseRe.FindString(s)
 	if code == "" {
@@ -350,11 +341,9 @@ func matchCredits(s string) (token, bool) {
 	return tok, true
 }
 
-// matchAnyCourse handles "A 300-level CDN course", "Any AST 100-level or AST
-// 200-level course": half a credit matching the designators and levels.
-//
-// "a full course in PHL/CSC/MAT" is 1.0 credit, and "200-level History
-// course" (no article) is half a credit when it starts with a level.
+// matchAnyCourse reads "Any AST 100-level or AST 200-level course": half a
+// credit matching the designators and levels. "a full course in PHL" is 1.0,
+// and without an article only a level-first "200-level History course" counts.
 func matchAnyCourse(s string) (token, bool) {
 	start := 0
 	if loc := anyCourseHeadRe.FindStringIndex(s); loc != nil {
@@ -412,13 +401,9 @@ func matchAnyCourse(s string) (token, bool) {
 	return tok, true
 }
 
-// courseTopic reads the words naming a kind of course after the qualifiers
-// of credit phrase n ("literature course", "Linguistics/Literature/Second
-// Language Learning course", "lecture course") and any qualifiers after
-// "course" ("at the 300-level", "in Physics"), which it adds to n. The topic
-// narrows which courses count in a way the designators can't express, so it
-// is returned as a text node that goes alongside n. It returns nil if s
-// doesn't start with a topic.
+// courseTopic reads the words naming a kind of course after credit phrase n's
+// qualifiers ("literature course") and any qualifiers after it, which it adds
+// to n. The topic is returned as a text node beside n, or nil if there is none.
 func courseTopic(s string, n *types.ReqNode) (*types.ReqNode, int) {
 	m := topicRe.FindStringSubmatchIndex(s)
 	if m == nil {

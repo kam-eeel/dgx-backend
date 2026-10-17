@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleUnits checks the node-language additions of Task 10
-// (completion_units.go: exclude_designators, max_course_amount, pair items,
-// a lead's filter joined with its members) on real snippets.
+// TestCompletionRuleUnits checks exclude_designators, max_course_amount, pair
+// items and a lead's filter joined with its members.
 func TestCompletionRuleUnits(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"\"8.0 credits in RSM and 8.0 credits in non-RSM courses\"; a constraint over the transcript (16.0 credits, more than the program's 15.0), so no marker; the note on MGT100H1 joins the row (ASSPE2038, shortened)",

@@ -10,13 +10,8 @@ import (
 )
 
 // TestLinkCompletionDesignators checks that Link keeps in completion filters
-// only designators the catalogue has or the program names in a code, on
-// real snippets and a catalogue of one course per designator it has: JAR
-// (no course has it) is dropped with a note, from the designators a pool
-// excludes too; a cap on "CSC/ECE courses"
-// keeps CSC; PCJ stays beside PCJ200H1 though the catalogue has no PCJ
-// course; a pool left with no designator is text, and the floor on it gets
-// its Review marker again.
+// only designators the catalogue has or the program names in a code: JAR is
+// dropped with a note, and a pool left with no designator is text.
 func TestLinkCompletionDesignators(t *testing.T) {
 	tests := []struct{ code, raw string }{
 		{"ASMAJ0151", "5. 2.0 credits chosen from other Department for the Study of Religion courses carrying any of the following designators: RLG, JAR, JCR, JRC, JNR, JRN, JPR, JSR"},
@@ -121,42 +116,8 @@ func linkCompact(c *types.Completion) []string {
 }
 
 // TestLinkCompletion checks the completion steps of Link on real snippets
-// (shortened) and a catalogue of the courses they need:
-//   - ASMAJ1124: HIS389H1 "Topics in History" listed with one topic is a
-//     maybe; ASMAJ0110: EEB365H1's bracket restates its title and it stays;
-//   - ASMAJ2015: "other POL Special Topics courses" are the POL courses the
-//     catalogue titles "Topics in …", bounded by the department's say; with
-//     no open text left the total and its floors lose their markers. The
-//     parser's bound by designator (boundRoutes) narrows to them;
-//     ASSPE9038 (ASSPE2038's row): "any 400-level ... RSM special topics
-//     course" narrows to RSM's 400-level topics courses; ASFOC9431
-//     (ASFOC2431A's): "RSM special topics and RSM Summer Abroad courses"
-//     keeps the designator bound, as the catalogue doesn't mark summer
-//     abroad courses;
-//   - ASCER2400: "(or their equivalents)" adds MGT100H1's exclusions and
-//     joins the rows' raw; the BCOM students' "RSM course equivalents",
-//     now encoded, is neither an alternative nor a note (the rows' raw);
-//     ASMAJ1160: "equivalent/exclusion statistics courses from UTM/UTSC in
-//     lieu of PSY201H1" are PSY201H1's UTM and UTSC exclusions, confirmed;
-//     the full-year ones count 0.5, and so does ECO220Y1, the St. George
-//     exclusion listed beside it (halfSubstitutes);
-//   - ASMAJ2082 and ASMAJ2573: "not allowed to enroll concurrently in A and
-//     B" excludes the other of the two, never the program itself, and is a
-//     note in a program that is neither; "a Specialist Program in
-//     Toxicology" is the two of the Pharmacology area, and may also be the
-//     Environment & Toxicology Specialist (enrolment's ambiguous item);
-//   - ASMAJ1053: "any other Human Biology Program managed major program" is
-//     the area's other majors; ASSPE2431: "only one Rotman Commerce
-//     Specialist", the area's other specialists; ASMIN1478: "other Economics
-//     program" surely means the Economics area's programs, and may also mean
-//     the Finance and Economics Specialist (Rotman Commerce): or(not(program),
-//     text{ambiguity});
-//     ASMIN2453: "German Studies Specialist of Major Program" misprints "or";
-//   - ASMAJ1100: "any 3rd or 4th year elective listed above or under the
-//     Forest Conservation Specialist" adds the Specialist's elective pool;
-//   - ASMIN1626: "2.0 credits in eligible elective courses listed in the
-//     European Affairs Major" copies the Major's list and its approval route
-//     (linkProgramList).
+// (shortened) and a catalogue of the courses they need: topics courses,
+// equivalents, program references and lists copied from other programs.
 func TestLinkCompletion(t *testing.T) {
 	type prog struct{ code, typ, title, area, raw string }
 	progs := []prog{
@@ -342,15 +303,9 @@ func TestLinkCompletion(t *testing.T) {
 	}
 }
 
-// TestLinkInheritance is the golden test of inheritance (design 3.4): the
-// Molecular Networks focus (ASMAJ1003A) "begins with the requirements of
-// First Year and of lines 1-3 of Higher Years of the Cell and Molecular
-// Biology Major Program", so its rows start with copies of the Major's
-// First Year rows and Higher Years 1-3, top-level (the focus has no total),
-// with their labels and sections, and the sentence joins their raw; its own
-// rows 4-7 follow, renumbered. The copies share nothing with the Major's
-// rows. A focus that names a program the calendar doesn't have keeps the
-// sentence as text.
+// TestLinkInheritance is the golden test of inheritance: the Molecular Networks
+// focus (ASMAJ1003A) starts with copies of the Major's First Year and Higher
+// Years 1-3 rows, then its own, renumbered; an unknown program stays text.
 func TestLinkInheritance(t *testing.T) {
 	major := &types.Program{Code: "ASMAJ1003", Type: "Major", Title: "Cell & Molecular Biology Major (Science Program)",
 		Completion: ParseCompletion("(8.0 credits)\nFirst Year:\n1. BIO120H1, BIO130H1; ( CHM135H1, CHM136H1)/ CHM151Y1\n2. 1.0 credit from JMB170Y1/ MAT130H1/ MAT135H1/ MAT136H1/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1)/ MAT157Y1/ PHY131H1/ PHY132H1/ PHY151H1/ PHY152H1\nHigher Years:\n1. BIO220H1, BIO230H1/ BIO255H1\n2. BIO260H1/ HMB265H1; BCH210H1\n3. CSB349H1\n4. 1.0 credit from: CSB327H1, CSB328H1, CSB329H1, CSB331H1, CSB340H1, CSB353H1\n5. 1.5 credits (at least 0.5 credit at the 400-level) from: BCH422H1, BCH426H1, BCH440H1, BCH444H1, BCH445H1, CJH332H1, CSB299Y1, CSB327H1, CSB328H1, CSB329H1, CSB330H1, CSB331H1, CSB340H1, CSB350H1, CSB351Y1, CSB352H1, CSB353H1, CSB360H1, CSB397Y0, CSB399Y1, CSB427H1, CSB428H1, CSB429H1, CSB430H1, CSB431H1, CSB435H1, CSB447H1, CSB450H1, CSB451H1, CSB452H1, CSB453H1, CSB454H1, CSB457H1, CSB458H1, CSB459H1, CSB460H1, CSB471H1, CSB472H1, CSB473H1, CSB474H1, CSB475H1, CSB483H1, CSB490H1, CSB491H1, CSB492H1, CSB497H1, CSB498Y1, CSB499Y1, HMB496Y1/ HMB499Y1, MGY441H1, MGY480Y1. No more than 0.5 credit in BCH can be used towards this requirement.\nThe Cell & Molecular Biology Major Program has the additional option of a Disciplinary Focus.\nStudents in this program have the option to complete the Arts & Science Internship Program (ASIP) stream.")}
@@ -414,10 +369,9 @@ func TestLinkInheritance(t *testing.T) {
 	}
 }
 
-// TestCheckRequirementRefs: a requirements filter that names a row the
-// program doesn't have becomes the row's text, with a note; one that
-// resolves is kept. The snippet is ASMAJ0728's (shortened); its references
-// are set here by hand.
+// TestCheckRequirementRefs: a requirements filter naming a row the program
+// doesn't have becomes the row's text, with a note; one that resolves is kept
+// (ASMAJ0728, shortened, references set by hand).
 func TestCheckRequirementRefs(t *testing.T) {
 	c := ParseCompletion("(1.5 credits)\n1. CDN267H1, CDN268H1\n2. 0.5 credit from CDN307H1, CDN335H1, CDN367H1")
 	c.Requirements[1].Req.Items[0].Requirements = []int{3}
@@ -437,10 +391,9 @@ func TestCheckRequirementRefs(t *testing.T) {
 	}
 }
 
-// TestCheckListRefs checks the lists guard of checkRequirementRefs: a row
-// naming a list the program doesn't have becomes its text with a note; a
-// list item naming one loses the name and becomes a maybe, noted on the
-// program; a known name stays.
+// TestCheckListRefs: a row naming a list the program doesn't have becomes its
+// text with a note; a list item naming one loses the name and becomes a maybe,
+// noted on the program; a known name stays.
 func TestCheckListRefs(t *testing.T) {
 	c := ParseCompletion("(1.0 credit)\n1. 0.5 credit from Group A\n2. 0.5 credit from Group D")
 	c.Lists = []*types.CourseList{
@@ -471,10 +424,8 @@ func TestCheckListRefs(t *testing.T) {
 }
 
 // TestLinkListCodes checks list members the catalogue lacks: ASMIN1252's
-// "GGE372H1" (no course has the designator GGE) is GGR372H1, one letter
-// away, which the Major of the same area lists on its Group A; ASMAJ0571's
-// "HST211H1" has no such confirmation (MST211H1 is one letter away but no
-// program of its area lists it) and stays, noted. Both programs shortened.
+// "GGE372H1" is GGR372H1, which its area's Major lists; ASMAJ0571's "HST211H1"
+// has no such confirmation and stays, noted.
 func TestLinkListCodes(t *testing.T) {
 	titles := map[string]string{}
 	for _, c := range []string{"GGR201H1", "JEG201H1", "GGR203H1", "GGR372H1", "ENV200H1", "ENV234H1", "MST211H1", "CSE240H1", "ANT329H1"} {
@@ -527,10 +478,9 @@ func TestRenumberListRefs(t *testing.T) {
 	}
 }
 
-// TestInheritLists checks that copied rows bring the source's lists they
-// name, and the lists those name, as copies; a list of the same name and
-// items is shared by name; a different one is a conflict, and so is a list
-// whose items name the source's requirements.
+// TestInheritLists checks that copied rows bring, as copies, the source's lists
+// they name and the lists those name; an identical list is shared by name, and
+// a different one, or one naming the source's requirements, is a conflict.
 func TestInheritLists(t *testing.T) {
 	item := func(codes ...string) *types.ReqNode { return &types.ReqNode{Type: types.NodeCredits, Courses: codes} }
 	src := &types.Completion{Lists: []*types.CourseList{
@@ -557,17 +507,9 @@ func TestInheritLists(t *testing.T) {
 	}
 }
 
-// TestLinkInheritanceRefs checks how copied rows keep their references
-// (renumber, checkRequirementRefs), on the CMB Major (shortened) with
-// references set by hand, and a focus sentence that takes lines 1-5 of
-// Higher Years into a program with its own total ("(2.0 credits)"):
-//   - the copies go under the focus's total (parent 1); line 5's floor and
-//     limits come with it, under its copy;
-//   - an overlap between two copied rows (Higher Years 3 and 4) is
-//     renumbered on both; one with a row not copied (First Year 1) goes;
-//   - a requirements filter naming a copied row (Higher Years 2) is
-//     renumbered; one naming a row not copied (First Year 2) makes the copy
-//     text, with a note.
+// TestLinkInheritanceRefs checks how copied rows keep their references (CMB
+// Major, shortened): overlaps and filters naming copied rows are renumbered;
+// naming rows not copied, an overlap goes and a filter makes the copy text.
 func TestLinkInheritanceRefs(t *testing.T) {
 	major := &types.Program{Code: "ASMAJ1003", Type: "Major", Title: "Cell & Molecular Biology Major (Science Program)",
 		Completion: ParseCompletion("(8.0 credits)\nFirst Year:\n1. BIO120H1, BIO130H1; ( CHM135H1, CHM136H1)/ CHM151Y1\n2. 1.0 credit from JMB170Y1, MAT135H1, MAT136H1, PHY131H1\nHigher Years:\n1. BIO220H1, BIO230H1/ BIO255H1\n2. BIO260H1/ HMB265H1; BCH210H1\n3. CSB349H1\n4. 1.0 credit from: CSB327H1, CSB328H1, CSB329H1, CSB331H1, CSB340H1, CSB353H1\n5. 1.5 credits (at least 0.5 credit at the 400-level) from: BCH422H1, BCH426H1, CSB327H1, CSB328H1, CSB427H1, CSB428H1, HMB496Y1/ HMB499Y1. No more than 0.5 credit in BCH can be used towards this requirement.")}
@@ -621,16 +563,9 @@ func TestLinkInheritanceRefs(t *testing.T) {
 	}
 }
 
-// TestFocusChoices checks the rule a heading of focuses comes with
-// (ASSPE2270, shortened): "must enrol in and complete at least one
-// disciplinary focus" is the or of the focuses' program nodes, from their
-// lines and headings; Immunology, written without its code, is resolved by
-// title by Link (linkFocusPrograms; ASFOC2270R is a made-up catalogue
-// entry), or stays membership text (Review) when no program has the title,
-// as in the catalogue. A coded focus's own requirements, which only this
-// program states, are read beside its node (focusPart): the shortened
-// Health Studies line falls short of its 2.0 credits, so a pool of its
-// courses for the amount is beside it.
+// TestFocusChoices checks the rule a heading of focuses comes with (ASSPE2270,
+// shortened): the or of the focuses' program nodes. Immunology, written without
+// its code, is resolved by title by Link, or stays membership text (Review).
 func TestFocusChoices(t *testing.T) {
 	raw := "(10.5 or 11.0 credits plus a disciplinary focus requiring 2.0-3.5 credits)\n**Disciplinary Focuses**\nStudents in the Specialist Program in Statistical Science: Methods and Practice program must enrol in and complete at least one disciplinary focus.\nHealth Studies (ASFOC2270A): (2.0 credits) HMB342H1, at least 0.5 credit from HST209H1/ PHS209H1/ HST211H1/ PHS211H1/ HST250H1/ PHS250H1\nBiochemistry (ASFOC2270O): (3.0 credits)\nCHM135H1, CHM136H1, BCH210H1, BCH311H1, BCH370H1, BCH441H1\nImmunology (3.0 Credits) - BIO130H1 (70%), IMM250H1, IMM340H1, IMM350H1, IMM360H1, IMM429H1/ IMM430H1/ IMM431H1/ IMM435H1"
 	self := "Specialist in Statistical Science: Methods and Practice (Science Program)"
@@ -658,11 +593,9 @@ func TestFocusChoices(t *testing.T) {
 	}
 }
 
-// TestSlashWarnings checks the warning for "/" caps whose courses don't
-// exclude each other: the parser caps "STA414H1/ CSC412H1" in a pool at
-// 0.5 (ASSPE1687, shortened); with a catalogue where the two exclude each
-// other there is no warning, only the count; where they don't, one line
-// naming the program, the row and the pair.
+// TestSlashWarnings checks the warning for "/" caps whose courses don't exclude
+// each other ("STA414H1/ CSC412H1", ASSPE1687): none when the catalogue has
+// them excluding each other, else one line naming the program, row and pair.
 func TestSlashWarnings(t *testing.T) {
 	raw := "(2.0 credits)\n3. 2.0 credits from the following list: STA414H1/ CSC412H1, CSC413H1; JSC470H1, CSC454H1, CSC490H1"
 	c := ParseCompletion(raw)

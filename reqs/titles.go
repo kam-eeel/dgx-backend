@@ -7,21 +7,12 @@ import (
 	"degree-explorer/types"
 )
 
-// Proper names and subject lists contain commas, "and" and "or" that the
-// operator matchers would otherwise read as requirement operators: "approval
-// of the Centre for Drama, Theatre and Performance Studies (CDTPS)", "from
-// Group C: Society, Culture, and Language", "1.0 credit in political theory,
-// history of science, or intellectual history". joinTitleRuns rejoins such
-// runs of text tokens into a single text token before parsing, so they stay
-// one text node and never split structured siblings apart.
-//
-// Only text tokens and separators are ever joined, so a run never swallows a
-// course, credit amount or other structured token.
+// Proper names and subject lists hold commas, "and" and "or" the operators would
+// read as requirement operators: "Group C: Society, Culture, and Language".
 
 var (
-	// titleRejectRe marks an item that reads as a requirement of its own, not
-	// as part of a name: "permission of the Department", "Spanish placement
-	// test", "Independent Study Application Form".
+	// titleRejectRe marks an item that reads as a requirement of its own, not part
+	// of a name: "permission of the Department".
 	titleRejectRe = regexp.MustCompile(`(?i)\b(?:permission|approv|consent|admission|admitted|enrol|registra|complet|students?\b|instructor|required|requirements?\b|placement|tests?\b|equivalent|interview|audition|applica|minimum|grade|credits?\b|level|years?\b|standing|average|gpa\b|cgpa\b|proficien|knowledge|fluen|recommend|experience|must\b|will\b|should\b|may\b|only\b|not\b|who\b|which\b|that\b)`)
 
 	// designatorWordRe is a bare three-letter designator ("SOC"), which is a
@@ -33,8 +24,7 @@ var (
 	// "1.0 credit in history or demonstrated interest".
 	subjectRejectRe = regexp.MustCompile(`(?i)\b(?:interest|relevant|related|similar|demonstrat|appropriate|suitable|department|faculty|other|any)`)
 
-	// subjectLeadRe starts a subject qualifier right after a credit phrase:
-	// "1.0 credit in ...", "1.0 credit on ...".
+	// subjectLeadRe matches a subject qualifier's start after a credit phrase: "in ".
 	subjectLeadRe = regexp.MustCompile(`^(?i:in|on)\s`)
 )
 
@@ -44,12 +34,12 @@ var (
 var nameConnectors = wordSet(`of the for in on at to & and or de des du la le et`)
 
 // nameHeadNouns may end the last name in a list in lower case: "Science,
-// Technology, and Society minor", "History, or Philosophy programs of study",
-// "European or Asian history".
+// Technology, and Society minor".
 var nameHeadNouns = wordSet(`history histories minor minors major majors specialist specialists
 	program programs programme programmes studies course courses group groups stream streams`)
 
-// joinTitleRuns returns toks with name runs joined into single text tokens.
+// joinTitleRuns joins each name run into one text token. Only text tokens and
+// separators are joined, so a run never swallows a course or credit amount.
 func joinTitleRuns(src string, toks []token) []token {
 	toks = joinParenNames(src, toks)
 	for i := 0; i < len(toks); i++ {
@@ -71,10 +61,9 @@ func joinTitleRuns(src string, toks []token) []token {
 	return toks
 }
 
-// joinParenNames joins a bracketed list of capitalised names to the text right
-// before it: "Intermediate-level Hebrew (Modern or Biblical)", "from Group C
-// (Society, Culture and Language)". The bracket is one unit with that text
-// anyway, so only text nodes change.
+// joinParenNames joins a bracketed list of capitalised names to the text before
+// it ("Intermediate-level Hebrew (Modern or Biblical)"); the bracket is one unit
+// with that text anyway, so only text nodes change.
 func joinParenNames(src string, toks []token) []token {
 	for i := 0; i+2 < len(toks); i++ {
 		a := toks[i]
@@ -104,19 +93,9 @@ func joinParenNames(src string, toks []token) []token {
 	return toks
 }
 
-// nameRunEnd returns the index of the last token of a name run that starts
-// with the text token at i, or i if there is none. A run is
-//
-//	T0 ("and" | "or" | "/") T1             a pair: "Near and Middle Eastern Civilization"
-//	T0 "," T1 { "," Tn } CONJ Tlast        a series: "Society, Culture, and Language"
-//
-// where T0 ends in a capitalised word, every other item is a name (see
-// nameItem) and CONJ is "and", "or", ", and" or ", or". ", and" / ", or" only
-// close a series: after a pair or a complete series they start a new
-// requirement ("... and Language, or Near and ...").
-// In subject mode (T0 is "in ..." after a credit phrase) the items may be
-// lower case: "1.0 credit in political theory, history of science, or
-// intellectual history".
+// nameRunEnd returns the index of the last token of the name run starting at
+// text token i, or i: a pair "T0 and T1" or series "T0, T1, and T2" of names
+// (lower case in subject mode). ", and" / ", or" after a whole run starts anew.
 func nameRunEnd(src string, toks []token, i int, subject bool) int {
 	if !nameEnd(src[toks[i].start:toks[i].end], subject) {
 		return i

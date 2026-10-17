@@ -9,21 +9,11 @@ import (
 	"degree-explorer/types"
 )
 
-// Filter pools (10F2 item 7): pools that mix a designator's courses at a
-// level with listed courses.
+// Filter pools: pools that mix a designator's courses at a level with listed
+// courses.
 
-// filterPools reads the filter pools once the routes are placed and the
-// lists read (finish), and returns lists with the lists they add:
-//   - "An additional 1.0 credit at the 4th year level from the following
-//     list: any other BCH 400-series course including the 4th year BCH
-//     research project courses (see NOTE 2), BCB420H1, CHM447H1, ...":
-//     credits{amount, designators, levels, courses} (otherSeries);
-//   - "2.5 credits from electives in composition, music technology, music
-//     history, culture and theory, and music and health, of which at least
-//     1.5 credits must be completed from composition or music technology
-//     courses:" over the sub-lines of the two kinds of courses, one of them
-//     a row's note of filters ("HMU200+ level courses; JMU210H1; ..."): the
-//     row draws on both lists, with a floor on the first (electiveKinds).
+// filterPools reads the filter pools in the rows and returns lists with the
+// lists they add.
 func (a *compAssembler) filterPools(lists []*types.CourseList) []*types.CourseList {
 	for _, row := range a.allRows() {
 		a.otherSeries(row)
@@ -32,18 +22,14 @@ func (a *compAssembler) filterPools(lists []*types.CourseList) []*types.CourseLi
 	return lists
 }
 
-// complOtherSeriesRe: "An additional 1.0 credit at the 4th year level from
-// the following list: any other BCH 400-series course including the 4th
-// year BCH research project courses, BCB420H1, ...". Groups: the amount,
-// the year, the designator, the series, what the series includes, the
-// courses.
+// complOtherSeriesRe matches a designator's series plus listed courses: "An
+// additional 1.0 credit at the 4th year level from the following list: any
+// other BCH 400-series course, BCB420H1".
 var complOtherSeriesRe = regexp.MustCompile(`(?i)^(?:an\s+)?additional\s+(\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+(\d)(?:st|nd|rd|th)\s+year\s+level\s+from\s+the\s+following\s+list:\s*any\s+other\s+((?-i:[A-Z]{3}))\s+(\d)00-series\s+courses?(?:\s+including\s+([^,(]+?))?(?:\s*\(\s*see\s+note\s+\d+\s*\))?\s*,\s*(.+)$`)
 
-// otherSeries reads a row of text complOtherSeriesRe: credits{amount,
-// designators, levels, courses}. "Other" is the claims rule; the year is
-// the series' level, and each course listed is at it; what the series
-// "includes" names more of the designator's courses at the year ("the 4th
-// year BCH research project courses"), which it holds already.
+// otherSeries encodes a row matching complOtherSeriesRe as credits{amount,
+// designators, levels, courses}. "Other" is the claims rule; what the series
+// "includes" is already in it.
 func (a *compAssembler) otherSeries(row *compRow) {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeText || len(row.children) > 0 {
@@ -67,25 +53,20 @@ func (a *compAssembler) otherSeries(row *compRow) {
 }
 
 var (
-	// complElectiveKindsRe: "2.5 credits from electives in composition,
-	// music technology, ..., of which at least 1.5 credits must be
-	// completed from composition or music technology courses: CMU113H1;
-	// ...". Groups: the amount, the floor, the floor's kind, its courses.
+	// complElectiveKindsRe matches electives with a floor on one kind: "2.5
+	// credits from electives in composition, ..., of which at least 1.5 credits
+	// must be completed from composition courses: CMU113H1".
 	complElectiveKindsRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+from\s+electives\s+in\s+.+?,\s+of\s+which\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+must\s+be\s+completed\s+from\s+(.+?\s+courses):\s*(.+)$`)
-	// complLevelPlusMemberRe: a member "HMU200+ level courses". Groups: the
-	// designator, the lowest level.
+	// complLevelPlusMemberRe matches a member: "HMU200+ level courses".
 	complLevelPlusMemberRe = regexp.MustCompile(`^([A-Z]{3})\s*([1-4])00\+\s*level\s+courses$`)
-	// complKindCoursesRe: a note of a kind of courses: "Music history,
-	// culture and theory, and music and health courses: HMU200+ level
-	// courses; ...". Groups: the title, the members.
+	// complKindCoursesRe matches a note listing one kind of courses: "Music
+	// history courses: HMU200+ level courses".
 	complKindCoursesRe = regexp.MustCompile(`^([A-Z][^:]*?\scourses):\s*(.+)$`)
 )
 
-// electiveKinds reads a row of text complElectiveKindsRe with one note of
-// the other kind's courses ("Music history, culture and theory, and music
-// and health courses: HMU200+ level courses; JMU210H1; ..."): the row
-// draws on the two lists, the floor's kind a constraint under it. Each
-// kind's sub-line names it; the lists are the calendar's own.
+// electiveKinds encodes a row matching complElectiveKindsRe, with a note
+// listing the other kind's courses, as credits over both kinds' lists with the
+// floor's kind as a constraint under it.
 func (a *compAssembler) electiveKinds(row *compRow, lists []*types.CourseList) []*types.CourseList {
 	n := row.r.Req
 	if row.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeText || len(row.children) > 0 || len(row.r.Notes) == 0 {

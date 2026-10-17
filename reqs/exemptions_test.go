@@ -38,8 +38,8 @@ func TestExemptionInField(t *testing.T) {
 		{"engineering label covers FASE", "CSC209H1 Engineering students: ESC180H1. These requirements do not apply to FASE students.",
 			jOr(jC("CSC209H1"), jAnd(jT("membership", "Engineering students"), jC("ESC180H1"))),
 			[]string{"These requirements do not apply to FASE students"}},
-		// Names one field: ParseRequisite can't tell which field it is in,
-		// so it only moves the sentence to notes (see ApplyExemptions).
+		// Names one field: ParseRequisite can't tell which field it is in, so it only
+		// moves the sentence to notes for ApplyExemptions.
 		{"names one field", "For students in the Faculty of Applied Science and Engineering:  MUN302H1.  " + preNote + ".",
 			jAnd(jT("membership", "For students in the Faculty of Applied Science and Engineering"), jC("MUN302H1")),
 			[]string{preNote}},

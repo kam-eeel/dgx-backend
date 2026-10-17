@@ -6,39 +6,13 @@ import (
 	"degree-explorer/types"
 )
 
-// Review markers: once the rows are numbered, the counts their rows can't be
-// seen to make up (a child that is text or has a route, a total its items
-// fall short of) get a text alternative, so that they are Review rather
-// than NotMet (markIncomplete; Link runs it again when it turns a pool into
-// text). Before numbering, checkItemPools marks an item that is a bare
-// amount of any credits.
+// Review markers: text alternatives on the counts the numbered rows can't be
+// seen to make up, so they are Review rather than NotMet.
 
-// markIncomplete puts the Review marker on the counts the rows of c can't be
-// seen to make up (design 5.4: a row counts what its child allocations
-// claim, and text claims nothing); total says row 1 is the header total:
-//   - the total gets or(credits, the header as text) when any child
-//     allocation is incomplete (its body has open text: a text item, a
-//     route; openText), or, with shortfall and no pool of its own, when no
-//     item claims courses or the items' fewest credits fall short of it
-//     ("(6.5 credits)" over items of 5.5). Met when the children's claims
-//     reach it, Review otherwise; "and" would be NotMet whenever they fall
-//     short. A total with a pool of its own is marked too when a child is
-//     incomplete: what the child claims is unknown;
-//   - a constraint under an incomplete count (the header's floors under a
-//     marked total, a floor under an item with text) gets or(constraint,
-//     its text): it can't be NotMet on a count that is itself Review;
-//   - with no total, a top-level constraint is on what all top-level
-//     allocations claim (design 5.6): it is marked when one of them is
-//     incomplete.
-//
-// A marker takes its cause's kind (markerKind): the kind of the open text
-// that leaves the count incomplete, when every such text is Review by design
-// (a permission, admission, ambiguity or content text); else, and for a
-// shortfall, it is other. Evaluation is the same whatever the kind.
-//
-// Link runs it again: without shortfall when its designator check turns a
-// pool into text, and with shortfall, after taking the markers off (remark),
-// when its other steps change a body.
+// markIncomplete marks each count c's rows can't be seen to make up with
+// or(count, its sentence): a total over an incomplete child or, with
+// shortfall, items that fall short of it; a constraint under an incomplete
+// count. Text claims nothing. total says row 1 is the header total.
 func markIncomplete(c *types.Completion, total, shortfall bool) {
 	m := newMarkCauses(c)
 	kids, incomplete, causes, memo := m.kids, m.incomplete, m.causes, m.memo
@@ -46,12 +20,8 @@ func markIncomplete(c *types.Completion, total, shortfall bool) {
 		head := textNode(types.TextOther, complItemLabelRe.ReplaceAllString(rawHead(r), "")) // the sentence, not its item number
 		if r.Kind == types.RequirementConstraint && r.Req != nil && r.Req.Type == types.NodeAnd &&
 			slices.ContainsFunc(r.Req.Items, func(x *types.ReqNode) bool { return x.Type == types.NodeText }) {
-			// and(floor, text) ("2.0 PRT credits at the 200+ level taught in
-			// Portuguese") is Review at best; marked, it is never NotMet
-			// either: or(and(floor, text), text) is Review whatever the
-			// courses, which its text says. Its own text is the cause, so
-			// the marker takes that text's kind whatever the parent's
-			// causes are.
+			// and(floor, text) is Review at best: the marker replaces it,
+			// taking its own text's kind.
 			head.Kind = markerKind(r.Req.Items)
 			r.Req = head
 			return
@@ -72,7 +42,7 @@ func markIncomplete(c *types.Completion, total, shortfall bool) {
 				sum += v
 			}
 		}
-		// Options count through their choice: the cheapest choice.
+		// Options count through their choice, at its cheapest.
 		for _, k := range kids[0] {
 			if k.Kind == types.RequirementChoice {
 				claims = true
@@ -80,17 +50,16 @@ func markIncomplete(c *types.Completion, total, shortfall bool) {
 			}
 		}
 		if !reviewMarked(n) && (incomplete(t) || shortfall && !pool && (!claims || sum < n.Amount-1e-9)) {
-			var why []*types.ReqNode // nil for a shortfall: other
+			var why []*types.ReqNode // nil for a shortfall: kind other
 			if incomplete(t) {
 				why = causes(t)
 			}
 			mark(t, why)
-			// Its constraints are marked too, for the same causes (its
-			// marker is one, of the kind they gave it).
+			// Its constraints are marked too, for the same causes.
 			memo[1] = true
 		}
 	}
-	var top []*types.ReqNode // the open texts of the incomplete top-level allocations
+	var top []*types.ReqNode // with no total: the open texts of incomplete top-level allocations
 	for _, r := range kids[0] {
 		if !total && r.Kind == types.RequirementAllocation && incomplete(r) {
 			top = append(top, causes(r)...)
@@ -110,8 +79,8 @@ func markIncomplete(c *types.Completion, total, shortfall bool) {
 	}
 }
 
-// markCauses finds the rows whose counts are incomplete and the open texts
-// that leave them so (markIncomplete).
+// markCauses memoizes which rows are incomplete and finds the open texts that
+// leave them so.
 type markCauses struct {
 	kids map[int][]*types.Requirement // the rows under each row number
 	memo map[int]bool
@@ -127,8 +96,8 @@ func newMarkCauses(c *types.Completion) *markCauses {
 	return m
 }
 
-// incomplete reports whether r's body has open text (openText) or one of
-// its child allocations is incomplete.
+// incomplete reports whether r's body has open text or one of its child
+// allocations is incomplete.
 func (m *markCauses) incomplete(r *types.Requirement) bool {
 	if v, ok := m.memo[r.Number]; ok {
 		return v
@@ -156,10 +125,8 @@ func (m *markCauses) causes(r *types.Requirement) []*types.ReqNode {
 	return out
 }
 
-// markerKind is the kind of a Review marker whose count the open texts why
-// leave incomplete: theirs when every one is Review by design and of one
-// kind, else other ("If causes are mixed, keep other": a permission route
-// and a content pool are two causes; a shortfall has no text and is other).
+// markerKind returns the kind the open texts in why share when each is Review
+// by design, else other: mixed causes and a shortfall are other.
 func markerKind(why []*types.ReqNode) types.TextKind {
 	kind := types.TextOther
 	for _, n := range why {
@@ -174,27 +141,22 @@ func markerKind(why []*types.ReqNode) types.TextKind {
 	return kind
 }
 
-// reviewByDesign reports a text kind whose Review is the answer, not a gap
-// in the parse: someone decides (permission, admission), the calendar reads
-// two ways (ambiguity), the course's content does (content), or a placement
-// test or exemption the transcript doesn't show does (placement).
+// reviewByDesign reports whether Review is the answer for a text of kind k,
+// not a gap in the parse: someone decides, the calendar reads two ways, or
+// the transcript can't show it.
 func reviewByDesign(k types.TextKind) bool {
 	return k == types.TextPermission || k == types.TextAdmission || k == types.TextAmbiguity || k == types.TextContent ||
 		k == types.TextPlacement
 }
 
-// isMarker reports whether n is r's Review marker (markIncomplete's mark):
-// r's sentence as text, of kind other or a kind it took from its cause.
+// isMarker reports whether n is r's Review marker: r's sentence as text.
 func isMarker(n *types.ReqNode, r *types.Requirement) bool {
 	return n.Type == types.NodeText && (n.Kind == types.TextOther || reviewByDesign(n.Kind)) && n.Text == rawHead(r)
 }
 
-// openText reports whether n has text that leaves its count open: any text
-// but the "maybe" half of a bounded alternative, or(strict, and(wider pool,
-// text)) (design 3.3), next to a strict branch without open text. A student
-// who meets the strict branch claims its courses, and one who meets only the
-// wider pool is Review on the row itself: either way the row claims what it
-// counts.
+// openText reports whether n has text that leaves its count open. The maybe
+// half of a bounded alternative, or(strict, and(pool, text)), doesn't when
+// the strict branch is closed: the row still claims what it counts.
 func openText(n *types.ReqNode) bool {
 	if n == nil {
 		return false
@@ -217,12 +179,9 @@ func openText(n *types.ReqNode) bool {
 	return slices.ContainsFunc(n.Items, openText)
 }
 
-// boundedMaybe reports and(claims..., text...): courses that count only with
-// someone's say (the text), the second half of a bounded alternative. A
-// claim is a pool of courses, or an amount of any credits: "A maximum of
-// 1.0 credit in cognate courses is allowed ... get approved in advance" as
-// and(credits{4}, text{permission}) beside credits{4, GER} leaves the count
-// closed (4.0 credits, Review on the row), as a pool would.
+// boundedMaybe reports whether n is and(claims..., text...): courses that
+// count only with someone's say. A claim is a pool of courses or an amount of
+// any credits.
 func boundedMaybe(n *types.ReqNode) bool {
 	if n.Type != types.NodeAnd {
 		return false
@@ -241,8 +200,7 @@ func boundedMaybe(n *types.ReqNode) bool {
 	return text && claims
 }
 
-// openTexts appends to out the texts of n that leave its count open
-// (openText).
+// openTexts appends to out the texts of n that leave its count open.
 func openTexts(n *types.ReqNode, out *[]*types.ReqNode) {
 	if n == nil {
 		return
@@ -272,10 +230,9 @@ func reviewMarked(n *types.ReqNode) bool {
 		n.Type == types.NodeOr && slices.ContainsFunc(n.Items, func(x *types.ReqNode) bool { return x.Type == types.NodeText })
 }
 
-// rowCredits returns the fewest credits an allocation row needs: its body's
-// (nodeCredits), or its child allocations' for a group (kids: the rows under
-// each row number). ok is false when part of it is text or a node whose
-// credits aren't known.
+// rowCredits returns the fewest credits allocation row r needs: its body's,
+// or its child allocations' for a group. ok is false when any part's credits
+// aren't known.
 func rowCredits(r *types.Requirement, kids map[int][]*types.Requirement) (float64, bool) {
 	if r.Req != nil {
 		return nodeCredits(r.Req)
@@ -291,16 +248,9 @@ func rowCredits(r *types.Requirement, kids map[int][]*types.Requirement) (float6
 	return sum, ok
 }
 
-// nodeCredits returns the fewest credits that meet n: a course's weight, a
-// pool's amount, the sum of an "and", the cheapest alternative of an "or"
-// that isn't text, the cheapest count of a "choose". Text counts nothing
-// (ok false).
-//
-// It differs from minWeight (enrolment), which counts text as 0 credits and
-// so takes an "or" with a text alternative as costing nothing: here a text
-// alternative is a route, skipped unless every alternative is text, and a
-// permission never counts; a pool of no amount, an average and any other
-// node are unknown (ok false). minCredits (the grammar) reads courses only.
+// nodeCredits returns the fewest credits that meet n; ok is false when they
+// aren't known. Unlike minWeight, a text alternative isn't free: it counts
+// only when every alternative is text, and a permission never does.
 func nodeCredits(n *types.ReqNode) (float64, bool) {
 	switch n.Type {
 	case types.NodeText:
@@ -318,9 +268,6 @@ func nodeCredits(n *types.ReqNode) (float64, bool) {
 		}
 		return sum, ok
 	case types.NodeOr, types.NodeChoose:
-		// A text alternative is a route (Review), not the cheapest way: it
-		// counts only when every alternative is text, and a permission
-		// never does.
 		var cs []float64
 		ok := true
 		for _, text := range []bool{false, true} {
@@ -348,11 +295,9 @@ func nodeCredits(n *types.ReqNode) (float64, bool) {
 	return 0, false
 }
 
-// checkItemPools marks an item whose body is an amount of any credits
-// ("2.5 credits at least 1.5 credits from PCL courses: ..." leaves "2.5
-// credits"): which courses count isn't stated, so it is Review, not a claim
-// on any course. "The remaining 1.5 - 2.0 credits can include any courses
-// ..." (complRemainingAnyRe) states it: any course.
+// checkItemPools adds a Review text to an item whose body is an amount of any
+// credits, since which courses count isn't stated. "The remaining 1.5 - 2.0
+// credits can include any courses ..." states it.
 func (a *compAssembler) checkItemPools(rows []*compRow) {
 	for _, r := range rows {
 		if r.r.Kind == types.RequirementAllocation && r.r.Req != nil && r.r.Req.Type == types.NodeCredits && isAnyCredits(r.r.Req) &&

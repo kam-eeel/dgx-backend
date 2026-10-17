@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRulePools checks the pool and list grammar
-// (completion_pools.go) on real snippets.
+// TestCompletionRulePools checks the pool and list grammar on real snippets.
 func TestCompletionRulePools(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"\"may also be used to meet this requirement\" extends the pool: a union list named by the row's label (ASMIN1252, shortened)",

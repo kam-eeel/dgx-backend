@@ -2,8 +2,7 @@ package reqs
 
 import "testing"
 
-// TestCompletionRestatedNotes checks the passes over the last binding notes
-// (completion_restated.go) on snippets of real programs.
+// TestCompletionRestatedNotes checks the passes over the last binding notes.
 func TestCompletionRestatedNotes(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"an unused list that only names required courses restates them: its note goes (ASMAJ0797, shortened)",

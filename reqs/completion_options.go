@@ -10,111 +10,96 @@ import (
 	"degree-explorer/types"
 )
 
-// Options and choices (design 3.4): "Choose one of the options below:" and
-// its "Option A: ..." lines, "At least two of the following four options:"
-// over bullets, "EITHER ... OR ..." over lines, "X **OR** Y" and "or else"
-// in an item, "in at least two of the three following categories: (1) ...".
-//
-// Options that are each a body of courses are one allocation: the or (or
-// choose) of the bodies. Otherwise each option is an allocation under row 1,
-// a group (req null) with child allocations when it has parts, and a choice
-// row at the top, numbered right after them, picks among them: an or or
-// choose over requirement nodes (numberChoices), so that the options the
-// student didn't choose count nothing (design 5.4). Options that are rows of
-// text naming lists are read with the lists (namedLists), and become one
-// allocation's or if each is then a body alone (collapseChoices).
+// Options and choices: option lines, "EITHER ... OR" lines, "X **OR** Y",
+// "or else", categories and areas the student chooses among.
 
 var (
-	// complOptionLabelRe: "Option A", an option, never a list.
+	// complOptionLabelRe matches an option's label, never a list's: "Option A".
 	complOptionLabelRe = regexp.MustCompile(`(?i)^option\s+\w+\b`)
-	// complOptionsLeadRe: "Choose one of the options below:".
+	// complOptionsLeadRe matches "Choose one of the options below:".
 	complOptionsLeadRe = regexp.MustCompile(`(?i)^(?:choose|complete|select)\s+(?:one|1)\s+of\s+the\s+(?:following\s+)?options?\b[^:]*:?$`)
-	// complCountOptionsLeadRe: "At least two of the following four options:",
-	// over bullets that are the options.
+	// complCountOptionsLeadRe matches a lead over option bullets: "At least two of
+	// the following four options:".
 	complCountOptionsLeadRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(one|two|three|four|[1-4])\s+of\s+the\s+following\s+(?:(two|three|four|five|six|[2-6])\s+)?options\s*:$`)
-	// complAboveOptionsRe: an option that includes others: "LMP305Y1 and one
-	// of the above four options".
+	// complAboveOptionsRe matches an option that includes others: "LMP305Y1 and
+	// one of the above four options".
 	complAboveOptionsRe = regexp.MustCompile(`(?i)^(.+?)\s+and\s+one\s+of\s+the\s+above(?:\s+(two|three|four|five|six|[2-6]))?\s+options$`)
-	// complEitherRe: the "EITHER" an item's first option starts with.
+	// complEitherRe matches the "EITHER " an item's first option starts with.
 	complEitherRe = regexp.MustCompile(`^(?:EITHER|Either)\s+`)
-	// complIfTakingRe: an option that trades credits with another item's
-	// pool: "2.0 credits if taking 1.5 credits from CAR215H1, ...".
+	// complIfTakingRe matches an option that trades credits with another item's
+	// pool: "2.0 credits if taking 1.5 credits from CAR215H1, CAR220H1".
 	complIfTakingRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+if\s+taking\s+(\d+(?:\.\d+)?\s+credits?\s+from\s+.+)$`)
-	// complAmountSourceRe: an option's amount and where it comes from: "2.5
-	// credits from Group A or B".
+	// complAmountSourceRe matches an option's amount and source: "2.5 credits from
+	// Group A or B".
 	complAmountSourceRe = regexp.MustCompile(`(?i)^\d+(?:\.\d+)?\s+credits?\s+(from\s+.+)$`)
-	// complInlineOrRe: "**OR**", "OR" between an item's options (upper case:
-	// a lower-case "or" is the grammar's).
+	// complInlineOrRe matches an upper-case " OR " between an item's options; a
+	// lower-case "or" is the grammar's.
 	complInlineOrRe = regexp.MustCompile(`\s*,?\s+OR\s+`)
-	// complOptionStartRe: what an option starts with: an amount or a code.
+	// complOptionStartRe matches an option's start, an amount or a code: "1.0
+	// credit".
 	complOptionStartRe = regexp.MustCompile(`^(?:\d+(?:\.\d+)?\s+(?:additional\s+)?credits?\b|` + codePat + `)`)
-	// complOrElseRe: "Additional philosophy courses, to a total of 7.0
-	// credits, or else additional philosophy courses to a total of 6.5
-	// credits, plus one 0.5 credit from Group 4 (Interdisciplinary)".
+	// complOrElseRe matches "Additional philosophy courses, to a total of 7.0
+	// credits, or else additional philosophy courses to a total of 6.5 credits,
+	// plus one 0.5 credit from Group 4 (Interdisciplinary)".
 	complOrElseRe = regexp.MustCompile(`(?i)^additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?,?\s+or\s+else\s+additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?,?\s+(?:plus|and)\s+(?:one\s+)?(\d+(?:\.\d+)?)\s+credits?\s+from\s+(.+?)(?:\s*\([^()]*\))?\.?$`)
-	// complCategoriesRe: "1.0 to 1.5 credits in at least two of the three
-	// following categories: (1) ...; (2) ...; and/or (3) ...".
+	// complCategoriesRe matches "1.0 to 1.5 credits in at least two of the three
+	// following categories: (1) ...".
 	complCategoriesRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)(?:\s+to\s+\d+(?:\.\d+)?)?\s+credits?\s+in\s+at\s+least\s+(one|two|three|four|[1-4])\s+of\s+the\s+(two|three|four|five|six|[2-6])\s+following\s+(?:categories|areas|groups)\s*:\s*(.+)$`)
-	// complCategoryMarkRe: a category's number: "(1)", "; and/or (3)".
+	// complCategoryMarkRe matches a category's number: "; and/or (3)".
 	complCategoryMarkRe = regexp.MustCompile(`\s*;?\s*(?:and/or\s+|and\s+|or\s+)?\(\d\)\s*`)
-	// complCategoryRe: a category: "one field course (0.5 credit) from
-	// EEB401H1, ...", "one independent research course (0.5 credit) from
-	// EEB497H1/ (1.0 credit) from EEB498Y1".
+	// complCategoryRe matches a category: "one seminar (0.5 credit) from EEB491H1,
+	// EEB495H1".
 	complCategoryRe = regexp.MustCompile(`(?i)^(?:one|an?)\s+[\w\s-]+?\s+(\(\d+(?:\.\d+)?\s+credits?\)\s+from\s+.+)$`)
-	// complWeightFromRe: "(0.5 credit) from EEB401H1, EEB403H1".
+	// complWeightFromRe matches "(0.5 credit) from EEB401H1, EEB403H1".
 	complWeightFromRe = regexp.MustCompile(`(?i)^\((\d+(?:\.\d+)?)\s+credits?\)\s+from\s+(.+?)$`)
-	// complChooseCoursesRe: "Students should choose four of the following
-	// 400-level courses (2.0-2.5 credits): LMP405Y1, LMP410H1, ...".
+	// complChooseCoursesRe matches "Students should choose four of the following
+	// 400-level courses (2.0-2.5 credits): LMP405Y1, LMP410H1".
 	complChooseCoursesRe = regexp.MustCompile(`(?i)^(?:students\s+(?:should|must)\s+)?(?:choose|select|take)\s+(two|three|four|five|six|[2-6])\s+of\s+the\s+following\s+(?:([1-4]00)-level\s+)?courses\s*(?:\((\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s+credits\))?\s*:\s*(.+)$`)
-	// complChooseRestatedRe: a note that restates such a count: "If the
-	// research course LMP405Y1 is taken, an additional three 400-level
-	// courses from the list are still required (totalling 2.5 credits)".
+	// complChooseRestatedRe matches a note restating such a count: "If the research
+	// course LMP405Y1 is taken, an additional three 400-level courses from the list
+	// are still required".
 	complChooseRestatedRe = regexp.MustCompile(`(?i)^if\s+(?:the\s+)?[\w\s-]*?\b(` + codePat + `)\s+is\s+taken,\s+an\s+additional\s+(one|two|three|four|five|[1-5])\s+(?:[1-4]00-level\s+)?courses\s+from\s+the\s+list\s+are\s+still\s+required\b`)
-	// complIfNotCompletedRe: an item that restates another row's
-	// alternative: "If a student has not completed STA130H1 then an
-	// additional 0.5 credit 300+ level STA course that is not used towards
-	// any other program requirement must be completed".
+	// complIfNotCompletedRe matches an item restating another row's alternative:
+	// "If a student has not completed STA130H1 then an additional 0.5 credit ...
+	// that is not used towards any other program requirement must be completed".
 	complIfNotCompletedRe = regexp.MustCompile(`(?i)^if\s+(?:a\s+)?students?\s+(?:has|have)\s+not\s+completed\s+(` + codePat + `)\s*,?\s+then\s+an\s+additional\s+(.+?)\s+that\s+is\s+not\s+used\s+towards?\s+any\s+other\s+program\s+requirement\s+must\s+be\s+completed$`)
-	// complRestatedOrRe: a line under a list that restates an item's
-	// alternative: "OR 2.0 credits in any major African language approved by
-	// the Program Committee".
+	// complRestatedOrRe matches a line restating an item's alternative: "OR 2.0
+	// credits in any major African language approved by the Program Committee".
 	complRestatedOrRe = regexp.MustCompile(`^OR\s+(.+?)\.?$`)
 )
 
 var (
-	// complPerAreaRe: an item over areas the student chooses: "4.0 credits of
-	// language coursework from each of the two chosen language areas (2.0
-	// credits per area).", "4.0 credits from culture courses corresponding to
-	// the student’s two chosen language areas (2.0 credits per area):".
+	// complPerAreaRe matches an item over chosen areas: "4.0 credits of language
+	// coursework from each of the two chosen language areas (2.0 credits per
+	// area)".
 	complPerAreaRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+.+?\s+(?:from\s+each\s+of|corresponding\s+to)\s+the\s+(?:student.s\s+)?(two|three|[23])\s+chosen\s+(\w+)\s+areas\s*\((\d+(?:\.\d+)?)\s+credits?\s+per\s+area\)\s*[.:]?$`)
-	// complChooseAreasRe: the choice of areas: "Students must choose any two
-	// of the available language areas (Czech and Slovak, Estonian, ...)".
+	// complChooseAreasRe matches the choice of areas: "Students must choose any two
+	// of the available language areas (Czech and Slovak, Estonian)".
 	complChooseAreasRe = regexp.MustCompile(`(?i)^students\s+must\s+choose\s+(?:any\s+)?(two|three|[23])\s+of\s+the\s+(?:available\s+)?(\w+)\s+areas\s*\(([^()]+)\)$`)
-	// complCorrespondsRe: an area named differently in another list: "Yiddish
-	// (corresponds to the Jewish Cultures in Eastern Europe area)", "Jewish
-	// Cultures in Eastern Europe (corresponds to the Yiddish language area)".
+	// complCorrespondsRe matches an area named differently in the other list:
+	// "Yiddish (corresponds to the Jewish Cultures in Eastern Europe area)".
 	complCorrespondsRe = regexp.MustCompile(`(?i)^(.+?)\s*\(corresponds\s+to\s+the\s+(.+?)\s+(?:language\s+)?area\)$`)
-	// complAreaParenRe: what an area's name adds in brackets: "South Slavic
+	// complAreaParenRe matches a closing aside on an area's name: "South Slavic
 	// (Bosnian, Croatian, Serbian, Macedonian)".
 	complAreaParenRe = regexp.MustCompile(`\s*\([^()]*\)$`)
 )
 
-// compChoiceRef is a requirement node of a choice row, numbered once the rows
-// are (numberChoices).
+// compChoiceRef is a requirement node of a choice row and the rows it picks
+// among, numbered by numberChoices.
 type compChoiceRef struct {
 	node *types.ReqNode
 	rows []*compRow
 }
 
-// reqNode returns a requirement node over rows, numbered in finish.
+// reqNode returns a requirement node over rows; numberChoices numbers it.
 func (a *compAssembler) reqNode(rows ...*compRow) *types.ReqNode {
 	n := &types.ReqNode{Type: types.NodeRequirement}
 	a.choiceRefs = append(a.choiceRefs, compChoiceRef{node: n, rows: rows})
 	return n
 }
 
-// numberChoices sets the numbers of the choice rows' requirement nodes once
-// the rows are numbered.
+// numberChoices fills in the choice rows' requirement nodes once the rows are
+// numbered.
 func (a *compAssembler) numberChoices() {
 	for _, ref := range a.choiceRefs {
 		ref.node.Requirements = nil
@@ -124,9 +109,8 @@ func (a *compAssembler) numberChoices() {
 	}
 }
 
-// choiceNode is an or (count 0 or 1) or a choose over items, without the
-// flattening and deduplication of orNode: requirement nodes have no numbers
-// yet, so they would all look the same.
+// choiceNode is an or (count 0 or 1) or a choose over items. It skips orNode's
+// flattening and dedupe: unnumbered requirement nodes would all look the same.
 func choiceNode(count int, items []*types.ReqNode) *types.ReqNode {
 	if count > 1 {
 		return &types.ReqNode{Type: types.NodeChoose, Count: count, Items: items}
@@ -134,15 +118,15 @@ func choiceNode(count int, items []*types.ReqNode) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeOr, Items: items}
 }
 
-// addChoice adds the options, allocations under row 1, and the choice row
-// over them (body), numbered right after them at the top.
+// addChoice adds the options as allocations under row 1, then the choice row
+// over them, so options the student didn't choose count nothing.
 func (a *compAssembler) addChoice(opts []*compRow, label, section, raw string, body *types.ReqNode) {
 	a.items = append(a.items, opts...)
 	a.items = append(a.items, &compRow{r: &types.Requirement{Kind: types.RequirementChoice, Label: label, Section: section, Req: body, Raw: raw}})
 }
 
-// optionRow returns an allocation for one option, its body read as an
-// item's (itemBody) with the rules it states under it.
+// optionRow returns an allocation for one option, read as an item's body with
+// the rules it states under it.
 func (a *compAssembler) optionRow(text, label, section, raw string) *compRow {
 	body, rows, notes := a.itemBody(text)
 	row := &compRow{r: &types.Requirement{Kind: types.RequirementAllocation, Label: label, Section: section, Req: body, Notes: notes, Raw: raw}}
@@ -155,20 +139,15 @@ func (a *compAssembler) optionRow(text, label, section, raw string) *compRow {
 	return row
 }
 
-// plainOptions reports whether every option is a body of courses alone:
-// no text, no rules under it.
+// plainOptions reports whether every option is a body of courses alone: no
+// text, no rows under it.
 func plainOptions(opts []*compRow) bool {
 	return !slices.ContainsFunc(opts, func(o *compRow) bool { return o.r.Req == nil || hasText(o.r.Req) || len(o.children) > 0 })
 }
 
-// optionBlocks reads options set out over lines, from bs[0], and returns how
-// many blocks it read (0: none):
-//   - "Choose one of the options below:" and the "Option A: ..." lines under
-//     or after it; "At least two of the following four options:" and the
-//     bullets under it;
-//   - "5. EITHER 2.5 credits from Group A or B OR" and the lines after it,
-//     each but the last ending in "OR" (two lines without "EITHER" are the
-//     ", OR" join of blocks).
+// optionBlocks reads options set out over lines from bs[0], and returns how
+// many blocks it read: an options lead and its "Option A:" lines or bullets,
+// or "EITHER ... OR" lines, each but the last ending in "OR".
 func (a *compAssembler) optionBlocks(bs []*compBlock, ctx compCtx) int {
 	b := bs[0]
 	if b.kind == blockHeading {
@@ -214,7 +193,6 @@ func (a *compAssembler) optionBlocks(bs []*compBlock, ctx compCtx) int {
 	return n
 }
 
-// optionLines returns how many of bs, from the first, are "Option X:" lines.
 func optionLines(bs []*compBlock) int {
 	n := 0
 	for _, c := range bs {
@@ -226,14 +204,9 @@ func optionLines(bs []*compBlock) int {
 	return n
 }
 
-// options reads a lead over option lines ("Choose one of the options
-// below:" then "Option A: Immunology: ( IMM341H1, IMM351H1)", ...; "At least
-// two of the following four options:" then "- CHM217H1", ...): one
-// allocation, the options' or (choose when count > 1), when each reads as
-// courses. An option that includes others ("Option E: Research: LMP305Y1
-// and one of the above four options") makes the options rows of their own
-// and a choice over them: or(A, B, C, D, and(E, any of A-D)). Otherwise the
-// lead is text with the options as its notes.
+// options reads a lead over option lines as one allocation, the options' or
+// (choose when count > 1). An option including the others gets rows and a
+// choice; else the lead is text with the options as notes.
 func (a *compAssembler) options(b *compBlock, optLines []*compBlock, count int, ctx compCtx) {
 	var opts []*compRow
 	above := map[int]int{} // option index -> how many options before it it includes
@@ -277,7 +250,7 @@ func (a *compAssembler) options(b *compBlock, optLines []*compBlock, count int, 
 		return
 	}
 	if ok && count == 1 && ctx.owner == nil {
-		// Option E includes one of A-D: or(A, ..., D, and(E, any of A-D)).
+		// "Option E" includes one of A-D: or(A, ..., D, and(E, any of A-D))
 		var nodes []*types.ReqNode
 		for i, o := range opts {
 			n := a.reqNode(o)
@@ -297,16 +270,9 @@ func (a *compAssembler) options(b *compBlock, optLines []*compBlock, count int, 
 	a.add(row, ctx.owner)
 }
 
-// eitherLines reads an item whose options are lines, each but the last
-// ending in "OR" ("5. EITHER 2.5 credits from Group A or B OR", "2.0
-// credits if taking 1.5 credits from CAR215H1, ... OR", "1.5 credits if
-// taking 2.0 credits from CAR215H1, ..."): one allocation, the options' or,
-// when each reads as courses; else each option is a row and a choice picks
-// one. An option "N credits if taking M credits from <pool>" takes N credits
-// from the first option's source and, beside them, the credits of the pool
-// beyond what the item drawing on that pool claims: a group of the two
-// (design 3.4). It reports false, reading nothing, for options it can't
-// read.
+// eitherLines reads an item whose options are lines ending in "OR": the
+// options' or when each is courses, else a choice. "N credits if taking M
+// credits from <pool>" is N from the first option's source plus poolBeyond.
 func (a *compAssembler) eitherLines(bs []*compBlock) bool {
 	var parts []string
 	var raws []string
@@ -352,11 +318,8 @@ func (a *compAssembler) eitherLines(bs []*compBlock) bool {
 	return true
 }
 
-// poolBeyond reads "1.5 credits from CAR215H1, CAR220H1, ..." as the credits
-// of that pool beyond what the item drawing on it already claims ("2. 1.0
-// credit from CAR215H1, CAR220H1, ..."): credits{0.5, the pool}. Nil when
-// the pool isn't courses, no item or several draw on it, or nothing is
-// beyond.
+// poolBeyond reads "1.5 credits from CAR215H1, ..." as the credits of that pool
+// beyond what the one item drawing on it claims; nil when nothing is beyond.
 func (a *compAssembler) poolBeyond(s string) *types.ReqNode {
 	n, _ := parseCompletionText(s)
 	if n == nil || n.Type != types.NodeCredits || n.Courses == nil || n.Designators != nil || n.Levels != nil || n.Exclude != nil || n.MaxAmount != nil {
@@ -376,29 +339,20 @@ func (a *compAssembler) poolBeyond(s string) *types.ReqNode {
 	return n
 }
 
-// optionItem reads an item (no lines under it, at the top) whose options are
-// in its text, and reports whether it did: "or else" (orElse), "X **OR** Y"
-// (inlineOr), "in at least two of the three following categories"
-// (categories), "Students should choose four of the following 400-level
-// courses" (chooseCourses), and a line that restates another item's
-// alternative (restatedOr).
+// optionItem reads an item at the top whose options are in its text, and
+// reports whether it did.
 func (a *compAssembler) optionItem(row *compRow, text string) bool {
 	t := strings.TrimSuffix(strings.TrimSpace(a.clean(text)), ".")
 	return a.restatedOr(row, t) || a.orElse(row, t) || a.categories(row, t) || a.chooseCourses(row, t) || a.inlineOr(row, text) || a.eitherItem(row, text)
 }
 
-// complEitherItemRe: "Either GGR491Y1 or one of GGR416H1, GGR492H1, GGR497H1
-// and one additional 0.5 credit 400 level course from Group A or Group B
-// (1.0 credit)".
+// complEitherItemRe matches "Either GGR491Y1 or one of GGR416H1, GGR492H1 and
+// one additional 0.5 credit 400 level course from Group A (1.0 credit)".
 var complEitherItemRe = regexp.MustCompile(`(?i)^either\s+(.+?)\s+or\s+(.+?)\s+and\s+(?:one\s+|an\s+)?additional\s+(\d+(?:\.\d+)?\s+credits?\s+.+?)\s*\((\d+(?:\.\d+)?)\s+credits?\)$`)
 
-// eitherItem reads an item "Either X or Y and one additional Z (N credits)"
-// whose first sentence is that: X, or a group of Y and Z (Z may name lists,
-// and may share courses with Y), and a choice of one; each reads as N
-// credits. The item's other sentences that are approvals or other ways to
-// meet it ("Up to one 0.5 credit can be used from GGR493Y1, ... approved by
-// department") are alternatives on the group's parts, the ones the student
-// chooses among.
+// eitherItem reads "Either X or Y and one additional Z (N credits)" as a choice
+// of X or a group of Y and Z, each N credits. Later approval or alternative
+// sentences become alternatives on the group's parts.
 func (a *compAssembler) eitherItem(row *compRow, text string) bool {
 	sents := splitComplSentences(text)
 	m := complEitherItemRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(a.clean(sents[0])), "."))
@@ -426,8 +380,7 @@ func (a *compAssembler) eitherItem(row *compRow, text string) bool {
 		a.optionRow(m[3], "", "", row.r.Raw),
 	}
 	if hasText(parts[1].r.Req) {
-		// "0.5 credit 400 level course from Group A or Group B": read with
-		// the lists (namedLists).
+		// "0.5 credit 400 level course from Group A": read later with the lists
 		parts[1].r.Req, parts[1].children = textNode(types.TextOther, m[3]), nil
 	}
 	two := &compRow{r: &types.Requirement{Kind: types.RequirementAllocation, Section: row.r.Section, Raw: row.r.Raw}, children: parts}
@@ -444,14 +397,12 @@ func (a *compAssembler) eitherItem(row *compRow, text string) bool {
 	return true
 }
 
-// complAmountLeadRe: the amount an item's text starts with: "0.5 credit 400
-// level course from Group A or Group B".
+// complAmountLeadRe matches the amount an item's text starts with: "0.5 credit
+// 400 level course".
 var complAmountLeadRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\b`)
 
-// restatedOr drops a line that restates an item's alternative, under the
-// list it is an alternative to ("Group C" ... "OR 2.0 credits in any major
-// African language approved by the Program Committee", which item 7 says):
-// its line joins the item's raw.
+// restatedOr drops a line under a list that restates an item's alternative,
+// joining it to that item's raw.
 func (a *compAssembler) restatedOr(row *compRow, t string) bool {
 	m := complRestatedOrRe.FindStringSubmatch(t)
 	if m == nil || row.r.Label != "" {
@@ -467,13 +418,9 @@ func (a *compAssembler) restatedOr(row *compRow, t string) bool {
 	return false
 }
 
-// orElse reads "Additional philosophy courses, to a total of 7.0 credits, or
-// else additional philosophy courses to a total of 6.5 credits, plus one 0.5
-// credit from Group 4 (Interdisciplinary)": the first reading is the
-// total's pool (additional); the second lets the group's courses (the lines
-// under its title) join that pool, at most the difference (a limit under
-// row 1), and when that is more than one half course, all of it or none (a
-// constraint: "9.0 credits and 1.0 credit from Group 4" isn't 9.5 and 0.5).
+// orElse reads complOrElseRe: the first reading is the total's pool; the second
+// lets the group's courses join it, capped at the difference, all or none when
+// over a half course ("9.0 and 1.0 from Group 4" isn't "9.5 and 0.5").
 func (a *compAssembler) orElse(row *compRow, t string) bool {
 	m := complOrElseRe.FindStringSubmatch(t)
 	if m == nil || a.total == nil || !strings.EqualFold(strings.TrimSpace(m[1]), strings.TrimSpace(m[3])) {
@@ -509,10 +456,9 @@ func (a *compAssembler) orElse(row *compRow, t string) bool {
 	return true
 }
 
-// listLineCodes returns the codes of the list with key (complListKey) as
-// its lines set it out: the line of codes under its title ("_Group 4 -
-// Interdisciplinary:_" then "ANT348H1, GER338H1, ..."). Nil when no title
-// or several name it, or a line under it isn't only codes.
+// listLineCodes returns the codes on the lines under the one title naming list
+// key: "_Group 4 - Interdisciplinary:_" then "ANT348H1, GER338H1". Nil when not
+// exactly one title names it.
 func (a *compAssembler) listLineCodes(key string) []string {
 	var codes []string
 	found := 0
@@ -532,13 +478,8 @@ func (a *compAssembler) listLineCodes(key string) []string {
 	return dedupe(codes)
 }
 
-// categories reads "1.0 to 1.5 credits in at least two of the three
-// following categories: (1) one field course (0.5 credit) from EEB401H1,
-// ...; (2) one seminar (0.5 credit) from EEB491H1, EEB495H1; and/or (3) one
-// independent research course (0.5 credit) from EEB497H1/ (1.0 credit) from
-// EEB498Y1": choose{2} over the categories, each the credits of its
-// courses, an or of its alternatives. The fewest credits of the count must
-// be the amount.
+// categories reads complCategoriesRe as choose{count} over the categories, each
+// the or of its alternatives. The cheapest count of them must make the amount.
 func (a *compAssembler) categories(row *compRow, t string) bool {
 	m := complCategoriesRe.FindStringSubmatch(t)
 	if m == nil {
@@ -586,10 +527,8 @@ func (a *compAssembler) categories(row *compRow, t string) bool {
 	return true
 }
 
-// chooseCourses reads "Students should choose four of the following
-// 400-level courses (2.0-2.5 credits): LMP405Y1, LMP410H1, ...":
-// choose{4} over the courses, when the courses pass the level and the
-// range is what the count weighs (the four lightest, the four heaviest).
+// chooseCourses reads complChooseCoursesRe as choose{count} over the courses,
+// when they are at the level and the range is the count's lightest to heaviest.
 func (a *compAssembler) chooseCourses(row *compRow, t string) bool {
 	m := complChooseCoursesRe.FindStringSubmatch(t)
 	if m == nil || !isCodeList(m[5]) {
@@ -626,14 +565,9 @@ func (a *compAssembler) chooseCourses(row *compRow, t string) bool {
 	return true
 }
 
-// inlineOr reads an item whose options are joined by an upper-case "OR"
-// ("1.0 additional credit from Group A or B, **OR** 1.0 credit at any level
-// of an Asian language (see _Accepted Language Courses_ below)", "CAS450H1
-// **OR** 0.5 credit in a quantitative or qualitative methods course from
-// Group C ..."), when the grammar can't read the whole: each option is a
-// row (an item's body), and a choice picks one; the lists they name are read
-// later (namedLists), and options that are each a body alone become this
-// item's or (collapseChoices).
+// inlineOr reads an item whose options are joined by an upper-case "OR", when
+// the grammar can't read the whole: the options' or when each is a body alone,
+// else a choice; collapseChoices may later make that choice one or.
 func (a *compAssembler) inlineOr(row *compRow, text string) bool {
 	sents := splitComplSentences(text)
 	if len(sents) != 1 || strings.Count(text, "OR") == 0 {
@@ -668,10 +602,8 @@ func (a *compAssembler) inlineOr(row *compRow, text string) bool {
 	return true
 }
 
-// collapseChoices makes a choice whose options are each a body alone (an
-// allocation with no rows under it, right before the choice) one
-// allocation: the or (choose) of the bodies, with the choice's label, section
-// and raw. The options' text is read by now (namedLists).
+// collapseChoices makes a choice whose options are each a body alone, right
+// before it, one allocation: the options' or (choose). It runs after namedLists.
 func (a *compAssembler) collapseChoices() {
 	for i := 0; i < len(a.items); i++ {
 		c := a.items[i]
@@ -710,32 +642,24 @@ func (a *compAssembler) collapseChoices() {
 	}
 }
 
-// reqRefRow reports whether a pool refers to row (reqRefs).
+// reqRefRow reports whether a pool refers to row.
 func (a *compAssembler) reqRefRow(row *compRow) bool {
 	return slices.ContainsFunc(a.reqRefs, func(ref compReqRef) bool { return slices.Contains(ref.rows, row) })
 }
 
-// overlapRow reports whether row is one of a pair that may share courses
-// (a.overlaps): its number is written on the other row.
+// overlapRow reports whether row is one of a pair that may share courses.
 func (a *compAssembler) overlapRow(row *compRow) bool {
 	return slices.ContainsFunc(a.overlaps, func(o [2]*compRow) bool { return o[0] == row || o[1] == row })
 }
 
-// choiceRow reports whether a choice picks row (choiceRefs).
+// choiceRow reports whether a choice picks row.
 func (a *compAssembler) choiceRow(row *compRow) bool {
 	return slices.ContainsFunc(a.choiceRefs, func(ref compChoiceRef) bool { return slices.Contains(ref.rows, row) })
 }
 
-// restatedItems drops rows that restate what another row encodes, joining
-// their sentence to that row's raw:
-//   - an item "If a student has not completed STA130H1 then an additional
-//     0.5 credit 300+ level STA course that is not used towards any other
-//     program requirement must be completed", where a row already has
-//     or(STA130H1, credits{0.5, STA, 300/400}) (a relaxation): it is that
-//     alternative, and claims are exclusive anyway;
-//   - "If the research course LMP405Y1 is taken, an additional three
-//     400-level courses from the list are still required" after a
-//     choose{4} over a list with LMP405Y1.
+// restatedItems drops rows that restate another row's alternative or a
+// choose's count, joining their sentence to that row's raw: "If a student has
+// not completed STA130H1 then ...", "If the research course LMP405Y1 is taken".
 func (a *compAssembler) restatedItems() {
 	var all []*compRow
 	var walk func(rs []*compRow)
@@ -791,8 +715,8 @@ func (a *compAssembler) restatedItems() {
 	a.items, a.program = drop(a.items), drop(a.program)
 }
 
-// chosenRows returns the numbers of the rows c's choices pick among: they
-// count only through their choice.
+// chosenRows returns the numbers of the rows c's choices pick among: they count
+// only through their choice.
 func chosenRows(c *types.Completion) map[int]bool {
 	out := map[int]bool{}
 	for _, r := range c.Requirements {
@@ -809,10 +733,7 @@ func chosenRows(c *types.Completion) map[int]bool {
 	return out
 }
 
-// choiceCredits returns the fewest credits a choice's options need (the
-// cheapest choice): a requirement node's cheapest row (rowCredits), the sum
-// of an "and", the cheapest alternative of an "or", the cheapest count of a
-// "choose".
+// choiceCredits returns the fewest credits a choice's options need.
 func choiceCredits(n *types.ReqNode, c *types.Completion, kids map[int][]*types.Requirement) float64 {
 	switch n.Type {
 	case types.NodeRequirement:
@@ -849,21 +770,9 @@ type compArea struct {
 	b           *compBlock
 }
 
-// areaOptions reads two items over areas the student chooses ("Students
-// must choose any two of the available language areas (Czech and Slovak,
-// ...)", "2. 4.0 credits of language coursework from each of the two
-// chosen language areas (2.0 credits per area)." then "_Czech and Slovak:_
-// SLA105Y1, ...", "3. 4.0 credits from culture courses corresponding to the
-// student’s two chosen language areas (2.0 credits per area):" then the
-// areas' culture lines): each area is an option, a group of its two parts
-// (2.0 credits from each of its lines), and a choice row picks two of them
-// (choose over requirement nodes). An area the sentence doesn't name
-// ("Yiddish (corresponds to the Jewish Cultures in Eastern Europe area)",
-// in both lists) is one only the lenient reading allows: its first part is
-// and(credits, the sentence), Review. A "Note:" after an item's lines that
-// is an approval or another way to meet it is an alternative on that item's
-// parts. bs[0] is the first item; it returns how many blocks it read (0:
-// none).
+// areaOptions reads two items over chosen areas, from bs[0], as a choice of
+// count areas, each a group of its two lines, and returns how many blocks it
+// read. An area the sentence doesn't name is lenient-only: and(credits, text).
 func (a *compAssembler) areaOptions(bs []*compBlock) int {
 	type areaItem struct {
 		b      *compBlock
@@ -920,7 +829,7 @@ func (a *compAssembler) areaOptions(bs []*compBlock) int {
 	if !ok || len(second.areas) != len(first.areas) {
 		return 0
 	}
-	// The sentence that sets the choice, read already as a row of text.
+	// the sentence that sets the choice, read already as a row of text
 	var sentence *compRow
 	var count int
 	var named []string
@@ -940,7 +849,7 @@ func (a *compAssembler) areaOptions(bs []*compBlock) int {
 	if sentence == nil || count < 2 || count >= len(first.areas) {
 		return 0
 	}
-	// Each area of the first item, with its line in the second.
+	// each area of the first item, with its line in the second
 	pair := func(x compArea) int {
 		return slices.IndexFunc(second.areas, func(y compArea) bool {
 			return strings.EqualFold(y.name, x.name) || x.other != "" && strings.EqualFold(y.name, x.other) || y.other != "" && strings.EqualFold(y.other, x.name)
@@ -964,7 +873,7 @@ func (a *compAssembler) areaOptions(bs []*compBlock) int {
 			*part.out = append(*part.out, row)
 		}
 		if !slices.Contains(named, strings.ToLower(x.name)) {
-			// Two readings: the sentence's areas, or every area listed.
+			// two readings: the sentence's areas, or every area listed
 			p := g.children[0]
 			p.r.Req = andNode(p.r.Req, textNode(types.TextOther, sentence.r.Req.Text))
 		}

@@ -2,16 +2,14 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleOptions checks options and choices (design 3.4): options
-// that are each a body of courses are one allocation's or or choose;
-// otherwise each option is an allocation under row 1 (a group when it has
-// parts) and a choice row at the top picks among them.
+// TestCompletionRuleOptions checks options and choices: options that are each
+// a body of courses are one allocation's or or choose; otherwise each option is
+// an allocation under row 1 and a choice row at the top picks among them.
 func TestCompletionRuleOptions(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
-		// Option E includes one of the others: options of their own and a
-		// choice, or(A, ..., D, and(E, any of A-D)). The total counts the
-		// cheapest choice (1.0), not every option: its items fall short of it
-		// (2.0 of 3.0), so it carries the Review marker.
+		// Option E includes one of the others: or(A, ..., D, and(E, any of A-D)). The
+		// total counts the cheapest choice (1.0); its items fall short of it (2.0 of
+		// 3.0), so it carries the Review marker.
 		{"options, one including the others (ASSPE2025)",
 			"(3.0 credits)\nThird Year:\n- BCH370H1, BCH311H1\nChoose one of the options below:\n- Option A: Immunology: ( IMM341H1, IMM351H1)\n- Option B: Microbiology: ( MGY377H1, MGY378H1)\n- Option C: Anatomy: ANA300Y1\n- Option D: Metabolic and Signaling Pathways: PSL425H1 and PCL386H1\n- Option E: Research: LMP305Y1 and one of the above four options",
 			[]string{
@@ -26,8 +24,7 @@ func TestCompletionRuleOptions(t *testing.T) {
 			},
 			nil},
 		// The total counts the rows outside the options and the cheapest choice
-		// (option E is LMP305Y1 and another option): row 1 has no shortfall
-		// marker (markIncomplete's chosenRows and choiceCredits).
+		// (option E is LMP305Y1 and another option): row 1 has no shortfall marker.
 		{"the total counts the cheapest choice (ASSPE2025)",
 			"(14.0-15.5 credits, including at least 2.0 credits at the 400-level)\nFirst Year:\n- BIO120H1, BIO130H1\n- ( CHM135H1, CHM136H1)/ CHM151Y1\n- ( MAT130H1/ MAT135H1, MAT136H1)/ ( MAT148H1, MAT149H1/ MAT137Y1)/ (( MAT158H1, MAT159H1/ MAT157Y1)\nFirst or Second Year:\n- ( PHY131H1, PHY132H1)/ ( PHY151H1, PHY152H1)\nSecond Year:\n- BCH210H1\n- BIO230H1\n- BIO260H1/ HMB265H1\n- CHM220H1\n- CHM247H1/ CHM249H1\n- PSL300H1, PSL301H1\n- STA288H1/ STA220H1/ BIO220H1\n- LMP200H1\nThird Year:\n- BCH370H1, BCH311H1\n- LMP310H1, LMP320H1, LMP330H1\nChoose one of the options below:\n- Option A: Immunology: ( IMM341H1, IMM351H1)\n- Option B: Microbiology: ( MGY377H1, MGY378H1)\n- Option C: Anatomy: ANA300Y1\n- Option D: Metabolic and Signaling Pathways: PSL425H1 and PCL386H1\n- Option E: Research: LMP305Y1 and one of the above four options\nFourth Year:\nStudents should choose four of the following 400-level courses (2.0-2.5 credits):\n- LMP405Y1, LMP410H1, LMP415H1, LMP420H1, LMP430H1, LMP440H1, LMP450H1, LMP460H1\nNote: If the research course LMP405Y1 is taken, an additional three 400-level courses from the list are still required (totalling 2.5 credits).",
 			[]string{

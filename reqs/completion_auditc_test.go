@@ -8,8 +8,7 @@ import (
 	"degree-explorer/types"
 )
 
-// TestCompletionAuditFixesC checks the audit fixes of Task 10 stream C on
-// snippets of real programs.
+// TestCompletionAuditFixesC checks one-off readings on snippets of real programs.
 func TestCompletionAuditFixesC(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a footnoted stand-in that needn't be replaced: the total less the missing share (ASSPE1868, shortened)",
@@ -144,9 +143,9 @@ func TestCompletionAuditOverlapsC(t *testing.T) {
 	}
 }
 
-// TestMarkerCauses checks that a Review marker's causes are found on the
-// final envelope: a permission route and an ambiguity make the total's
-// marker other (markerKind), and both are its causes, all Review by design.
+// TestMarkerCauses checks that a Review marker's causes are found on the final
+// envelope: a permission route and an ambiguity make the total's marker other,
+// and both are its causes.
 func TestMarkerCauses(t *testing.T) {
 	c := ParseCompletion("(1.0 credit)\n4. CHM395Y1/ CHM499Y1/ PHC489Y1 and/or CHM397H0/ CHM398H0 in areas relevant to the program with prior approval by the Department")
 	n := c.Requirements[0].Req
@@ -162,14 +161,9 @@ func TestMarkerCauses(t *testing.T) {
 	}
 }
 
-// markerCauses returns, for each row of c with a Review marker beside its
-// count (or(count, marker), markIncomplete's mark), the open texts that
-// leave that count incomplete, as markIncomplete found them: the row's own
-// (a total's), its parent's (a constraint's), or the incomplete top-level
-// allocations' (a top-level constraint's). A marker with none is a
-// shortfall's. c is not changed. A constraint the marker replaced (its own
-// and(floor, text)) is left out: its texts are gone, and its marker's kind
-// is theirs.
+// markerCauses returns, per row of c with a Review marker beside its count, the
+// open texts that leave the count incomplete, as markIncomplete found them (none
+// for a shortfall). A constraint the marker replaced is left out. c is unchanged.
 func markerCauses(c *types.Completion) map[int][]*types.ReqNode {
 	stripped := &types.Completion{}
 	marked := map[int]bool{}

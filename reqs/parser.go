@@ -19,29 +19,12 @@ import (
 //	       | '(' field ')' | GRADE_PREFIX atom | POOL pool
 //	pool  := item { sep item }                            see parsePool
 //
-// Completion text (parseCompletionText) adds, with p.completion set and the
-// completion-only tokens of lexCompletion (marked "completion" below):
+// Completion text (p.completion) adds:
 //
 //	atom  := ... | EITHER seq ('or' | ', or') seq         "Either A, B or C": the "or" splits the whole
 //	seq   := ... { EXCLUDE }                              ", excluding A, B": exclude on the pool before
 //	pool  := item { (sep | ';') item } [ 'and' COURSE ]   ";" separates items like ","; "A, B and C"
 //	item  := ... | WILD                                   "PSL400-series courses": a filter
-//
-// and, in the pools themselves:
-//   - "or" before an item closes the list as ", or" does ("A, B or C; D");
-//   - an amount pool of courses and filters is one union (unionPool), and a
-//     pool of groups whose credits add up to the amount is their "and"
-//     (groupPool);
-//   - a pool with a level ("0.5 credit at the 400-level from") right after
-//     "including" is a floor, kept as text.
-//
-// Text rewrites before lexing (phrases_completion.go): labels stripped
-// ("Option A: Immunology:"), annotations stripped or set aside as notes
-// ("(recommended)", "(no longer offered)", footnotes, course titles), and
-// the rewrites of rewriteCompletion: among them "in either GRK or LAT" read
-// as "in GRK or LAT", and a Y course after "/" made the alternative to the
-// pair before it ("( MAT148H1, MAT149H1/ MAT137Y1)" reads "( MAT148H1,
-// MAT149H1)/ MAT137Y1").
 
 type span struct{ start, end int }
 
@@ -138,9 +121,8 @@ func (p *parser) parseSeq() *types.ReqNode {
 	}
 }
 
-// applyGradeSuffix sets a trailing grade qualifier on n with the
-// applyMinGrade rules. If there is nothing to attach it to, the qualifier is
-// returned as text.
+// applyGradeSuffix sets a trailing grade qualifier on n with the applyMinGrade
+// rules, or returns it as text if there is nothing to attach it to.
 func (p *parser) applyGradeSuffix(n *types.ReqNode, t token) *types.ReqNode {
 	if n != nil && n.Type == types.NodeCredits {
 		if n.MinGrade == 0 {
@@ -181,10 +163,9 @@ func (p *parser) parseUnit() *types.ReqNode {
 			}
 			continue
 		}
-		// Unclassified TEXT followed directly by COURSE/TEXT: the course is
-		// mentioned, not required ("placement in FSL220H1 based on ..."), so
-		// grow the text node instead.
-		// (completion: a wildcard that reads as text, "UTM" in "taught at UTM").
+		// Unclassified TEXT then COURSE/TEXT: the course is mentioned, not required
+		// ("placement in FSL220H1 based on ..."), so grow the text node. Likewise a
+		// completion wildcard that reads as text ("UTM" in "taught at UTM").
 		if last != nil && last.Type == types.NodeText && last.Kind == "" && (p.at(tCourse, tText) || p.atWildText()) {
 			p.extendText(last, p.next())
 			continue
@@ -264,14 +245,9 @@ func (p *parser) parseAtom() *types.ReqNode {
 	}
 }
 
-// parsePool parses the list after a pool phrase ("one of", "two of",
-// "1.0 credit from:"). If the list uses commas, commas separate items and "/"
-// joins alternatives within an item ("two of A/ B, C, D"); otherwise "/" and
-// "or" separate items ("two of A/ B/ C"). As in English, a plain "," after an
-// ", or" item ends the list ("A, B, or CIN courses, (C/ D)"). "CIN courses" is
-// accepted as an item meaning any course with that designator, and a trailing
-// ", or <text>" ("..., or another ethics course with prior approval") becomes an
-// alternative to the whole pool.
+// parsePool parses the list after a pool phrase ("two of", "1.0 credit from:").
+// "," separates the items of a comma list ("two of A/ B, C"), else "/" and "or"
+// do. A trailing ", or <text>" becomes an alternative to the whole pool.
 func (p *parser) parsePool(t token) *types.ReqNode {
 	ti := p.pos - 1 // t was just read
 	n := p.parsePoolList(t, ti)
@@ -299,7 +275,7 @@ func (p *parser) parsePoolList(t token, ti int) *types.ReqNode {
 		closing = closing || closes
 		alts = alts || item != nil && item.Type == types.NodeOr && !closes
 		if item != nil && item.Type == types.NodeOr && !closes {
-			groups = append(groups, item) // "CSC108H1/ CSC148H1" (completion: pairCaps)
+			groups = append(groups, item) // "CSC108H1/ CSC148H1": capped later so only one counts
 		}
 		if d := designatorItem(item); d != nil {
 			desigs = append(desigs, d...)
@@ -350,9 +326,8 @@ func (p *parser) parsePoolList(t token, ti int) *types.ReqNode {
 	return n
 }
 
-// poolSeps returns what separates pool items: "/" and "or", or, when the
-// list uses commas, "," and ", or" (completion: and ";", as in "2.0 credits
-// from: SLA117H1; SLA118H1").
+// poolSeps returns what separates pool items: "/" and "or", or in a comma list
+// "," and ", or" (and ";" in completion text).
 func (p *parser) poolSeps() []tokKind {
 	switch {
 	case !p.poolUsesCommas():
@@ -363,16 +338,15 @@ func (p *parser) poolSeps() []tokKind {
 	return []tokKind{tComma, tCommaOr}
 }
 
-// listSep reports whether k separates the items of a comma list (completion:
-// ";" too).
+// listSep reports whether k separates the items of a comma list (and ";" in
+// completion text).
 func (p *parser) listSep(k tokKind) bool {
 	return k == tComma || k == tCommaOr || k == tSemi && p.completion
 }
 
-// poolAlternatives parses one pool item with the alternatives that "/" and
-// "or" join to it in a comma list ("two of A/ B, C"). closes reports a plain
-// "or" there (completion: "A, B or C; D" ends the list after C, as ", or"
-// does).
+// poolAlternatives parses one comma-list item with the alternatives "/" and
+// "or" join to it ("two of A/ B, C"). closes reports a plain "or", which ends
+// the list in completion text ("A, B or C; D").
 func (p *parser) poolAlternatives(seps []tokKind) (item *types.ReqNode, closes bool) {
 	item = p.parsePoolItem()
 	for !slices.Contains(seps, tSlash) && (p.at(tSlash) || p.at(tOr) && p.noOr == 0) && p.poolItemAt(p.pos+1) {
@@ -383,9 +357,8 @@ func (p *parser) poolAlternatives(seps []tokKind) (item *types.ReqNode, closes b
 	return item, closes
 }
 
-// lastAndItem parses "and D" after a comma list that hasn't closed, when D is
-// its last course (completion: "HMU111H1, ..., TMU230H1 and TMU231H1"), or
-// returns nil.
+// lastAndItem parses "and D" ending a comma list that hasn't closed, when D is
+// a course ("HMU111H1, ..., TMU230H1 and TMU231H1"), or returns nil.
 func (p *parser) lastAndItem(seps []tokKind, closing bool) *types.ReqNode {
 	if !p.completion || closing || !slices.Contains(seps, tComma) || !p.atLastAndCourse() {
 		return nil
@@ -409,8 +382,7 @@ func (p *parser) atLastAndCourse() bool {
 	return false
 }
 
-// poolUsesCommas looks ahead through the pool list and reports whether
-// commas separate its items.
+// poolUsesCommas reports whether commas separate the items of the pool ahead.
 func (p *parser) poolUsesCommas() bool {
 	depth := 0
 	for i := p.pos; i < len(p.toks); i++ {
@@ -443,10 +415,9 @@ func (p *parser) poolItemAt(i int) bool {
 		p.completionItemAt(i)
 }
 
-// completionItemAt reports whether the token at i is a pool member that only
-// completion text has: a wildcard ("PSL400-series courses") or one course by
-// filter ("any 400-level STA course"), followed by the end of the item. "any
-// POL course with European content approved by ..." is not one.
+// completionItemAt reports whether the token at i is a completion-only pool
+// member that ends its item: a wildcard ("PSL400-series courses") or a filter
+// ("any 400-level STA course"), but not "any POL course approved by ...".
 func (p *parser) completionItemAt(i int) bool {
 	t := p.toks[i]
 	if !p.completion || !(t.kind == tWild || t.kind == tCredits && isFilter(t.node) && anyPoolItemRe.MatchString(p.src[t.start:t.end])) {
@@ -463,14 +434,9 @@ func (p *parser) hasFilters(items []*types.ReqNode) bool {
 	return p.completion && slices.ContainsFunc(items, isFilter)
 }
 
-// completionPool builds the completion forms of an amount pool, or returns
-// nil (always, for course text):
-//   - a level floor after "including" ("1.0 credit, including at least 0.5
-//     credit at the 400-level from A/ B") is text;
-//   - courses and filters: unionPool;
-//   - groups whose credits add up to the amount: groupPool, which a list
-//     that names no pool ("2.0 credits: A; B/ C; D") or has alternatives
-//     in a comma list tries first.
+// completionPool builds the completion forms of an amount pool, or nil (always
+// for course text): text for a level floor after "including", else a groupPool
+// or unionPool, groupPool first for "N credits:" or comma-list alternatives.
 func (p *parser) completionPool(t token, ti int, items []*types.ReqNode, desigs []string, seps []tokKind, alts bool, groups []*types.ReqNode) *types.ReqNode {
 	if !p.completion || t.amount == 0 {
 		return nil
@@ -492,13 +458,9 @@ func (p *parser) completionPool(t token, ti int, items []*types.ReqNode, desigs 
 	return p.groupPool(t, items, desigs, seps)
 }
 
-// pairCaps adds to a union pool a cap for each group of alternatives it
-// flattened (design 3.2): in "1.0 credit from: CHM135H1, CHM136H1, CSC108H1/
-// CSC148H1/ EEB125H1, JEG100H1" at most one of CSC108H1, CSC148H1 and
-// EEB125H1 counts, so and(pool, credits{courses: [the group], max_amount:
-// the heaviest}). The completion assembler makes each cap a limit row on
-// the item. A "/" list ("A/ B/ C") is all alternatives: no caps; nor is an
-// "or" that closes a comma list ("LIN228H1, LIN232H1 or LIN241H1").
+// pairCaps adds to a union pool a cap for each "/" group it flattened: in
+// "CHM135H1, CSC108H1/ CSC148H1/ EEB125H1" at most one of the group counts.
+// A "/" list or an "or" that closes a comma list gets no caps.
 func (p *parser) pairCaps(n *types.ReqNode, groups []*types.ReqNode, seps []tokKind) *types.ReqNode {
 	if n.Type != types.NodeCredits || slices.Contains(seps, tSlash) {
 		return n
@@ -515,16 +477,13 @@ func (p *parser) pairCaps(n *types.ReqNode, groups []*types.ReqNode, seps []tokK
 	return p.and(caps...)
 }
 
-// courseCap caps courses at their heaviest: credits{courses, max_amount},
-// so that at most one of them counts (a "/" pair flattened into a pool,
-// pairCaps and bracketPairCaps; "No more than one from GGR273H1, GGR373H1",
-// capRow). The courses are deduplicated.
+// courseCap caps codes at their heaviest weight (credits{courses, max_amount}),
+// so that at most one of them counts. The codes are deduplicated.
 func courseCap(codes []string) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeCredits, Courses: dedupe(codes), MaxAmount: maxAmount(heaviestCourse(codes))}
 }
 
-// heaviestCourse returns the largest weight among codes (courseWeight), 0
-// for none.
+// heaviestCourse returns the largest weight among codes, 0 for none.
 func heaviestCourse(codes []string) float64 {
 	w := 0.0
 	for _, c := range codes {
@@ -583,23 +542,9 @@ func designatorItem(n *types.ReqNode) []string {
 	return desigRe.FindAllString(m[1], -1)
 }
 
-// unionPool builds the completion form of an amount pool whose items are
-// listed courses and filters ("1.0 credit from APM346H1/ PHY 300-level
-// courses/ PHY 400-level courses"). The amount applies to the union:
-//   - when the filters combine into one without changing what matches, and
-//     every listed code passes it, the result is one credits node:
-//     credits{1.0, courses [APM346H1], designators [PHY], levels [300, 400]}
-//     is exact because APM346H1 is at the 300 level;
-//   - otherwise ("HMU200+ level courses; JMU210H1; SMU400-level courses") it
-//     is credits{amount, items: [the listed courses, the merged filters]}: a
-//     course counts if it matches any item, as in average. This is an
-//     interim form: docs/schema.md writes such a union as a course list,
-//     which the completion assembly is to build from these items.
-//
-// A pool level ("0.5 credit at the 400-level from ...", t.node) narrows
-// every member; if that would drop a listed code or leave a member no level,
-// the pool is text instead. It returns nil if an item is neither a course nor
-// a filter.
+// unionPool reads an amount pool of courses and filters (else nil) as one
+// credits node when the filters merge and pass every listed code, else as
+// credits{amount, items}. A pool level that would lose a member makes it text.
 func (p *parser) unionPool(t token, items []*types.ReqNode, desigs []string) *types.ReqNode {
 	var codes []string
 	var filters []*types.ReqNode
@@ -642,9 +587,9 @@ func (p *parser) unionPool(t token, items []*types.ReqNode, desigs []string) *ty
 	return n
 }
 
-// narrowLevels restricts a credits filter to levels as well. It reports
-// whether that leaves the filter no level at all. Listed courses (checked by
-// the caller) and unions are left alone.
+// narrowLevels restricts a credits filter to levels as well and reports whether
+// that leaves it none. Listed courses (checked by the caller) and unions are
+// left alone.
 func narrowLevels(n *types.ReqNode, levels []int) (empty bool) {
 	if n.Items != nil || n.Designators == nil && n.Levels == nil {
 		return false
@@ -657,22 +602,9 @@ func narrowLevels(n *types.ReqNode, levels []int) (empty bool) {
 	return len(n.Levels) == 0
 }
 
-// groupPool reads an amount pool of groups, using their smallest credits
-// (minCredits), or returns nil:
-//   - in a comma or ";" list, groups that add up to the amount are all
-//     needed: "2.0 credits from ( BIO120H1, BIO130H1)/ BIO150Y1; ( CHM135H1,
-//     CHM136H1)/ CHM151Y1" needs one of each pair. A group of alternatives
-//     must weigh the same either way: in "1.0 credit from ECO101H1, ECO102H1/
-//     ECO105Y1" (ASMAJ2660) ECO105Y1 alone is the amount, so the "and" would
-//     reject a student who took only it. With a range ("2.5 to 3.0 credits
-//     from STA130H1, CSC108H1/ CSC110Y1, ...") the groups' smallest credits
-//     must add up to its lower end and their largest to at most its upper
-//     end: the range is what the uneven alternatives allow. "0.5 to 1.0
-//     credit from STA492H1, STA496H1/ ... STA499Y1" adds up to 1.0, so it is
-//     not "both" (ASSPE2290);
-//   - in a "/" list the items are alternatives, never added up: when each
-//     one is the amount (or within the range), the pool is their "or":
-//     "1.0 credit from ( MAT235H1, MAT236H1)/ MAT235Y1/ MAT237Y1/ MAT257Y1".
+// groupPool reads an amount pool of groups, or returns nil: in a "/" list each
+// item must meet the amount (their "or"); in a comma list their smallest credits
+// must add up to it (their "and"), uneven groups only in a range or "N credits:".
 func (p *parser) groupPool(t token, items []*types.ReqNode, desigs []string, seps []tokKind) *types.ReqNode {
 	if desigs != nil || len(items) == 0 {
 		return nil
@@ -703,10 +635,8 @@ func (p *parser) groupPool(t token, items []*types.ReqNode, desigs []string, sep
 	return p.and(items...)
 }
 
-// maxCredits returns the most credits a route through n takes: the
-// heaviest alternative of each "or" (minCredits has checked the courses). It
-// is minCredits' upper end, for the same trees of courses, "and" and "or";
-// anything else counts 0.
+// maxCredits returns the most credits a route through n takes: the heaviest
+// alternative of each "or". Anything but courses, "and" and "or" counts 0.
 func maxCredits(n *types.ReqNode) float64 {
 	switch n.Type {
 	case types.NodeCourse:
@@ -746,17 +676,9 @@ func inRange(c float64, t token) bool {
 	return math.Abs(c-t.amount) < 1e-9
 }
 
-// minCredits returns the fewest credits that meet n, from the H/Y weights of
-// its courses. ok is false if n has anything but courses, "and" and "or", or
-// if an "and" holds an "or" whose alternatives differ in credits: in
-// "ECO101H1, ECO102H1/ ECO105Y1" (ASMAJ2660) the Y course replaces the pair,
-// which "/" binding tighter than "," misreads, so the sum would be wrong
-// (groupPairY rewrites only the unambiguous forms).
-//
-// Unlike minWeight (enrolment) and nodeCredits (completion), which also
-// count pools, text and "choose", it reads only courses with a valid code,
-// "and" and "or": the grammar uses it to check that the courses of a list
-// add up to its amount, where anything else means the list isn't one.
+// minCredits returns the fewest credits that meet n, from its courses' H/Y
+// weights. ok is false for anything but valid courses, "and" and "or", or an
+// "and" holding an "or" of uneven alternatives, whose sum would be wrong.
 func minCredits(n *types.ReqNode) (c float64, ok bool) {
 	switch n.Type {
 	case types.NodeCourse:
@@ -792,8 +714,8 @@ func evenCredits(n *types.ReqNode) bool {
 	})
 }
 
-// applyExclude adds codes to the exclusions of the credits pools in n
-// (through "or"), and reports whether there was one.
+// applyExclude adds codes to the exclusions of the credits pools in n (through
+// "or") and reports whether there was one.
 func applyExclude(n *types.ReqNode, codes []string) bool {
 	if n == nil {
 		return false
@@ -819,9 +741,8 @@ func applyExclude(n *types.ReqNode, codes []string) bool {
 	return false
 }
 
-// poolMembers splits a pool item into listed codes and filters (copies
-// without an amount). An "or" of members is a union too. ok is false for
-// anything else.
+// poolMembers splits a pool item, or an "or" of members, into listed codes and
+// filters (copies without an amount). ok is false for anything else.
 func poolMembers(n *types.ReqNode) (codes []string, filters []*types.ReqNode, ok bool) {
 	switch {
 	case n == nil:
@@ -845,19 +766,17 @@ func poolMembers(n *types.ReqNode) (codes []string, filters []*types.ReqNode, ok
 	return nil, nil, false
 }
 
-// isFilter reports whether n is one course matching designators and levels
-// ("any 300-level CSC course", "PSL400-series courses"), which a pool reads
-// as a filter.
+// isFilter reports whether n is one course by designators or levels ("any
+// 300-level CSC course"), which a pool reads as a filter.
 func isFilter(n *types.ReqNode) bool {
 	return n != nil && n.Type == types.NodeCredits && n.Amount <= 0.5 && n.MaxAmount == nil &&
 		n.Courses == nil && n.Items == nil && n.Breadth == nil && n.MinGrade == 0 &&
 		(n.Designators != nil || n.Levels != nil)
 }
 
-// mergeFilters combines filters into one that matches exactly the courses
-// any of them matches, or returns nil. Filters combine when they share their
-// levels (the designators are joined) or their designators (the levels are
-// joined). Excluded codes are joined when no other filter matches them.
+// mergeFilters combines filters sharing their levels (designators joined) or
+// designators (levels joined) into one matching exactly what any matches, or
+// returns nil. Excluded codes are joined when no other filter matches them.
 func mergeFilters(filters []*types.ReqNode) *types.ReqNode {
 	m := &types.ReqNode{Type: types.NodeCredits}
 	if len(filters) <= 1 {
@@ -909,8 +828,8 @@ func mergeFilters(filters []*types.ReqNode) *types.ReqNode {
 	return m
 }
 
-// groupFilters merges the filters that can be merged ("HMU200+ level
-// courses; TMU200+ courses" is one filter), keeping their order.
+// groupFilters merges the filters that can be merged ("HMU200+ level courses;
+// TMU200+ courses"), keeping their order.
 func groupFilters(filters []*types.ReqNode) []*types.ReqNode {
 	var out []*types.ReqNode
 next:
@@ -926,14 +845,13 @@ next:
 	return out
 }
 
-// filterMatches reports whether the course code matches filter f.
 func filterMatches(f *types.ReqNode, code string) bool {
 	return (f.Designators == nil || slices.Contains(f.Designators, code[:3])) &&
 		levelMatches(f.Levels, code) && !slices.Contains(f.Exclude, code)
 }
 
 // levelMatches reports whether code's level is one of levels (any if none).
-// Only St. George-style codes ("CSC148H1") have a level in their digits here.
+// Only St. George-style codes ("CSC148H1") have a level in their digits.
 func levelMatches(levels []int, code string) bool {
 	if levels == nil {
 		return true
@@ -947,10 +865,9 @@ func sameSet[T comparable](a, b []T) bool {
 	return len(a) == len(b) && !slices.ContainsFunc(a, func(x T) bool { return !slices.Contains(b, x) })
 }
 
-// applyMinGrade sets MinGrade on every course under n that doesn't have one,
-// and returns how many courses it touched. It skips credit pools ("Minimum 70%
-// in required courses: A, B, 0.5 credit from ...") and groups that carry grades
-// of their own ("minimum of 70% in A/ (minimum of 85% in B, C)").
+// applyMinGrade sets MinGrade on every course under n without one and returns
+// how many it set. It skips credit pools and groups with grades of their own
+// ("minimum of 70% in A/ (minimum of 85% in B, C)").
 func applyMinGrade(n *types.ReqNode, grade int) int {
 	if n == nil {
 		return 0

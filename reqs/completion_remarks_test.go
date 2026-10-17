@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleRemarks checks the item bodies read past a remark in
-// brackets or a clause on courses already used, and the rows read with the
-// rows around them (completion_remarks.go).
+// TestCompletionRuleRemarks checks item bodies read past a bracketed remark or
+// a clause on courses already used, and rows read with the rows around them.
 func TestCompletionRuleRemarks(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a floor from a designator's courses of the list: the list, and the floor on its PCL/JPM courses (ASSPE2573, shortened)",

@@ -2,9 +2,8 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleFilterPools checks pools that mix a designator's
-// courses at a level with listed courses (completion_filterpools.go) on
-// real snippets.
+// TestCompletionRuleFilterPools checks pools that mix a designator's courses at
+// a level with listed courses.
 func TestCompletionRuleFilterPools(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"any other courses of a series and listed courses (ASSPE1762, shortened)",

@@ -9,31 +9,20 @@ import (
 )
 
 // Audience exemptions: "Faculty of Arts and Science co-requisite and
-// pre-requisite requirements do not apply to the students in the Faculty of
-// Applied Science and Engineering who choose to take this course." The group
-// G is exempt from the requirement R it names, so R becomes
-// or(R, text{program: G}): a student who meets R is Met, anyone else gets
-// Review, since the checker doesn't know a student's faculty. This is the
-// shape an audience label gives with an empty branch ("<R> G: <nothing>").
-// The sentence itself moves to notes.
-//
-// The subject says which fields the exemption covers: "pre-requisite"
-// and/or "co-requisite", or neither ("These requirements ...") for the field
-// it is in. Its owner ("Faculty of Arts and Science ...") is the faculty that
-// sets the whole field, so R is the whole field, never a part of it.
+// pre-requisite requirements do not apply to the students in ... Engineering".
 
 var (
 	exemptApplyRe = regexp.MustCompile(`(?i)\bdo(?:es)?\s+not\s+apply\s+to\s+`)
-	// exemptSubjectRe is the last word of the subject: "... requirements",
-	// "... prerequisites", "... co-requisite".
+	// exemptSubjectRe matches the last word of the subject: "requirements".
 	exemptSubjectRe = regexp.MustCompile(`(?i)^(?:requirements?|(?:pre|co)-?requisites?)$`)
 	exemptWordRe    = regexp.MustCompile(`^[A-Za-z&-]+$`) // no codes, no punctuation
 	wordSpanRe      = regexp.MustCompile(`\S+`)
 	exemptPreRe     = regexp.MustCompile(`(?i)\bpre(?:-|requisite)`)
 	exemptCoRe      = regexp.MustCompile(`(?i)\bco(?:-|requisite)`)
-	// exemptEndRe ends the clause: a sentence break, ";" or the end.
+	// exemptEndRe matches the clause's end: a sentence break, ";" or the end.
 	exemptEndRe = regexp.MustCompile(`\.\s+[A-Z(]|\.\s*$|;`)
-	// exemptTailRe is wording after the group that doesn't narrow it.
+	// exemptTailRe matches wording after the group that doesn't narrow it: " who
+	// choose to take this course".
 	exemptTailRe = regexp.MustCompile(`(?i)\s+who\s+(?:choose|chooses|wish|wishes|want|wants|elect|elects)\s+to\s+(?:take|enrol\s+in|enroll\s+in)\s+(?:this|the)\s+course$`)
 	// exemptGroupRe: the group must name students, a faculty or FASE.
 	exemptGroupRe = regexp.MustCompile(`\b(?:[Ss]tudents?|Faculty|FASE)\b`)
@@ -50,7 +39,8 @@ var (
 // that lost its full stop.
 const exemptMaxWords = 10
 
-// exemption is one "… requirements do not apply to G" clause.
+// exemption is one "… requirements do not apply to G" clause. Its owner sets the
+// whole field, so it covers whole fields, never a part of one.
 type exemption struct {
 	note     string // the clause as written, for notes
 	group    string // G: "students in the Faculty of Applied Science and Engineering"
@@ -115,10 +105,9 @@ func findExemption(s string) (exemption, bool) {
 
 func isUpperStart(w string) bool { return w != "" && w[0] >= 'A' && w[0] <= 'Z' }
 
-// extractExemptions removes exemption clauses from s, so they can't be read
-// as requirements, and returns them. A clause glued to a code with its "."
-// missing ("… MIE358H1 Faculty of Arts and Science … do not apply to …")
-// is cut there.
+// extractExemptions removes exemption clauses from s, so they aren't read as
+// requirements, and returns them. A clause glued to a code by a missing "."
+// ("MIE358H1 Faculty of Arts and Science ...") is cut at the code.
 func extractExemptions(s string) (string, []exemption) {
 	var out []exemption
 	for {
@@ -140,9 +129,9 @@ func extractExemptions(s string) (string, []exemption) {
 	}
 }
 
-// exempt returns n with group g as an alternative, unless n already gives
-// g a branch of its own (an audience label for the same group): that
-// branch, not the exemption, says what g needs.
+// exempt returns or(n, text{program: g}): the checker can't know a student's
+// faculty, so g gets Review. A branch n already gives g (an audience label for
+// the same group) says what g needs instead.
 func exempt(n *types.ReqNode, g string) *types.ReqNode {
 	if n == nil || hasAudience(n, audienceKey(g)) {
 		return n
@@ -181,11 +170,9 @@ func audienceKey(s string) string {
 	return k
 }
 
-// ApplyExemptions applies exemptions that one requisite field states about
-// the other: an exemption in the corequisites from "Faculty of Arts and
-// Science pre-requisite requirements" makes the prerequisites
-// or(R, text{program: G}) and copies the sentence to their notes. Exemptions
-// already applied by ParseRequisite are left alone. Either argument may be nil.
+// ApplyExemptions applies the exemptions one requisite field states about the
+// other, as exempt does, and copies each sentence to its notes. Exemptions that
+// ParseRequisite applied are left alone; either argument may be nil.
 func ApplyExemptions(prereq, coreq *types.Requisite) {
 	for _, src := range []*types.Requisite{prereq, coreq} {
 		if src == nil {

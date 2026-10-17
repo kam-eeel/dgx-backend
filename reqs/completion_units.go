@@ -9,65 +9,51 @@ import (
 	"degree-explorer/types"
 )
 
-// Node-language additions of Task 10 (stream E1): designators a pool
-// excludes ("8.0 credits in non-RSM courses", exclude_designators), a
-// course-weight filter ("any FRE or FCS half-course", max_course_amount,
-// read by filterMembers), pairs counted as one unit in a list ("2.0 credits
-// from the following: PHL200Y1/( PHL205H1, PHL206H1)/ PHL210Y1", a pair item
-// and(course, course)) and a pool that is the union of its lead's filter
-// and the courses it lists ("2.0 APM/MAT credits at the 300+ level
-// including 0.5 credit at the 400-level: ACT230H1/ ...").
+// Pools written with excluded designators, pairs counted as one unit, and a
+// lead's filter joined to the courses it lists; and the rules built on them.
 
 var (
-	// complNonDesigRe: "Students must take a minimum of 8.0 credits in RSM
-	// and 8.0 credits in non-RSM courses (to complete their Specialist
-	// requirements)". The groups: the two amounts and designators.
+	// complNonDesigRe matches floors in and outside a designator: "Students
+	// must take a minimum of 8.0 credits in RSM and 8.0 credits in non-RSM
+	// courses".
 	complNonDesigRe = regexp.MustCompile(`(?i)^students\s+must\s+take\s+a\s+minimum\s+of\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+((?-i:[A-Z]{3}))\s+and\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+non-((?-i:[A-Z]{3}))\s+courses(?:\s+to\s+complete\s+their\s+[a-z ]+\s+requirements)?$`)
-	// complCountsAsDesigRe: the program note "MGT100H1 is considered
-	// equivalent to RSM100H1 and counts as 0.5 credit in RSM courses towards
-	// this requirement". The groups: the course, the designator.
+	// complCountsAsDesigRe matches a course counted as a designator's:
+	// "MGT100H1 is considered equivalent to RSM100H1 and counts as 0.5 credit
+	// in RSM courses towards this requirement".
 	complCountsAsDesigRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+is\s+considered\s+equivalent\s+to\s+` + codePat + `\s+and\s+counts\s+as\s+\d+(?:\.\d+)?\s+credits?\s+in\s+((?-i:[A-Z]{3}))\s+courses\s+towards\s+this\s+requirement$`)
-	// complCrNcrTranscriptRe: a CR/NCR rule's last clause, "..., and the 8.0
-	// RSM credit requirement". The groups: the amount and the designator.
+	// complCrNcrTranscriptRe matches a CR/NCR rule's last clause: ", and the
+	// 8.0 RSM credit requirement".
 	complCrNcrTranscriptRe = regexp.MustCompile(`(?i),?\s+and\s+the\s+(\d+(?:\.\d+)?)\s+((?-i:[A-Z]{3}))\s+credit\s+requirement$`)
-	// complOtherUnitsRe: "Courses offered by other academic units may not be
-	// counted towards this program".
+	// complOtherUnitsRe matches "Courses offered by other academic units may
+	// not be counted towards this program".
 	complOtherUnitsRe = regexp.MustCompile(`(?i)^courses\s+offered\s+by\s+other\s+academic\s+units\s+may\s+not\s+be\s+counted\s+towards?\s+this\s+program$`)
-	// complLeadFilterPoolRe: a pool whose lead is a filter and whose members
-	// follow a colon: "Further Topics: 2.0 APM/MAT credits at the 300+ level
-	// including 0.5 credit at the 400-level: ACT230H1/ ...". The groups: the
-	// amount, the designators, the level, the floor's amount and level, the
-	// members.
+	// complLeadFilterPoolRe matches a pool whose lead is a filter: "2.0 APM/MAT
+	// credits at the 300+ level including 0.5 credit at the 400-level:
+	// ACT230H1/ ACT240H1".
 	complLeadFilterPoolRe = regexp.MustCompile(`^(?:[^:]+:\s*)?(\d+(?:\.\d+)?)\s+((?:[A-Z]{3}/)*[A-Z]{3})\s+credits\s+at\s+the\s+([1-4])00\+\s+level\s+including\s+(\d+(?:\.\d+)?)\s+credit\s+at\s+the\s+([1-4])00-level:\s*(.+)$`)
-	// complAnyCombinationRe: a note restating such a pool, "students can
-	// take any combination of 300+ and 400+ level APM or MAT courses that
-	// adds up to 2.0 credits, with the condition that at least a 0.5 credit
-	// is at the 400+ level". The groups: the designators, the amount.
+	// complAnyCombinationRe matches a note restating such a pool: "students can
+	// take any combination of 300+ and 400+ level APM or MAT courses that adds
+	// up to 2.0 credits, with the condition that at least a 0.5 credit is at
+	// the 400+ level".
 	complAnyCombinationRe = regexp.MustCompile(`(?i)^students\s+can\s+take\s+any\s+combination\s+of\s+300\+\s+and\s+400\+\s+level\s+((?-i:[A-Z]{3}))\s+or\s+((?-i:[A-Z]{3}))\s+courses\s+that\s+adds?\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits,\s+with\s+the\s+condition\s+that\s+at\s+least\s+an?\s+\d+(?:\.\d+)?\s+credit\s+is\s+at\s+the\s+400\+\s+level$`)
-	// complUnitPoolRe: a pool whose members include pairs, with courses
-	// before it: "FRE272H1, 1.0 credit selected from FRE210H1/ ..., (
-	// FSL320H1, FSL322H1)/ FSL321Y1". The groups: the courses before, the
-	// amount, the members.
+	// complUnitPoolRe matches a pool with any courses before it: "FRE272H1, 1.0
+	// credit selected from FRE210H1/ ( FSL320H1, FSL322H1)".
 	complUnitPoolRe = regexp.MustCompile(`(?i)^((?:` + codePat + `\s*,\s*)*)(\d+(?:\.\d+)?)\s+credits?\s+(?:selected\s+|chosen\s+)?from(?:\s+the\s+following)?\s*:?\s+(.+?)\.?$`)
-	// complPairUnitRe: a pair, "( PHL205H1, PHL206H1)".
+	// complPairUnitRe matches a pair: "( PHL205H1, PHL206H1)".
 	complPairUnitRe = regexp.MustCompile(`^\(\s*(` + codePat + `)\s*,\s*(` + codePat + `)\s*\)$`)
-	// complAltUnitRe: courses in brackets that are alternatives, "(
-	// MAT235Y1/ MAT237Y1)".
+	// complAltUnitRe matches alternatives in brackets: "( MAT235Y1/ MAT237Y1)".
 	complAltUnitRe = regexp.MustCompile(`^\(\s*(` + codePat + `(?:\s*/\s*` + codePat + `)*)\s*\)$`)
-	// complRecommendedUnitRe: "( CHM249H1 strongly recommended)".
+	// complRecommendedUnitRe matches "( CHM249H1 strongly recommended)".
 	complRecommendedUnitRe = regexp.MustCompile(`^\(\s*(` + codePat + `)\s+((?:strongly\s+)?recommended)\s*\)$`)
-	// complPairInLieuRe: "( MAT235H1, MAT236H1)/( MAT235Y1/ MAT237Y1)/
-	// ECO210H1 is strongly recommended for this program. Students taking one
-	// of these courses can have it count in lieu of 0.5 300-level course
-	// required for this program". The groups: the members, the amount, the
-	// level.
+	// complPairInLieuRe matches an in-lieu sentence: "( MAT235H1, MAT236H1)/
+	// ECO210H1 is strongly recommended for this program. Students taking one of
+	// these courses can have it count in lieu of 0.5 300-level course required
+	// for this program".
 	complPairInLieuRe = regexp.MustCompile(`(?i)^(.+?)\s+is\s+strongly\s+recommended\s+for\s+this\s+program\.?\s+students\s+taking\s+one\s+of\s+these\s+courses\s+can\s+have\s+it\s+count\s+in\s+lieu\s+of\s+(?:an?\s+)?(\d+(?:\.\d+)?)\s+([1-4])00-level\s+course\s+required\s+for\s+this\s+program$`)
 )
 
-// unitRows reads, in listRefRow (oneOffRow) with the lists known, a row of
-// text that is a pool of pairs (unitPool) or a pool joining its lead's
-// filter and its members (leadFilterPool). It reports whether it read the
-// row.
+// unitRows reads a row of text that is a pool of pairs or a pool joining its
+// lead's filter and its members, and reports whether it did.
 func (a *compAssembler) unitRows(row *compRow, text *types.ReqNode, ls compListRefs) bool {
 	body, rules, notes, ok := a.leadFilterPool(row, text.Text, ls)
 	if !ok {
@@ -88,11 +74,9 @@ func (a *compAssembler) unitRows(row *compRow, text *types.ReqNode, ls compListR
 	return true
 }
 
-// leadFilterPool reads "2.0 APM/MAT credits at the 300+ level including 0.5
-// credit at the 400-level: ACT230H1/ ACT240H1/ ... any APM400-level course/
-// ..." as written (D4): the union list of the lead's filter (APM and MAT at
-// the 300+ level) and the members, which include 200-level courses, with
-// the floor a constraint under the row (filterMembers).
+// leadFilterPool reads a complLeadFilterPoolRe pool as written: the union of
+// the lead's filter and the members, which may be below its level, with the
+// floor a constraint under the row.
 func (a *compAssembler) leadFilterPool(row *compRow, text string, ls compListRefs) (*types.ReqNode, []*types.Requirement, []string, bool) {
 	m := complLeadFilterPoolRe.FindStringSubmatch(complClean(text))
 	if m == nil {
@@ -110,17 +94,9 @@ func (a *compAssembler) leadFilterPool(row *compRow, text string, ls compListRef
 	return n, rows, notes, true
 }
 
-// unitPool reads a pool whose members are courses and pairs ("2.0 credits
-// from the following: PHL200Y1/( PHL205H1, PHL206H1)/ PHL210Y1") as a union
-// list of the row's own (addUnion) whose items are the single courses and a
-// pair item and(course, course) per pair: the pair counts as one unit,
-// claimed together, worth its summed credits. "," and "/" between members
-// both separate them: a "/" cap of the heaviest member would leave the
-// pool short of its amount ("2.0 credits from" three 1.0 members), and the
-// courses of a "/" group exclude each other in the catalogue anyway, so
-// none is added. Courses before the pool ("FRE272H1, 1.0 credit selected
-// from ...") are required beside it; "( CHM249H1 strongly recommended)" is
-// the course and a note. Nothing changes unless a member is a pair.
+// unitPool reads a pool with pairs among its members as a union list, a pair
+// counting as one unit. "," and "/" both separate members: a "/" cap could
+// leave the pool short.
 func (a *compAssembler) unitPool(row *compRow, text string, ls compListRefs) (*types.ReqNode, []string, bool) {
 	s := complClean(text)
 	m := complUnitPoolRe.FindStringSubmatch(s)
@@ -188,9 +164,8 @@ func (a *compAssembler) unitPool(row *compRow, text string, ls compListRefs) (*t
 	return andNode(append(courseNodes(dedupe(before)), pool)...), notes, true
 }
 
-// splitUnits splits a pool's members at the "," and "/" outside brackets
-// ("PHL200Y1/( PHL205H1, PHL206H1)/ PHL210Y1": three members). ok is false
-// when the brackets don't balance or a member is empty.
+// splitUnits splits a pool's members at the "," and "/" outside brackets. ok is
+// false when the brackets don't balance or a member is empty.
 func splitUnits(s string) (units []string, ok bool) {
 	depth, start := 0, 0
 	for i, ch := range s {
@@ -215,24 +190,9 @@ func splitUnits(s string) (units []string, ok bool) {
 	return units, true
 }
 
-// designatorRules reads, after the routes are placed (oneOffs), the
-// program rules written with designators a pool excludes:
-//   - "Students must take a minimum of 8.0 credits in RSM and 8.0 credits
-//     in non-RSM courses", a row of text, is a constraint
-//     and(credits{8, designators: [RSM]}, credits{8, exclude_designators:
-//     [RSM]}); the note "MGT100H1 is considered equivalent to RSM100H1 and
-//     counts as 0.5 credit in RSM courses towards this requirement" puts
-//     MGT100H1 in the first and excludes it from the second, and joins the
-//     row's raw. The constraint counts over the transcript (scope
-//     transcript): its amounts sum to more than the program's total. A CR/NCR
-//     limit that adds "and the 8.0 RSM credit requirement" gets a second
-//     limit over the transcript, credits{cr_ncr, designators: [RSM],
-//     courses: [MGT100H1], max_amount: 0}, with the same raw;
-//   - "Courses offered by other academic units may not be counted towards
-//     this program" is a limit of 0 on courses without the designators the
-//     program's allocations draw on, excluding the courses its text names
-//     from other units (the Religion Minor's Modern Hebrew courses, which
-//     "will count toward the Department for the Study of Religion courses").
+// designatorRules encodes the program rules written with excluded designators:
+// the in-and-outside floors (complNonDesigRe) as a transcript constraint, and
+// the other-units rule as a limit of 0.
 func (a *compAssembler) designatorRules() {
 	for _, r := range a.allRows() {
 		n := r.r.Req
@@ -256,8 +216,7 @@ func (a *compAssembler) designatorRules() {
 				return true
 			})
 			r.r.Req = andNode(yes, no)
-			// Counted over the transcript: the two amounts sum to more than
-			// any of the three programs' totals (16.0 against 12.5 to 15.0).
+			// the two amounts exceed the program's total, so the transcript
 			r.r.Scope = types.ScopeTranscript
 			a.transcriptCrNcr(m[1], yes)
 			continue
@@ -270,11 +229,9 @@ func (a *compAssembler) designatorRules() {
 	}
 }
 
-// transcriptCrNcr adds, after a program-level CR/NCR limit of 0 that also
-// names the transcript constraint on the designator's credits ("The CR/NCR
-// option cannot be used for any program completion requirements, and the 8.0
-// RSM credit requirement"), the same limit over the transcript on the
-// courses that count toward it (pool: the RSM courses and MGT100H1).
+// transcriptCrNcr adds, after a CR/NCR limit of 0 that also names the
+// designator's transcript constraint, the same limit over the transcript on
+// pool's courses.
 func (a *compAssembler) transcriptCrNcr(amount string, pool *types.ReqNode) {
 	for i, r := range a.program {
 		n := r.r.Req
@@ -292,9 +249,8 @@ func (a *compAssembler) transcriptCrNcr(amount string, pool *types.ReqNode) {
 	}
 }
 
-// ownUnitsLimit returns the limit of 0 on courses from other units: the
-// designators of the program's allocations are its own, and the courses its
-// text names with other designators still count. Nil when no allocation
+// ownUnitsLimit returns the limit of 0 on courses outside the designators the
+// allocations draw on, except courses the text names. Nil when no allocation
 // draws on a designator.
 func (a *compAssembler) ownUnitsLimit() *types.ReqNode {
 	var own []string
@@ -318,18 +274,13 @@ func (a *compAssembler) ownUnitsLimit() *types.ReqNode {
 		}
 	}
 	lim := &types.ReqNode{Type: types.NodeCredits, MaxAmount: maxAmount(0)}
-	// Every course whose designator isn't the program's: no designator
-	// source, the program's excluded.
 	lim.ExcludeDesignators = own
 	lim.Exclude = dedupe(named)
 	return lim
 }
 
-// restatedPools joins a note restating a lead-filter pool
-// (complAnyCombinationRe, a row of text at the program level) to the row of
-// that pool, the allocation of the same amount whose raw names the
-// designators ("2.0 APM/MAT credits at the 300+ level"), in place of a row
-// of text (oneOffs).
+// restatedPools moves a note restating a lead-filter pool from its own row to
+// the allocation of that pool.
 func (a *compAssembler) restatedPools() {
 	for _, r := range a.allRows() {
 		n := r.r.Req
@@ -358,15 +309,9 @@ func (a *compAssembler) restatedPools() {
 	}
 }
 
-// pairSubstitutes reads, after substitutes, an in-lieu alternative whose
-// courses include a pair ("( MAT235H1, MAT236H1)/( MAT235Y1/ MAT237Y1)/
-// ECO210H1 is strongly recommended for this program. Students taking one of
-// these courses can have it count in lieu of 0.5 300-level course required
-// for this program") on the pool at that level, as substitutes does for
-// single courses: or(pool, and(the pool less 0.5, credits{0.5, lists:
-// [the courses]})). The list holds each member at the credit it replaces:
-// the pair is a pair item with that weight, a heavier course a credits
-// item with it. It returns lists with the lists it made.
+// pairSubstitutes reads, as substitutes does for single courses, an in-lieu
+// alternative whose courses include a pair: or(pool, and(pool less v,
+// credits{v, lists: [the courses]})). It returns lists with the lists it made.
 func (a *compAssembler) pairSubstitutes(lists []*types.CourseList) []*types.CourseList {
 	for _, r := range a.allRows() {
 		n := r.r.Req
@@ -405,10 +350,9 @@ func (a *compAssembler) pairSubstitutes(lists []*types.CourseList) []*types.Cour
 	return lists
 }
 
-// inLieuItems reads the members of an in-lieu sentence ("( MAT235H1,
-// MAT236H1)/( MAT235Y1/ MAT237Y1)/ ECO210H1") as list items worth v each:
-// a pair item, or credits items, with weight v where they weigh more. ok is
-// false unless one member is a pair and every member weighs at least v.
+// inLieuItems reads the members of an in-lieu sentence as list items each worth
+// at most v. ok is false unless one member is a pair and every single course
+// weighs at least v.
 func inLieuItems(s string, v float64) ([]*types.ReqNode, bool) {
 	units, ok := splitUnitsSlash(s)
 	if !ok {

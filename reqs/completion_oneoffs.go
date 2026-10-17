@@ -9,21 +9,17 @@ import (
 	"degree-explorer/types"
 )
 
-// More one-off fixes (Task 10F4, the item-20 one-offs): wordings one or two
-// programs use, read where no wider rule covers them. The hooks are in
-// completion_fixes.go (oneOffRow, oneOffs, rewriteOneOffs) and listRefRow.
+// More readings of wordings that one or two programs use, where no wider
+// rule covers them.
 
-// complExclusionAltsRe: an item whose alternatives are its course's
-// exclusions: "POL222H1 (or one of its exclusions: ECO220Y1/ PSY201H1/
-// SOC202H1/ STA220H1; only 0.5 credit of ECO220Y1 can count toward this
-// Focus)", "POL232H1 (or its exclusion: GGR270H1)". Groups: the course, the
-// exclusions, the full-year course only half of which counts.
+// complExclusionAltsRe matches a course or its exclusions: "POL232H1 (or its
+// exclusion: GGR270H1)". The third group is a full-year course only half of
+// which counts.
 var complExclusionAltsRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s*\(\s*or\s+(?:one\s+of\s+)?its\s+exclusions?:\s*((?:` + codePat + `\s*[/,]?\s*)+?)(?:;\s*only\s+(?:a\s+)?0\.5\s+credit\s+of\s+(` + codePat + `)\s+(?:can|may|will)\s+count\b[^()]*)?\)\.?$`)
 
-// exclusionAlts reads a complExclusionAltsRe item: the or of the course and
-// its exclusions; the full-year course only half of which counts is
-// credits{0.5, [it], weight 0.5} (design 2, weight), so its other half may
-// count elsewhere and a plain course node doesn't claim all of it.
+// exclusionAlts reads complExclusionAltsRe as the or of the course and its
+// exclusions. The half-counting course is credits{0.5, [it], weight 0.5}, so
+// its other half may count elsewhere.
 func exclusionAlts(text string) *types.ReqNode {
 	m := complExclusionAltsRe.FindStringSubmatch(strings.TrimSpace(text))
 	if m == nil || courseWeight(m[1]) != 0.5 {
@@ -44,26 +40,23 @@ func exclusionAlts(text string) *types.ReqNode {
 }
 
 var (
-	// complFromLabelLeadRe: "From Group A: 1.0 credit" and "From Group A:
-	// 1.0 credit or DRM220Y1": the grammar's order, "1.0 credit from Group A
-	// [or DRM220Y1]".
+	// complFromLabelLeadRe matches "From Group A: 1.0 credit or DRM220Y1", which
+	// becomes the grammar's "1.0 credit from Group A or DRM220Y1".
 	complFromLabelLeadRe = regexp.MustCompile(`(?i)^from\s+(group\s+[A-Z]):\s*(\d+(?:\.\d+)?\s+credits?)(\s+or\s+` + codePat + `)?$`)
-	// complWhenEligibleRe: "or other DRM (when eligible)": eligibility to
-	// enrol (Group B's studio courses give Drama students priority), which a
-	// completed course has met.
+	// complWhenEligibleRe matches "other DRM (when eligible)": eligibility to
+	// enrol, which a completed course has met.
 	complWhenEligibleRe = regexp.MustCompile(`(?i)(\bother\s+[A-Z]{3})\s+\(when\s+eligible\)`)
 )
 
 // rewriteListOneOffs rewrites wordings of items that draw on lists into the
-// list grammar's (listRefRow, before listRefAlloc).
+// list grammar's.
 func rewriteListOneOffs(text string) string {
 	text = complFromLabelLeadRe.ReplaceAllString(strings.TrimSpace(text), "$2 from $1$3")
 	return complWhenEligibleRe.ReplaceAllString(text, "$1")
 }
 
-// moreOneOffs runs the one-off readings of this file that need the routes
-// placed and the lists read (oneOffs). It returns the lists with any it
-// adds.
+// moreOneOffs runs more one-off readings that need the routes placed and the
+// lists read. It returns the lists with any it adds.
 func (a *compAssembler) moreOneOffs(lists []*types.CourseList) []*types.CourseList {
 	a.splitAlternatives()
 	a.sharedEssay()
@@ -74,12 +67,9 @@ func (a *compAssembler) moreOneOffs(lists []*types.CourseList) []*types.CourseLi
 	return a.totalCourseNote(lists)
 }
 
-// coreGroupsMix reads the item coreOrGroups (completion_residue.go) made
-// or(credits{N, core courses}, credits{N, lists}) from "N credits from the
-// Core Group, or N credits from Groups A, B, C, D" by the ambiguity policy:
-// the strict reading (all N from one side) is Met, and the lenient one (N
-// from both, mixed) is Review beside it, and(credits{N, union},
-// text{ambiguity}), with the union a list of the row's own.
+// coreGroupsMix reads coreOrGroups' or(credits{N, core}, credits{N, lists})
+// by the ambiguity policy: all N from one side is strict, N mixed from a
+// union of both is the Review alternative.
 func (a *compAssembler) coreGroupsMix(lists []*types.CourseList) []*types.CourseList {
 	walkRows(a.items, func(r *compRow) {
 		n := r.r.Req
@@ -103,19 +93,14 @@ func (a *compAssembler) coreGroupsMix(lists []*types.CourseList) []*types.Course
 	return lists
 }
 
-// complHalfFromAboveRe: an alternative that is half of a full-year course
-// an item above lists: "Astronomy: AST430H1, or AST425Y1 (0.5 credit from
-// point 1 above)", beside AST430H1 in the or. Groups: the course, the point.
+// complHalfFromAboveRe matches half of a full-year course an item above
+// lists: "Astronomy: AST430H1, or AST425Y1 (0.5 credit from point 1 above)".
+// The groups are the course and the point.
 var complHalfFromAboveRe = regexp.MustCompile(`(?i)^(?:[\w\s&]+:\s*)?(?:` + codePat + `,?\s+or\s+)?(` + codePat + `)\s+\(0\.5\s+credit\s+from\s+point\s+(\d{1,2})\s+above\)\.?$`)
 
-// splitAlternatives reads a complHalfFromAboveRe alternative as the half of
-// the course the point above leaves (design 2, weight): credits{0.5, [it],
-// weight 0.5}, when the point's pool lists the course and the or holds the
-// other courses the line names. The point's pool takes the other half the
-// same way: unweighted, it would claim all of the course (only a weight
-// match splits one) and leave this row NotMet. credits{0.5, [AST424H1,
-// AST425Y1]} becomes or(credits{0.5, [AST424H1]}, credits{0.5, [AST425Y1],
-// weight 0.5}).
+// splitAlternatives reads a complHalfFromAboveRe alternative as credits{0.5,
+// [course], weight 0.5}, and the point's pool takes the other half the same
+// way: unweighted, it would claim the whole course and leave this row NotMet.
 func (a *compAssembler) splitAlternatives() {
 	walkRows(a.items, func(r *compRow) {
 		n := r.r.Req
@@ -152,9 +137,8 @@ func (a *compAssembler) splitAlternatives() {
 	})
 }
 
-// pointRow returns the sibling of r labelled like r with the number point
-// ("Third or fourth year 1" for r's "Third or fourth year 3") when it is a
-// pool of 0.5 credit from courses that lists code, else nil.
+// pointRow returns r's sibling with the same label but number point, when it
+// is a 0.5-credit pool of courses that lists code, else nil.
 func (a *compAssembler) pointRow(r *compRow, point, code string) *compRow {
 	label := r.r.Label
 	if i := strings.LastIndexByte(label, ' '); i >= 0 {
@@ -173,16 +157,14 @@ func (a *compAssembler) pointRow(r *compRow, point, code string) *compRow {
 	return found
 }
 
-// complSharedEssayRe: one full-year course that stands in for two
-// half-credit requirements: "Students may also satisfy requirements (4)
-// and (5) through completion of a senior essay ( FRE490Y1)". Groups: the
-// two labels, the course.
+// complSharedEssayRe matches one full-year course for two requirements:
+// "Students may also satisfy requirements (4) and (5) through completion of a
+// senior essay ( FRE490Y1)". The groups are the two labels and the course.
 var complSharedEssayRe = regexp.MustCompile(`(?i)^students\s+may\s+also\s+satisfy\s+requirements\s+\((\d{1,2})\)\s+and\s+\((\d{1,2})\)\s+through\s+(?:the\s+)?completion\s+of\s+[^()]*\(\s*(` + codePat + `)\s*\)\.?$`)
 
-// sharedEssay reads a complSharedEssayRe alternative, on both rows it names
-// (placeProgramRoutes), as half of the course in each (design 2, weight,
-// as splitYAlternatives): credits{0.5, [it], weight 0.5}. Both rows must
-// need 0.5 credit and hold the sentence as their alternative.
+// sharedEssay reads a complSharedEssayRe alternative on both rows it names as
+// half of the course in each, credits{0.5, [it], weight 0.5}. Both rows must
+// need 0.5 credit.
 func (a *compAssembler) sharedEssay() {
 	var rows []*compRow
 	var m []string
@@ -206,13 +188,12 @@ func (a *compAssembler) sharedEssay() {
 	}
 }
 
-// complFromListsInRe: "0.5 additional credit from the list of courses in
-// (3) or (4)". Groups: the amount, the two labels.
+// complFromListsInRe matches "0.5 additional credit from the list of courses
+// in (3) or (4)". The groups are the amount and the two labels.
 var complFromListsInRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+additional\s+credits?\s+from\s+the\s+list\s+of\s+courses\s+in\s+\((\d{1,2})\)\s+or\s+\((\d{1,2})\)\.?$`)
 
-// fromListsIn reads an or whose first item is complFromListsInRe text as
-// the pools of the two items it names: credits{amount, requirements: [their
-// rows]} (numberReqRefs). "Additional" is the claims rule.
+// fromListsIn reads an or led by complFromListsInRe text as credits{amount,
+// requirements: [the two rows]}. "Additional" is the claims rule.
 func (a *compAssembler) fromListsIn(r *compRow) {
 	n := r.r.Req
 	if r.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeOr || n.Items[0].Type != types.NodeText {
@@ -236,14 +217,13 @@ func (a *compAssembler) fromListsIn(r *compRow) {
 	n.Items[0] = ref
 }
 
-// complCanBeUsedNoteRe: "Note: CHM395Y1 can be used toward this
-// requirement", the total's alternative when the course is outside its
-// pool's levels (the "Additional ... to a total of" fold).
+// complCanBeUsedNoteRe matches "Note: CHM395Y1 can be used toward this
+// requirement", the total's alternative for a course outside its levels.
 var complCanBeUsedNoteRe = regexp.MustCompile(`(?i)^(?:note:\s*)?(` + codePat + `)\s+can\s+be\s+used\s+towards?\s+this\s+requirement\.?$`)
 
-// totalCourseNote reads row 1's or(pool, text{complCanBeUsedNoteRe}) as one
-// pool: a list of row 1's own (design 3.2), "Requirement 1 courses", the
-// pool's filter and the course. It returns the lists with it.
+// totalCourseNote reads the total's or(pool, text{complCanBeUsedNoteRe}) as
+// one pool from a list "Requirement 1 courses" of the pool's filter and the
+// course. It returns the lists with it.
 func (a *compAssembler) totalCourseNote(lists []*types.CourseList) []*types.CourseList {
 	if a.total == nil {
 		return lists
@@ -275,9 +255,8 @@ func walkRows(rs []*compRow, f func(r *compRow)) {
 	}
 }
 
-// moreOneOffRow reads, in oneOffRow with the lists known, an allocation of
-// text (text: its text; alts: the routes beside it) by the readers below.
-// ok: it read the row.
+// moreOneOffRow reads a row of text (alts: the routes beside it) with more
+// one-off readers, and reports whether it read it.
 func (a *compAssembler) moreOneOffRow(row *compRow, text *types.ReqNode, alts []*types.ReqNode, ls compListRefs) bool {
 	s := strings.TrimSuffix(strings.TrimSpace(text.Text), ".")
 	set := func(n *types.ReqNode) {
@@ -317,14 +296,13 @@ func (a *compAssembler) moreOneOffRow(row *compRow, text *types.ReqNode, alts []
 	return false
 }
 
-// complWorldMusicRe: "MUS200H1 or an alternative 200-level 0.5 credit in
-// world music ( MUS209H1, MUS211H1, MUS212H1, or MUS215H1)": the course,
-// or 0.5 credit from the bracket's courses. Groups: the course, the level,
-// the amount, the bracket.
+// complWorldMusicRe matches a course or credit from a bracket: "MUS200H1 or
+// an alternative 200-level 0.5 credit in world music ( MUS209H1, MUS211H1)".
+// The groups are the course, the level, the amount, the bracket.
 var complWorldMusicRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+or\s+an\s+alternative\s+([1-4])00-level\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+[\w\s]+?\(\s*((?:` + codePat + `,?\s*(?:or\s+)?)+)\)$`)
 
-// worldMusicAlt reads a complWorldMusicRe item; nil when a bracketed course
-// isn't at the level.
+// worldMusicAlt reads complWorldMusicRe; nil when a bracketed course isn't at
+// the level.
 func worldMusicAlt(s string) *types.ReqNode {
 	m := complWorldMusicRe.FindStringSubmatch(s)
 	if m == nil {
@@ -339,16 +317,14 @@ func worldMusicAlt(s string) *types.ReqNode {
 	return orNode(&types.ReqNode{Type: types.NodeCourse, Code: m[1]}, &types.ReqNode{Type: types.NodeCredits, Amount: v, Courses: codes})
 }
 
-// complGroupSubgroupsRe: "ANT200Y1/ ARH100Y1/ ( ANT204H1 and ANT207H1/0.5
-// credit 300-level Social Anthropology course from Anthropology Group C, or
-// Subgroup C(i), C(ii))". Groups: the full-year courses, the first half
-// course, the second, the level, the group's letter, the sub-groups'
-// numerals.
+// complGroupSubgroupsRe matches "ANT200Y1/ ARH100Y1/ ( ANT204H1 and
+// ANT207H1/0.5 credit 300-level Social Anthropology course from Anthropology
+// Group C, or Subgroup C(i), C(ii))".
 var complGroupSubgroupsRe = regexp.MustCompile(`^((?:` + codePat + `\s*/\s*)+)\(\s*(` + codePat + `)\s+and\s+(` + codePat + `)\s*/\s*0\.5\s+credit\s+([1-4])00-level\s+[\w\s]+?\s+course\s+from\s+[\w\s]*?Group\s+([A-Z]),\s+or\s+Subgroup\s+[A-Z]\s*\((i{1,3})\),\s*[A-Z]\s*\((i{1,3})\)\s*\)$`)
 
-// groupSubgroups reads a complGroupSubgroupsRe item: or(the full-year
-// courses, and(the first half course, or(the second, 0.5 credit at the
-// level from the group and its sub-groups))); nil when a list isn't there.
+// groupSubgroups reads complGroupSubgroupsRe as or(the full-year courses,
+// and(the first half course, or(the second, 0.5 credit at the level from the
+// group and sub-groups))); nil when a list isn't there.
 func groupSubgroups(s string, ls compListRefs) *types.ReqNode {
 	m := complGroupSubgroupsRe.FindStringSubmatch(s)
 	if m == nil {
@@ -368,14 +344,12 @@ func groupSubgroups(s string, ls compListRefs) *types.ReqNode {
 	return orNode(append(alts, andNode(&types.ReqNode{Type: types.NodeCourse, Code: m[2]}, half))...)
 }
 
-// complFurtherFloorRe: "Advanced Topics: 4.0 credits of further APM/MAT
-// 300+ level courses including at least 2.5 credits of APM/MAT courses at
-// the 400-level". Groups: the amount, the designators, the level, the
-// floor, the floor's designators, its level.
+// complFurtherFloorRe matches a pool with a floor: "Advanced Topics: 4.0
+// credits of further APM/MAT 300+ level courses including at least 2.5 credits
+// of APM/MAT courses at the 400-level".
 var complFurtherFloorRe = regexp.MustCompile(`^(?:[A-Z][\w\s]*:\s*)?(\d+(?:\.\d+)?)\s+credits\s+of\s+further\s+([A-Z]{3}(?:/[A-Z]{3})*)\s+([1-4])00\+\s+level\s+courses\s+including\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits\s+of\s+([A-Z]{3}(?:/[A-Z]{3})*)\s+courses\s+at\s+the\s+([1-4])00-level$`)
 
-// furtherFloor reads a complFurtherFloorRe item: the pool, and the floor
-// under it (a constraint).
+// furtherFloor reads complFurtherFloorRe as the pool and the floor under it.
 func furtherFloor(s string) (pool, floor *types.ReqNode) {
 	m := complFurtherFloorRe.FindStringSubmatch(s)
 	if m == nil || m[2] != m[5] || m[6] < m[3] {
@@ -393,14 +367,13 @@ func furtherFloor(s string) (pool, floor *types.ReqNode) {
 	return pool, floor
 }
 
-// complListAboveRe: "6.0 credits from the list above and/or SMC165H1/
-// MST226H1/ ...": the list above and the codes. Groups: the amount, the
-// codes.
+// complListAboveRe matches "6.0 credits from the list above and/or SMC165H1/
+// MST226H1/ ...".
 var complListAboveRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+list\s+above\s+and/or\s+((?:` + codePat + `\s*/?\s*)+)$`)
 
-// listAbove reads a complListAboveRe item as one pool of its codes and the
-// list above it: the one item before it under the same parent whose pool is
-// courses from "the following" list. Nil when there is none or more.
+// listAbove reads complListAboveRe as one pool of its codes and the list
+// above: the one earlier item whose pool is courses from "the following".
+// Nil when there is none or more.
 func (a *compAssembler) listAbove(row *compRow, s string) *types.ReqNode {
 	m := complListAboveRe.FindStringSubmatch(s)
 	if m == nil {
@@ -424,16 +397,13 @@ func (a *compAssembler) listAbove(row *compRow, s string) *types.ReqNode {
 	return &types.ReqNode{Type: types.NodeCredits, Amount: v, Courses: dedupe(append(slices.Clone(above[0].r.Req.Courses), codeRe.FindAllString(m[2], -1)...))}
 }
 
-// complResearchAltsRe: "( ENV421Y1/ ENV421H1)/ ENV491Y1*/ ENV492H1*/
-// ENV493H1* or a minimum of 0.5 credit from any approved departmental or
-// college independent research project (*the research topic for these
-// courses must be related to environment and health)". Groups: the
-// courses, the approved route, the starred courses' condition.
+// complResearchAltsRe matches courses, some starred, or an approved project:
+// "ENV491Y1*/ ENV492H1* or a minimum of 0.5 credit from any approved ...
+// project (*the research topic ... must be related to environment and health)".
 var complResearchAltsRe = regexp.MustCompile(`(?i)^((?:\(?\s*` + codePat + `\*?\s*\)?\s*/\s*)*\(?\s*` + codePat + `\*?\s*\)?)\s+or\s+(a\s+minimum\s+of\s+[^()]*?\bapproved\b[^()]*?)\s*\(\s*\*\s*([^()]+?)\s*\)$`)
 
-// researchAlts reads a complResearchAltsRe item: the plain courses, the
-// starred ones with their condition (a content text: the topic decides)
-// and the approved route (permission).
+// researchAlts reads complResearchAltsRe as an or of the plain courses, the
+// starred ones with their condition as content, and the approved route.
 func researchAlts(s string) *types.ReqNode {
 	m := complResearchAltsRe.FindStringSubmatch(s)
 	if m == nil {
@@ -455,12 +425,9 @@ func researchAlts(s string) *types.ReqNode {
 	return orNode(append(alts, textNode(types.TextPermission, m[2]))...)
 }
 
-// averageAlts reads an item of alternatives each with its own average
-// ("( MAT130H1/ MAT135H1, MAT136H1) with an average grade of 73%/ (
-// MAT148H1, MAT149H1)/ MAT137Y1 with an average grade of 63%/ ..."), as
-// the enrolment grammar does (itemAvgRe): each segment up to an average is
-// a group of alternatives averaged on its own, "/" between them. Nil when a
-// segment isn't courses alone.
+// averageAlts reads alternatives each with its own average, as the enrolment
+// grammar does: "( MAT130H1/ MAT135H1, MAT136H1) with an average grade of 73%/
+// MAT137Y1 with an average grade of 63%". Nil unless each is courses alone.
 func averageAlts(s string) *types.ReqNode {
 	locs := itemAvgRe.FindAllStringSubmatchIndex(s, -1)
 	if len(locs) < 2 {
@@ -476,8 +443,7 @@ func averageAlts(s string) *types.ReqNode {
 			return nil
 		}
 		if n.Type == types.NodeOr {
-			// "( MAT148H1, MAT149H1)/ MAT137Y1 with an average grade of
-			// 63%": each alternative averaged.
+			// each alternative averaged on its own
 			var each []*types.ReqNode
 			for _, part := range n.Items {
 				each = append(each, withAverage(part, grade))
@@ -516,8 +482,8 @@ func fixedOrCourses(n *types.ReqNode) bool {
 	return false
 }
 
-// moreOneOffPasses runs the readings of rows that aren't one allocation of
-// text (moreOneOffs).
+// moreOneOffPasses runs the one-off readings of rows that aren't one
+// allocation of text.
 func (a *compAssembler) moreOneOffPasses(lists []*types.CourseList) {
 	a.complementaryCourses()
 	a.cognateTotal()
@@ -558,35 +524,23 @@ func (a *compAssembler) moreOneOffPasses(lists []*types.CourseList) {
 }
 
 var (
-	// complComplementaryRe: "5.0 credits of complementary courses, i.e.,
-	// courses relevant to PCJ and offered by other programs".
+	// complComplementaryRe matches "5.0 credits of complementary courses, i.e.,
+	// courses relevant to PCJ".
 	complComplementaryRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+of\s+complementary\s+courses\b`)
-	// complComplementaryNoteRe: "Complementary courses include but are not
-	// limited to the following", with the codes after it or not.
+	// complComplementaryNoteRe matches "Complementary courses include but are not
+	// limited to the following", with or without codes after it.
 	complComplementaryNoteRe = regexp.MustCompile(`(?i)^complementary\s+courses\s+include\s+but\s+are\s+not\s+limited\s+to\s+the\s+following\b`)
-	// complOtherEligibleRe: "Other courses are also eligible to meet this
-	// requirement; please contact the program director for discussion and
-	// approval".
+	// complOtherEligibleRe matches "Other courses are also eligible to meet this
+	// requirement; please contact the program director for ... approval".
 	complOtherEligibleRe = regexp.MustCompile(`(?i)^other\s+courses\s+are\s+also\s+eligible\s+to\s+meet\s+this\s+requirement;.*\bapproval\b`)
-	// complCodesOnlyRe: a line of codes alone.
+	// complCodesOnlyRe matches a line of codes alone.
 	complCodesOnlyRe = regexp.MustCompile(`^(?:` + codePat + `\s*[,/]?\s*)+\.?$`)
 )
 
-// complementaryCourses reads a list of complementary courses the calendar
-// says is not exhaustive ("include but are not limited to") as the item's
-// pool, with its approval route kept beside it (design 3.3: Met by the
-// listed courses, Review by others):
-//   - "5.0 credits of complementary courses, i.e., ..." whose codes are a
-//     line of their own (a row of text) after the program notes
-//     "Complementary courses include but are not limited to the following"
-//     and "Other courses are also eligible to meet this requirement; ...
-//     approval": or(credits{5.0, codes}, text{permission});
-//   - a pool of designators whose permission alternative holds the list
-//     ("Complementary courses include but are not limited to the following;
-//     other relevant courses are eligible on the approval of the program
-//     director: AFR298H1, ..."): the codes join the pool. A route for
-//     "this 100-level course requirement" that another row holds too
-//     (placeProgramRoutes) leaves it when its lead names no such level.
+// complementaryCourses reads a non-exhaustive list of complementary courses
+// as the item's pool beside its approval route (Met by the listed courses,
+// Review by others): from a line of codes and two program notes, or from a
+// pool's permission alternative that holds the list.
 func (a *compAssembler) complementaryCourses() {
 	all := append(append(append([]*compRow{}, a.items...), a.program...), a.floors...)
 	walkRows(all, func(r *compRow) {
@@ -605,8 +559,7 @@ func (a *compAssembler) complementaryCourses() {
 		}
 		pool := n.Items[0]
 		pool.Courses = dedupe(append(pool.Courses, codes...))
-		// A route for "this 100-level course requirement" (another item's)
-		// isn't this item's.
+		// a route for "this 100-level course requirement" is another item's
 		head := rawHead(r.r)
 		n.Items = slices.DeleteFunc(n.Items, func(it *types.ReqNode) bool {
 			m := complThisLevelReqRe.FindStringSubmatch(it.Text)
@@ -644,9 +597,8 @@ func (a *compAssembler) complementaryCourses() {
 	a.dropRow(list)
 }
 
-// complThisLevelReqRe: a route for one level's item: "Other introductory
-// courses in relevant disciplines are also eligible to meet this 100-level
-// course requirement; ...".
+// complThisLevelReqRe matches a route for one level's item: "eligible to
+// meet this 100-level course requirement".
 var complThisLevelReqRe = regexp.MustCompile(`(?i)\bthis\s+([1-4]00)-level\s+course\s+requirement\b`)
 
 // othersRaw reports whether s is in the raw of a row other than r.
@@ -677,23 +629,18 @@ func (a *compAssembler) dropRow(r *compRow) {
 }
 
 var (
-	// complRequiresOfWhichRe: a total stated as an item: "The Minor Program
-	// requires 4.0 credits, of which 3.0 credits must be GER courses".
-	// Groups: the total, the share, its designator.
+	// complRequiresOfWhichRe matches a total stated as an item: "The Minor
+	// Program requires 4.0 credits, of which 3.0 credits must be GER courses".
 	complRequiresOfWhichRe = regexp.MustCompile(`(?i)^the\s+(?:minor|major|specialist)\s+program\s+requires\s+(\d+(?:\.\d+)?)\s+credits,\s+of\s+which\s+(\d+(?:\.\d+)?)\s+credits\s+must\s+be\s+((?-i:[A-Z]{3}))\s+courses$`)
-	// complCognateCapRe: "A maximum of 1.0 credit in cognate courses is
-	// allowed (i.e. courses offered by other departments ...); please
-	// inquire at the Department and get approved in advance".
+	// complCognateCapRe matches "A maximum of 1.0 credit in cognate courses is
+	// allowed (...); please inquire at the Department and get approved in
+	// advance".
 	complCognateCapRe = regexp.MustCompile(`(?i)^a\s+maximum\s+of\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+cognate\s+courses\s+is\s+allowed\b.*\bapprov`)
 )
 
-// cognateTotal reads a complRequiresOfWhichRe item, in a program with no
-// total, as the total (Req 1), when a program note allows the rest as
-// approved cognate courses (complCognateCapRe): the total's pool is the
-// designator's courses, or, with the cognates, any courses with the
-// approval (design 3.3, an unbounded route: other departments' courses):
-// or(credits{N, D}, and(credits{N}, text{permission})), and the share of D
-// is a constraint under it. The item and the note join its raw.
+// cognateTotal reads a complRequiresOfWhichRe item, when a complCognateCapRe
+// note allows the rest, as the total or(credits{N, D}, and(credits{N},
+// text{permission})) with the share of D a constraint under it.
 func (a *compAssembler) cognateTotal() {
 	if a.total != nil {
 		return
@@ -729,19 +676,14 @@ func (a *compAssembler) cognateTotal() {
 	}
 }
 
-// complDSRCountRe: what a course-count cap (complCourseCountCapRe) says the
-// courses count toward: "... will count toward the Department for the
-// Study of Religion courses required to complete any Major Program in
-// Religion".
+// complDSRCountRe matches what a course-count cap says its courses count
+// toward: "will count toward the Department for the Study of Religion courses
+// required".
 var complDSRCountRe = regexp.MustCompile(`(?i)\bwill\s+count\s+towards?\s+the\s+department\s+for\s+the\s+study\s+of\s+religion\s+courses\s+required\b`)
 
-// departmentCap reads the rest of a course-count cap sentence whose limit
-// is a row (courseCountCap) and that says the courses count toward the
-// "Department for the Study of Religion courses required": in a program
-// where no other row speaks of such courses (its rows are lists of codes),
-// the sentence names no requirement of this program, so the limit, whose
-// raw holds it, says all of it: no row of text that makes everyone Review,
-// and no note that restates the limit.
+// departmentCap drops a complDSRCountRe course-count cap's text row when its
+// limit is a row and no other row speaks of Study of Religion courses: the
+// limit's raw holds the sentence, which names no requirement of this program.
 func (a *compAssembler) departmentCap() {
 	all := append(append(append([]*compRow{}, a.items...), a.program...), a.floors...)
 	var text, limit *compRow
@@ -767,21 +709,18 @@ func (a *compAssembler) departmentCap() {
 }
 
 var (
-	// complLanguageAnyLevelRe: "1.0 credit in German language at any level,
-	// including GER100Y1, GER101H1, ...". Groups: the amount, the codes.
+	// complLanguageAnyLevelRe matches "1.0 credit in German language at any
+	// level, including GER100Y1, GER101H1".
 	complLanguageAnyLevelRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+\w+\s+language\s+at\s+any\s+level,\s+including\s+((?:` + codePat + `,?\s*)+)\.?$`)
-	// complAdvancedTopicsRe: "Students with very advanced previous knowledge
-	// of German may in consultation with the Department take a combination
-	// of other 300 or 400-level GER topics courses (taught in German) to
-	// meet the requirement". Groups: the levels, the designator.
+	// complAdvancedTopicsRe matches "Students with very advanced previous
+	// knowledge of German may in consultation with the Department take a
+	// combination of other 300 or 400-level GER topics courses".
 	complAdvancedTopicsRe = regexp.MustCompile(`(?i)^students\s+with\s+very\s+advanced\s+previous\s+knowledge\s+of\s+\w+\s+may\s+in\s+consultation\s+with\s+the\s+department\s+take\s+a\s+combination\s+of\s+other\s+([1-4])00\s+or\s+([1-4])00-level\s+((?-i:[A-Z]{3}))\s+topics\s+courses\b`)
 )
 
 // languageAtAnyLevel reads or(text{complLanguageAnyLevelRe},
-// text{complAdvancedTopicsRe}): the listed courses ("including", examples
-// of the language courses), or another language course of their designator
-// (content: what the course teaches decides), or, after consultation, the
-// designator's topics courses at those levels (permission).
+// text{complAdvancedTopicsRe}) as the listed courses, another language course
+// of their designator (content), or the topics courses with consultation.
 func languageAtAnyLevel(n *types.ReqNode) *types.ReqNode {
 	if len(n.Items) != 2 || n.Items[0].Type != types.NodeText || n.Items[1].Type != types.NodeText {
 		return nil
@@ -798,8 +737,8 @@ func languageAtAnyLevel(n *types.ReqNode) *types.ReqNode {
 		levels = append(levels, int(l[0]-'0')*100)
 	}
 	codes := codeRe.FindAllString(m[2], -1)
-	// The language's other courses: its designator's (audit FIX-ONE
-	// ASCER1401), the content text deciding which are language courses.
+	// the language's other courses are its designator's (ASCER1401); the content
+	// text decides which are language courses
 	content := textNode(types.TextContent, a)
 	if !slices.ContainsFunc(codes, func(c string) bool { return c[:3] != codes[0][:3] }) {
 		content = andNode(&types.ReqNode{Type: types.NodeCredits, Amount: v, Designators: []string{codes[0][:3]}}, content)
@@ -812,21 +751,17 @@ func languageAtAnyLevel(n *types.ReqNode) *types.ReqNode {
 }
 
 var (
-	// complInternshipFormRe: a note naming a course that meets the item:
-	// "May take the form of an internship course, GER391H1 ‘iPRAKTIKUM
-	// ...’".
+	// complInternshipFormRe matches a note naming a course that meets the item:
+	// "May take the form of an internship course, GER391H1".
 	complInternshipFormRe = regexp.MustCompile(`(?i)^may\s+take\s+the\s+form\s+of\s+an\s+internship\s+course,\s+(` + codePat + `)\b`)
-	// complStudyAbroadSuchAsRe: "Students may also complete a study abroad
-	// course in a German-speaking country, such as GER354Y0".
+	// complStudyAbroadSuchAsRe matches "Students may also complete a study
+	// abroad course in a German-speaking country, such as GER354Y0".
 	complStudyAbroadSuchAsRe = regexp.MustCompile(`(?i)^students\s+may\s+also\s+complete\s+a\s+study\s+abroad\s+course\b[^.]*?,\s+such\s+as\s+(` + codePat + `)\.?$`)
 )
 
-// globalExperience reads an item of global experience whose note names a
-// course that meets it (complInternshipFormRe) and whose alternative names
-// an example study abroad course (complStudyAbroadSuchAsRe): both courses
-// are alternatives; the study abroad sentence stays for the courses it
-// doesn't name, a content text (the course's kind decides). The note joins
-// the raw.
+// globalExperience adds the courses complInternshipFormRe and
+// complStudyAbroadSuchAsRe name as alternatives; the study abroad sentence
+// stays as content for the courses it doesn't name.
 func globalExperience(r *compRow) *types.ReqNode {
 	n := r.r.Req
 	i := slices.IndexFunc(r.r.Notes, func(s string) bool { return complInternshipFormRe.MatchString(s) })
@@ -852,17 +787,13 @@ func globalExperience(r *compRow) *types.ReqNode {
 	return orNode(items...)
 }
 
-// complTransferEquivRe: "Transfer credit equivalents of the following
-// courses earned from participation in an international exchange or actual
-// courses completed via the Summer Abroad program will qualify for this
-// requirement: ECO324H1/ ...". Group: the codes.
+// complTransferEquivRe matches "Transfer credit equivalents of the following
+// courses ... will qualify for this requirement: ECO324H1/ ...".
 var complTransferEquivRe = regexp.MustCompile(`(?i)^transfer\s+credit\s+equivalents\s+of\s+the\s+following\s+courses\b[^:]*\bwill\s+qualify\s+for\s+this\s+requirement:\s*((?:` + codePat + `\s*[/,]?\s*)+)\.?$`)
 
-// transferEquivalents reads an alternative complTransferEquivRe says
-// qualifies: the transfer credits of the listed courses, the amount the
-// item's first text states (credits{transfer}); the sentence stays beside
-// it for the Summer Abroad courses (content: how the course was taken
-// decides).
+// transferEquivalents reads a complTransferEquivRe alternative as transfer
+// credits of the listed courses, of the amount the first text states. The
+// sentence stays as content for the Summer Abroad courses.
 func transferEquivalents(n *types.ReqNode) *types.ReqNode {
 	if n.Items[0].Type != types.NodeText {
 		return nil
@@ -889,22 +820,17 @@ func transferEquivalents(n *types.ReqNode) *types.ReqNode {
 }
 
 var (
-	// complListBelowFloorRe: "2.5 credits in MUS courses from the list
-	// below, including one credit at the 300+ level". Groups: the amount,
-	// the designator, the floor, its level.
+	// complListBelowFloorRe matches "2.5 credits in MUS courses from the list
+	// below, including one credit at the 300+ level".
 	complListBelowFloorRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+in\s+((?-i:[A-Z]{3}))\s+courses\s+from\s+the\s+list\s+below,\s+including\s+(one|\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+([1-4])00\+\s+level$`)
-	// complEitherCountedRe: "Either MUS120Y1 or MUS220Y1 can be counted
-	// towards the 2.5 credits in MUS courses". Groups: the two courses.
+	// complEitherCountedRe matches "Either MUS120Y1 or MUS220Y1 can be counted
+	// towards the 2.5 credits in MUS courses".
 	complEitherCountedRe = regexp.MustCompile(`(?i)^either\s+(` + codePat + `)\s+or\s+(` + codePat + `)\s+can\s+be\s+counted\s+towards?\s+the\b`)
 )
 
 // listBelowMissing reads or(text{complListBelowFloorRe},
-// text{complEitherCountedRe}) in a program whose text has no list below
-// (the calendar leaves it out): the designator's credits are needed, and
-// the list is unknown, so and(credits{N, D}, the sentence): NotMet without
-// them, Review with them. The floor is a constraint under it; "either X or
-// Y" is a limit of one course's weight on them. The second sentence joins
-// the raw.
+// text{complEitherCountedRe}) where the calendar leaves the list out:
+// and(credits{N, D}, text), with the floor and a one-course limit under it.
 func (a *compAssembler) listBelowMissing(r *compRow) {
 	n := r.r.Req
 	if len(n.Items) != 2 || n.Items[0].Type != types.NodeText || n.Items[1].Type != types.NodeText || len(a.listDefs) > 0 {
@@ -934,31 +860,20 @@ func (a *compAssembler) listBelowMissing(r *compRow) {
 }
 
 var (
-	// complTitledFloorsRe: a total whose floors name a titled list: "7.0
-	// ENG credits including 2.0 credits from 300+ level Creative Writing
-	// courses, at least 0.5 credit of which must be at the 400-level".
-	// Groups: the floor, its level, the title, the floor under it, its
-	// level.
+	// complTitledFloorsRe matches a total with floors on a titled list: "7.0 ENG
+	// credits including 2.0 credits from 300+ level Creative Writing courses, at
+	// least 0.5 credit of which must be at the 400-level".
 	complTitledFloorsRe = regexp.MustCompile(`(?i)^\d+(?:\.\d+)?\s+(?-i:[A-Z]{3})\s+credits\s+(including\s+(\d+(?:\.\d+)?)\s+credits\s+from\s+([1-4])00\+\s+level\s+(.+?)\s+courses),\s+(at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+which\s+must\s+be\s+at\s+the\s+([1-4])00-level)\.?$`)
-	// complToIncludeTitledRe: "3.0 credits from ENG courses, to include 2.0
-	// credits from Creative Writing courses at the 300+ level, at least 0.5
-	// credits of which must be from Creative Writing courses at the 400
-	// level". Groups: the amount, the designator, the floor, the title, its
-	// level, the floor under it, its title, its level.
+	// complToIncludeTitledRe matches an item with floors on a titled list: "3.0
+	// credits from ENG courses, to include 2.0 credits from Creative Writing
+	// courses at the 300+ level, at least 0.5 credits of which must be ...".
 	complToIncludeTitledRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+from\s+((?-i:[A-Z]{3}))\s+courses,\s+to\s+include\s+(\d+(?:\.\d+)?)\s+credits\s+from\s+(.+?)\s+courses\s+at\s+the\s+([1-4])00\+\s+level,\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+which\s+must\s+be\s+from\s+(.+?)\s+courses\s+at\s+the\s+([1-4])00\s+level\.?$`)
 )
 
-// titledFloors reads floors on a titled list ("Creative Writing", a list
-// of the program's own, in notes) that the grammar leaves as text, in
-// namedLists with the lists known (Creative Writing courses are ENG, DRM,
-// CRE and WRR courses):
-//   - the total's (complTitledFloorsRe): its floor rows, of text or the
-//     grammar's level floor, are the list's floors, and the total is the
-//     item's form below (titledTotal);
-//   - an item's (complToIncludeTitledRe): the item's own pool is the
-//     designator's courses, and, as the lenient reading (the list's other
-//     courses "included" in the designator's credits), and(the pool and
-//     the list, text{ambiguity}); its floors are constraints under it.
+// titledFloors reads floors on a titled list that the grammar leaves as text:
+// the total's (complTitledFloorsRe, with titledTotal) and an item's
+// (complToIncludeTitledRe), whose lenient reading counts the list's other
+// courses among the designator's.
 func (a *compAssembler) titledFloors(ls compListRefs) {
 	list := func(title string) string {
 		for _, l := range ls {
@@ -1040,12 +955,9 @@ func (a *compAssembler) titledFloors(ls compListRefs) {
 	})
 }
 
-// titledTotal makes a total of the designator's credits whose floors name
-// a titled list ("7.0 ENG credits including 2.0 credits from 300+ level
-// Creative Writing courses") the strict reading, beside the lenient one
-// that counts the list's other courses as the designator's:
-// or(credits{N, D}, and(credits{N, the pool and the list}, text{ambiguity})),
-// the union a list of row 1's own ("Requirement 1 courses").
+// titledTotal makes a total of one designator's credits the strict reading
+// beside the lenient one that counts a titled list's courses too,
+// and(credits{N, union}, text{ambiguity}).
 func (a *compAssembler) titledTotal(name string, ls compListRefs) bool {
 	n := a.total.r.Req
 	if n.Type == types.NodeOr && len(n.Items) == 2 && n.Items[1].Type == types.NodeText {
@@ -1063,16 +975,13 @@ func (a *compAssembler) titledTotal(name string, ls compListRefs) bool {
 	return true
 }
 
-// complLevelOrAnyRe: "1.0 credit from 300-level CAS courses and/or
-// 400-level courses (including JHA, JPA, and SAS)". Groups: the two levels.
+// complLevelOrAnyRe matches "300-level CAS courses and/or 400-level
+// courses". The groups are the two levels.
 var complLevelOrAnyRe = regexp.MustCompile(`(?i)\b([1-4])00-level\s+(?-i:[A-Z]{3})\s+courses\s+and/or\s+([1-4])00-level\s+courses\b`)
 
-// levelOrAnyLevel gives a row or(credits{amount, designators, both levels},
-// text{ambiguity: complLevelOrAnyRe}) its lenient reading by the ambiguity
-// policy, in place of the bare text: the second level's courses of any
-// designator, and(credits{amount, union}, text{ambiguity}), with the union
-// (the first level's designators, any course at the second) a list of the
-// row's own.
+// levelOrAnyLevel replaces the ambiguity text of or(credits{both levels},
+// text{complLevelOrAnyRe}) with its lenient reading: credits from a union of
+// the first level's designators and any course at the second.
 func (a *compAssembler) levelOrAnyLevel(lists []*types.CourseList) []*types.CourseList {
 	walkRows(a.items, func(r *compRow) {
 		n := r.r.Req

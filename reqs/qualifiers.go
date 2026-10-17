@@ -8,13 +8,12 @@ import (
 	"degree-explorer/types"
 )
 
-// Value-carrying qualifier wordings: minimum grades ("(minimum 70%)", "with a
-// minimum mark of 73", "(B or higher)"), breadth categories ("in BR=1/ 2",
-// "(SOC SCI/BR=3)") and year-of-study phrases.
+// Value-carrying qualifier wordings: minimum grades ("(minimum 70%)"), breadth
+// categories ("in BR=1/ 2") and year-of-study phrases.
 
 var (
-	// The body of a minimum-grade qualifier. Which words are present decides
-	// whether it counts as a grade at all (see matchGradeBody).
+	// gradeBodyRe matches the body of a minimum-grade qualifier: "minimum 70%".
+	// Which words are present decides whether it counts as a grade at all.
 	gradeBodyRe = regexp.MustCompile(`^(?P<with>(?i:with)\s+)?(?i:an?\s+)?` +
 		`(?P<min>(?i:(?:minimum|final)\s+)+)?(?P<word>(?i:(?:grade|mark)\s+))?(?i:of\s+)?` +
 		`(?P<least>(?i:at\s+least)\s+)?(?i:an?\s+)?` +
@@ -30,20 +29,18 @@ var (
 	inWordRe     = regexp.MustCompile(`^\s*(?i:in)\b`)
 	decimalRe    = regexp.MustCompile(`^\.\d`)
 
-	// A list of breadth categories: "BR=1/ 2/ 3", "BR 1 or BR 2", "Breadth
-	// Requirement 1 or 2", "breadth requirement (BR) category of 4 or 5",
-	// "BR 1 or BR 2 or a combination of BR 1, BR 2, and BR 3".
+	// brNumsPat and brListPat match a list of breadth categories: "BR=1/ 2/ 3",
+	// "Breadth Requirement 1 or 2".
 	brNumsPat = `[1-5](?:\s*(?:/|,\s*(?i:and|or)?|(?i:or|and))\s*(?:BR\s*=?\s*)?[1-5])*`
 	brListPat = `(?:BR\s*=?\s*|(?i:breadth\s+requirements?)(?:\s*\(\s*BR\s*\))?(?:\s+(?i:categor(?:y|ies)))?(?:\s+(?i:of))?\s+)` +
 		`(` + brNumsPat + `)(?:\s*,?\s+(?i:or\s+a\s+combination\s+of)\s+(?:BR\s*=?\s*)?(` + brNumsPat + `))?\b`
-	// A label naming the breadth in words is redundant with the number:
-	// "Humanities/BR=1 or 2", "(SOC SCI/BR=3)".
+	// brLabelPat matches a label naming the breadth in words, redundant with the
+	// number: the "Humanities/" of "Humanities/BR=1 or 2".
 	brLabelPat   = `(?:(?:[A-Z][A-Za-z]*|[A-Z]{3})(?:\s+(?:[A-Z][A-Za-z]*|[A-Z]{3}))?\s*/\s*)?`
 	breadthSufRe = regexp.MustCompile(`^\s*(?:(?i:in|from|of)\s+|(?i:combination\s+of\s+courses\s+(?:carrying|with|in))\s+)?(?i:(?:either|an?|the)\s+)?` + brLabelPat + brListPat)
 	breadthParRe = regexp.MustCompile(`^\s*\(\s*` + brLabelPat + brListPat + `\s*\)`)
 
-	// "A student must be in third or fourth year", "Must be enrolled in 4th
-	// year", "students in their third year of study".
+	// Year-of-study phrases: "students in their third year of study".
 	ordPat      = `(?:first|second|third|fourth|1st|2nd|3rd|4th)`
 	yearInRe    = regexp.MustCompile(`^(?i:(?:(?:an?\s+)?students?\s+(?:must|should)\s+be\s+|must\s+be\s+|(?:available|open)\s+(?:only\s+)?to\s+students\s+)?(?:(?:enrolled|registered)\s+)?in\s+(?:their\s+|the\s+)?` + ordPat + `(?:\s*(?:and|or|/|,)\s*` + ordPat + `)*[- ]year(?:\s+of\s+(?:study|studies))?)\b`)
 	yearEndRe   = regexp.MustCompile(`^\s*(?:$|[.,;()]|(?i:and|or)\b)`)
@@ -51,10 +48,8 @@ var (
 	countHeadRe = regexp.MustCompile(`^(?i:(?:at\s+least\s+)?(two|three|four)\s+(?:other\s+|additional\s+|more\s+)?)\d`)
 	completedRe = regexp.MustCompile(`^\s+(?i:completed)\b`)
 
-	// A part of a credit requirement that must also match narrower filters:
-	// ", of which 1.0 LIN credit must be at the 300+ level", ", 5.0 of which
-	// must be GGR/URB", ", 1.0 credit of which should be in CHC/ SMC/ RLG",
-	// "with 0.5 at the 300+ level", "with 1.5 credits in PHL".
+	// ofWhichRe matches a part of a credit requirement that must also match
+	// narrower filters: ", of which 1.0 LIN credit must be at the 300+ level".
 	ofWhichRe = regexp.MustCompile(`^\s*,?\s*(?:(?i:of\s+which\s+(?:at\s+least\s+)?(?:an?\s+)?)(\d+\.\d+)|(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:(?:credits?\s+)?of\s+which)|(?i:with\s+(?:at\s+least\s+)?)(\d+\.\d+))` +
 		`((?:\s+[A-Z]{3}\b(?:\s*/\s*[A-Z]{3}\b)*)?)(?:\s+(?i:credits?|courses?)\b)?` +
 		`(?:\s+(?i:(?:must|should|needs?\s+to)\s+be|is|are))?(?:\s+(?i:an?)\b)?`)
@@ -68,12 +63,9 @@ var letterPercent = map[string]int{
 	"C+": 67, "C": 63, "C-": 60, "D+": 57, "D": 53, "D-": 50,
 }
 
-// matchGradeBody reads a minimum-grade qualifier at the start of s. In
-// parentheses ("(minimum 70%)", "(B or higher)", "(67%)") a bare percentage is
-// enough; otherwise the phrase must start with "with" and say what the number
-// is ("with a minimum mark of 77", "with a mark of 76% or above"). A phrase
-// followed by "in" ("with a minimum of 70% in DRM220Y1") is a grade prefix,
-// not a suffix, so it is rejected.
+// matchGradeBody reads a minimum-grade qualifier at the start of s. In brackets
+// a bare percentage is enough ("(67%)"); otherwise it must start with "with" and
+// name the number ("with a mark of 76%"), and "in" after it makes it a prefix.
 func matchGradeBody(s string, paren bool) (grade int, each bool, end int, ok bool) {
 	open := 0
 	if paren {
@@ -187,10 +179,9 @@ func matchYearIn(s string) (int, int, bool) {
 	return year, len(m), true
 }
 
-// ofWhichSuffix reads a narrower part of the credit requirement n ("10.0
-// credits, of which 2.0 credits must be 300+ level ESS courses") and returns
-// n AND that part. The part counts only courses that also pass n's filters,
-// so it inherits whatever filters it doesn't narrow itself.
+// ofWhichSuffix reads a narrower part of credit requirement n ("10.0 credits,
+// of which 2.0 credits must be 300+ level ESS courses") and returns n AND that
+// part, which inherits the filters of n it doesn't narrow itself.
 func ofWhichSuffix(s string, n *types.ReqNode) (*types.ReqNode, int) {
 	m := ofWhichRe.FindStringSubmatch(s)
 	if m == nil {

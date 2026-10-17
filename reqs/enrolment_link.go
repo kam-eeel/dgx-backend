@@ -10,14 +10,14 @@ import (
 )
 
 // Linking a program's enrolment requirements: code repair against the course
-// list, and program names resolved to codes against the programs table.
+// list, and program names resolved to codes.
 
-// enrolCodeFollowRe is what may follow a near-code in enrolment text: what
-// may follow one in a requisite, or a grade ("MAT159 (55%)").
+// enrolCodeFollowRe matches what may follow a near-code in enrolment text: what
+// may follow one in a requisite, or a grade: "MAT159 (55%)".
 var enrolCodeFollowRe = regexp.MustCompile(`^\s*(?:$|[/,);.:\]]|(?i:or|and)\b|\(\s*\d{2}\s*%\s*\))`)
 
-// repairEnrolment repairs catalogue-confirmed codes in the raw text and
-// parses it again, keeping Raw.
+// repairEnrolment repairs catalogue-confirmed codes in the raw text and parses
+// it again, keeping Raw.
 func repairEnrolment(e *types.Enrolment, known map[string]bool) *types.Enrolment {
 	if e == nil {
 		return nil
@@ -31,10 +31,9 @@ func repairEnrolment(e *types.Enrolment, known map[string]bool) *types.Enrolment
 	return r
 }
 
-// titleIndex finds programs by their exact title, without the "(Arts
-// Program)" / "(Science Program)" suffix: "Anthropology Major (General)" is
-// ASMAJ1775, which subject matching can't tell from the other Anthropology
-// Majors.
+// titleIndex finds programs by exact title, without the "(Arts Program)"
+// suffix: "Anthropology Major (General)", which subject matching can't tell
+// from the other Anthropology Majors.
 type titleIndex map[string]string // normalized title -> code ("" when two programs share it)
 
 var titleSuffixRe = regexp.MustCompile(`(?i)\s*\((?:arts|science)\s+program\)\s*$|\s*\(BCom\)\s*$`)
@@ -60,10 +59,9 @@ func (idx titleIndex) exact(phrase string) string {
 
 var enrolPhraseLeadRe = regexp.MustCompile(`(?i)^(?:(?:students?\s+)?(?:must\s+be\s+)?(?:enrol(?:l)?(?:ed|ment)|registered|active)\s+in\s+)?(?:(?:the|a|an)\s+)?`)
 
-// lookupTitle resolves a phrase naming programs by title: the whole phrase
-// ("Anthropology Specialist (Society, Culture, and Language)"), or each
-// subject and type it lists ("Psychology Minor, Major or Specialist" is the
-// Psychology Minor, Major and Specialist). Every program named must exist.
+// lookupTitle resolves a phrase naming programs by title: the whole phrase, or
+// each subject and type it lists ("Psychology Minor, Major or Specialist").
+// Every program named must exist.
 func (idx titleIndex) lookupTitle(phrase string) ([]string, bool) {
 	phrase = progSuffixRe.ReplaceAllString(enrolPhraseLeadRe.ReplaceAllString(strings.TrimSpace(phrase), ""), "")
 	if code := idx.exact(phrase); code != "" {
@@ -89,47 +87,35 @@ func (idx titleIndex) lookupTitle(phrase string) ([]string, bool) {
 	return codes, len(codes) > 0
 }
 
-// resolveEnrolment fills in the programs of every program node in e by
-// title, then by subject (ProgramIndex), then by subject area. A node none
-// resolves stays membership text. Exclusions never list the program itself
-// ("Students cannot combine a Pharmacology Major program with a Pharmacology
-// Major or Specialist program") or a program req requires.
+// resolveEnrolment resolves e's program nodes by title, then subject, then
+// subject area; one none resolves stays membership text. Exclusions never list
+// the program itself or a program req requires.
 func (idx titleIndex) resolveEnrolment(e *types.Enrolment, self string, progs *ProgramIndex, areas areaIndex) {
 	if e == nil {
 		return
 	}
 	idx.resolveNode(e.Req, progs, areas)
-	// A program req asks for is never also excluded: "a student must first be
-	// enrolled in the Economics Major (ASMAJ1478)" with "cannot be
-	// simultaneously enrolled in any other Economics program" means the
-	// Specialist replaces the Major, not that Majors can't apply.
+	// a required program is never also excluded: "any other Economics program"
+	// beside a required Major means the Specialist replaces it
 	var notes []string
 	e.Exclusions, notes = idx.resolveExclusions(e.Exclusions, self, requiredPrograms(e.Req), progs, areas)
 	e.Notes = append(e.Notes, notes...)
 }
 
-// resolveExclusions resolves the program nodes of an exclusions list (for
-// enrolment and completion): by title, subject and area (resolveNode); a
-// subject phrase also gets the rest of its area, unless it is an exact
-// title. It drops the program itself and the programs in required, and the
-// nodes left with no program; a focus the calendar doesn't have ("the Focus
-// in Data Science in Business within ...") becomes a note.
+// resolveExclusions resolves an exclusions list's program nodes, adding the rest
+// of a subject's area unless the phrase is an exact title. It drops self, the
+// required programs and empty nodes; a focus the calendar lacks is a note.
 func (idx titleIndex) resolveExclusions(excl []*types.ReqNode, self string, required map[string]bool, progs *ProgramIndex, areas areaIndex) (keep []*types.ReqNode, notes []string) {
 	for _, n := range excl {
 		idx.resolveNode(n, progs, areas)
 		if n.Type == types.NodeText && withinRe.MatchString(n.Text) {
-			// "the Focus in Data Science in Business within the Rotman
-			// Commerce specialist programs" names a program the calendar no
-			// longer has, so no student can be in it.
+			// a focus the calendar no longer has: no student can be in it
 			notes = append(notes, "Not in the calendar: "+n.Text)
 			continue
 		}
 		if n.Type == types.NodeProgram {
-			// A restriction on a subject covers all its programs, including
-			// ones whose title doesn't name it: "any Computer Science,
-			// Statistics, or Actuarial Science programs" includes the
-			// "Specialist in Statistical Science: Methods and Practice". An
-			// exact title ("Chemistry Specialist") is that program only.
+			// a restriction on a subject covers all its programs, including ones whose
+			// title doesn't name it; an exact title is that program only
 			if idx.exact(n.Text) == "" {
 				if codes, ok := areas.lookup(n.Text); ok {
 					n.Programs = dedupe(append(n.Programs, codes...))
@@ -178,14 +164,12 @@ func (idx titleIndex) resolveNode(n *types.ReqNode, progs *ProgramIndex, areas a
 	n.Type, n.Kind = types.NodeText, types.TextMembership
 }
 
-// focusParentRe is the parent a focus's title names: "Focus in Technology
+// focusParentRe matches the parent a focus's title names: "Focus in Technology
 // Leadership (Computer Science Major)".
 var focusParentRe = regexp.MustCompile(`\(([^()]+)\)\s*$`)
 
-// narrowToParent keeps, of the programs a focus's req accepts, only the
-// parent its title names. The three Technology Leadership foci share one
-// sentence ("admitted to a Computer Science Specialist or Major or Data
-// Science Specialist program"), but each belongs to one of those programs.
+// narrowToParent keeps, of the programs a focus's req accepts, only the parent
+// its title names: sibling foci share one sentence, but each has one parent.
 func (idx titleIndex) narrowToParent(n *types.ReqNode, title string) *types.ReqNode {
 	m := focusParentRe.FindStringSubmatch(title)
 	if m == nil {
@@ -207,7 +191,6 @@ func (idx titleIndex) narrowToParent(n *types.ReqNode, title string) *types.ReqN
 				n.Programs = slices.DeleteFunc(n.Programs, func(c string) bool { return !in(c) })
 			}
 		case types.NodeOr:
-			// Drop the alternatives that name only other programs.
 			if slices.ContainsFunc(n.Items, func(it *types.ReqNode) bool {
 				return it.Type == types.NodeProgram && slices.ContainsFunc(it.Programs, in)
 			}) {
@@ -226,9 +209,8 @@ func (idx titleIndex) narrowToParent(n *types.ReqNode, title string) *types.ReqN
 	return narrow(n)
 }
 
-// withinRe reads "the Focus in Data Analytics within the Economics Major or
-// Specialist": the focus's variants for those programs, titled "Focus in
-// Data Analytics (Major)" and "Focus in Data Analytics (Specialist)".
+// withinRe matches "the Focus in Data Analytics within the Economics Major or
+// Specialist": the focus's variants for those programs.
 var withinRe = regexp.MustCompile(`(?i)^(?:the\s+)?(focus\s+in\s+.+?)\s+within\s+the\s+.+?\s+((?:major|specialist)(?:\s+or\s+(?:major|specialist))?)(?:\s+programs?)?$`)
 
 func (idx titleIndex) lookupWithin(phrase string) ([]string, bool) {
@@ -247,13 +229,8 @@ func (idx titleIndex) lookupWithin(phrase string) ([]string, bool) {
 	return codes, true
 }
 
-// areaIndex finds programs by subject area (the areas column), for
-// restrictions that name a subject rather than programs: "not open to
-// students enrolled in a Specialist, Major, or Minor in German", "any other
-// Economics program", "any Minor, Major, or Specialist offered by the
-// Department of French". A program belongs to its first area only: the
-// Environment & Behaviour Minor lists Psychology second and isn't a
-// Psychology program.
+// areaIndex finds programs by subject area, for restrictions naming a subject:
+// "any other Economics program". A program belongs to its first area only.
 type areaIndex map[string][]*types.Program
 
 // areaAliases are other names the calendar uses for an area.
@@ -319,8 +296,7 @@ func (idx areaIndex) lookup(phrase string) ([]string, bool) {
 	return codes, len(codes) > 0
 }
 
-// requiredPrograms lists the programs n requires: those its program nodes
-// name, outside a not.
+// requiredPrograms lists the programs n's program nodes name outside a not.
 func requiredPrograms(n *types.ReqNode) map[string]bool {
 	required := map[string]bool{}
 	var walk func(n *types.ReqNode)
@@ -340,13 +316,8 @@ func requiredPrograms(n *types.ReqNode) map[string]bool {
 }
 
 // ambiguousExclusions splits an Exclusions subject phrase with program types
-// ("Specialist, Major, or Minor in German", "Pharmacology Major or
-// Specialist") into the programs it surely names, those whose title names
-// the subject, and those it may also cover: the area's other programs of
-// those types (the Al and Malka Green Yiddish Program Minor is a German-area
-// minor), and the area's programs of those types whose title names the
-// subject without being the exact title (the Specialist in Pharmacology and
-// Biomedical Toxicology). Being in one of the latter is Review.
+// into the programs whose title names the subject and those it may also
+// cover; being in one of the latter is Review.
 func (idx titleIndex) ambiguousExclusions(e *types.Enrolment, self string, programs []*types.Program, required map[string]bool, areas areaIndex) {
 	for _, s := range idx.splitExclusions(e.Exclusions, self, programs, required, areas) {
 		s.node.Programs = s.sure
@@ -355,25 +326,23 @@ func (idx titleIndex) ambiguousExclusions(e *types.Enrolment, self string, progr
 }
 
 // ambiguousExclusion is the lenient reading of a split subject phrase:
-// or(not(program[maybe]), text{ambiguity}), Met for a student in none of
-// the programs it may also cover and Review for one in them.
+// or(not(program[maybe]), text{ambiguity}).
 func ambiguousExclusion(s exclusionSplit) *types.ReqNode {
 	return orNode(
 		&types.ReqNode{Type: types.NodeNot, Items: []*types.ReqNode{{Type: types.NodeProgram, Programs: s.maybe, Text: s.node.Text}}},
 		ambiguousText(`"`+s.node.Text+`" may also cover the `+strings.Join(s.titles, ", the ")))
 }
 
-// exclusionSplit is a subject phrase of an exclusions list split by
-// splitExclusions: the programs it surely names and those it may also
-// cover, with their titles.
+// exclusionSplit is a subject phrase split by splitExclusions: the programs it
+// surely names and those it may also cover, with their titles.
 type exclusionSplit struct {
 	node        *types.ReqNode
 	sure, maybe []string
 	titles      []string // of maybe, without the "(Arts Program)" suffix
 }
 
-// splitExclusions finds the subject phrases of excl that also cover
-// programs they may not mean (ambiguousExclusions). It changes nothing.
+// splitExclusions finds the subject phrases of excl that also cover programs
+// they may not mean. It changes nothing.
 func (idx titleIndex) splitExclusions(excl []*types.ReqNode, self string, programs []*types.Program, required map[string]bool, areas areaIndex) []exclusionSplit {
 	byCode := map[string]*types.Program{}
 	for _, p := range programs {
@@ -409,9 +378,8 @@ func (idx titleIndex) splitExclusions(excl []*types.ReqNode, self string, progra
 		if len(sure) == 0 {
 			continue
 		}
-		// Programs of those types anywhere whose title names the subject:
-		// "Economics & Mathematics Specialist" for "any Mathematics Major or
-		// Specialist program".
+		// programs of those types anywhere whose title names the subject:
+		// "Economics & Mathematics Specialist" for "any Mathematics Major"
 		for _, p := range programs {
 			if !kinds[strings.ToLower(p.Type)] || !names(p) || p.Code == self || required[p.Code] ||
 				slices.Contains(sure, p.Code) || listed[p.Code] {
@@ -431,10 +399,8 @@ func (idx titleIndex) splitExclusions(excl []*types.ReqNode, self string, progra
 	return out
 }
 
-// exclusionSubject reads a phrase naming one subject and program types ("a
-// Specialist, Major, or Minor in German"): the subject, normalized, and the
-// types. It returns "" for any other phrase: several subjects, a
-// department, or no types.
+// exclusionSubject reads a phrase naming one subject and program types: the
+// subject, normalized, and the types. It returns "" for any other phrase.
 func exclusionSubject(phrase string, areas areaIndex) (string, map[string]bool) {
 	if strings.Contains(strings.ToLower(phrase), "department") {
 		return "", nil
@@ -447,7 +413,7 @@ func exclusionSubject(phrase string, areas areaIndex) (string, map[string]bool) 
 		if !programWordRe.MatchString(phrase) {
 			return "", nil
 		}
-		// "any other Economics program": its specialists, majors and minors.
+		// "any other Economics program": its specialists, majors and minors
 		kinds = map[string]bool{"specialist": true, "major": true, "minor": true}
 	}
 	rest := areaNoiseRe.ReplaceAllString(areaTypeRe.ReplaceAllString(areaLeadRe.ReplaceAllString(phrase, ""), " "), " ")
@@ -469,15 +435,14 @@ func exclusionSubject(phrase string, areas areaIndex) (string, map[string]bool) 
 	return subjects[0], kinds
 }
 
-// programWordRe: "any other Economics program".
+// programWordRe matches "any other Economics program".
 var programWordRe = regexp.MustCompile(`(?i)\bprograms?\b`)
 
-// oneFocusRe: "Students can only apply for one focus."
+// oneFocusRe matches "Students can only apply for one focus."
 var oneFocusRe = regexp.MustCompile(`(?i)\bcan\s+only\s+apply\s+for\s+one\s+focus\b`)
 
-// oneFocus reads "Students can only apply for one focus" both ways: a
-// student in a sibling focus (ASMAJ1003B for ASMAJ1003A) is Review, as it
-// may mean they can't apply.
+// oneFocus reads "Students can only apply for one focus" both ways: a student
+// in a sibling focus is Review.
 func oneFocus(e *types.Enrolment, self string, programs []*types.Program) {
 	if !oneFocusRe.MatchString(e.Raw) || len(self) != 10 {
 		return
@@ -497,23 +462,13 @@ func oneFocus(e *types.Enrolment, self string, programs []*types.Program) {
 		ambiguousText(`"Students can only apply for one focus" may mean a student already in another focus can't apply`)))
 }
 
-// enrolCountTowardRe: "A minimum grade average of 77% in 3.0 credits that
-// count toward the program" (ASMAJ1618), an average over courses the
-// program's completion requirements count.
+// enrolCountTowardRe matches an average over courses completion counts: "A
+// minimum grade average of 77% in 3.0 credits that count toward the program".
 var enrolCountTowardRe = regexp.MustCompile(`(?i)^a\s+minimum\s+grade\s+average\s+of\s+(\d{2})\s*%\s+in\s+(\d+(?:\.\d+)?)\s+credits?\s+that\s+counts?\s+towards?\s+the\s+program$`)
 
-// linkEnrolmentCompletion reads enrolment text that refers to the program's
-// completion requirements: "a minimum grade average of 77% in 3.0 credits
-// that count toward the program" is average{min_grade 77, amount 3, best,
-// requirements: the program's completion rows that claim courses}, the best
-// grades as the student chooses the courses. The rows are its allocations
-// with a body, but a header total with no pool of its own: it counts what
-// its rows claim, and its bare amount would match any course. With no such
-// row the text stays. While a row it names has open text (openText: a row
-// of text, a bare route), which courses it counts isn't known, so the
-// average would be NotMet for a student whose courses count there: it is
-// or(average, the sentence as text), Review then; once every row is
-// structured, the bare average.
+// linkEnrolmentCompletion reads enrolCountTowardRe as a best-grades average
+// over the completion rows that claim courses. While such a row has open
+// text, it is or(average, text) (Review); with no such row the text stays.
 func linkEnrolmentCompletion(e *types.Enrolment, c *types.Completion) {
 	if e == nil || c == nil {
 		return
@@ -553,8 +508,8 @@ func linkEnrolmentCompletion(e *types.Enrolment, c *types.Completion) {
 	e.Req = fix(e.Req)
 }
 
-// ownPool reports whether a total's body counts courses of its own: a
-// credits node (or the first item of its Review marker) with a filter.
+// ownPool reports whether a total's body counts courses of its own: a credits
+// node, or the first item of its Review marker, with a filter.
 func ownPool(n *types.ReqNode) bool {
 	if n.Type == types.NodeOr && len(n.Items) > 0 {
 		n = n.Items[0]
