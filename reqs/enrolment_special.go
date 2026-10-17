@@ -22,7 +22,7 @@ var (
 
 	// enrolThresholdRe matches "A student who has completed 4.0 credits may enrol
 	// in the program."
-	enrolThresholdRe = regexp.MustCompile(`(?i)^(?:students\s+must\s+have\s+completed|a\s+student\s+who\s+has\s+completed)\s+(?:a\s+minimum\s+of\s+)?(\d+(?:\.\d+)?)\s+credits?\b(?:\s+including\s+(.+?)\s+may\s+enrol\b)?`)
+	enrolThresholdRe = regexp.MustCompile(`(?i)^(?:students\s+must\s+have\s+completed|a\s+student\s+who\s+has\s+completed)\s+(?:a\s+minimum\s+of\s+)?` + amountPat + `\s+credits?\b(?:\s+including\s+(.+?)\s+may\s+enrol\b)?`)
 
 	// enrolVariableRe matches a cutoff that changes each year: "this minimum may
 	// change".
@@ -46,7 +46,7 @@ var (
 	enrolAdmittedToRe = regexp.MustCompile(`(?i)\band\s+are\s+admitted\s+to\s+an?\s+(.+?)\s+program\s+will\s+be\s+considered\s+for\s+admission`)
 	// enrolSelfEnrolRe matches "Students who have completed at least 8.0 credits
 	// and who are already enrolled in ... may enrol in ... themselves on ACORN."
-	enrolSelfEnrolRe = regexp.MustCompile(`(?i)^students\s+who\s+have\s+completed\s+(?:at\s+least\s+)?(\d+\.\d+)\s+credits\s+and\s+who\s+are\s+already\s+enrolled\s+in\s+(` + progCodePat + `)\s+may\s+enrol\s+in\s+` + progCodePat + `\s+themselves`)
+	enrolSelfEnrolRe = regexp.MustCompile(`(?i)^students\s+who\s+have\s+completed\s+(?:` + atLeastPat + `\s+)?(\d+\.\d+)\s+credits\s+and\s+who\s+are\s+already\s+enrolled\s+in\s+(` + progCodePat + `)\s+may\s+enrol\s+in\s+` + progCodePat + `\s+themselves`)
 	// enrolOnlyRe matches a route for one admission category only: "Only students
 	// in the Year 1 Computer Science admission category (CMP1) who meet the
 	// criteria ... are eligible to apply".
@@ -192,10 +192,7 @@ func withinNode() *types.ReqNode {
 // notYetNode reads "Have not yet completed CSC207H1 prior to beginning Focus
 // requirements" as none of the courses named.
 func notYetNode(s string) *types.ReqNode {
-	var alts []*types.ReqNode
-	for _, c := range codeRe.FindAllString(s, -1) {
-		alts = append(alts, &types.ReqNode{Type: types.NodeCourse, Code: c})
-	}
+	alts := courseNodes(codeRe.FindAllString(s, -1))
 	if alts == nil {
 		return &types.ReqNode{Type: types.NodeText, Kind: types.TextOther, Text: s}
 	}

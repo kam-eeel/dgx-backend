@@ -16,29 +16,29 @@ var (
 	// complNonDesigRe matches floors in and outside a designator: "Students
 	// must take a minimum of 8.0 credits in RSM and 8.0 credits in non-RSM
 	// courses".
-	complNonDesigRe = regexp.MustCompile(`(?i)^students\s+must\s+take\s+a\s+minimum\s+of\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+((?-i:[A-Z]{3}))\s+and\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+non-((?-i:[A-Z]{3}))\s+courses(?:\s+to\s+complete\s+their\s+[a-z ]+\s+requirements)?$`)
+	complNonDesigRe = regexp.MustCompile(`(?i)^students\s+must\s+take\s+a\s+minimum\s+of\s+` + amountPat + `\s+credits\s+in\s+(` + desigPat + `)\s+and\s+` + amountPat + `\s+credits\s+in\s+non-(` + desigPat + `)\s+courses(?:\s+to\s+complete\s+their\s+[a-z ]+\s+requirements)?$`)
 	// complCountsAsDesigRe matches a course counted as a designator's:
 	// "MGT100H1 is considered equivalent to RSM100H1 and counts as 0.5 credit
 	// in RSM courses towards this requirement".
-	complCountsAsDesigRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+is\s+considered\s+equivalent\s+to\s+` + codePat + `\s+and\s+counts\s+as\s+\d+(?:\.\d+)?\s+credits?\s+in\s+((?-i:[A-Z]{3}))\s+courses\s+towards\s+this\s+requirement$`)
+	complCountsAsDesigRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+is\s+considered\s+equivalent\s+to\s+` + codePat + `\s+and\s+counts\s+as\s+` + numPat + `\s+credits?\s+in\s+(` + desigPat + `)\s+courses\s+towards\s+this\s+requirement$`)
 	// complCrNcrTranscriptRe matches a CR/NCR rule's last clause: ", and the
 	// 8.0 RSM credit requirement".
-	complCrNcrTranscriptRe = regexp.MustCompile(`(?i),?\s+and\s+the\s+(\d+(?:\.\d+)?)\s+((?-i:[A-Z]{3}))\s+credit\s+requirement$`)
+	complCrNcrTranscriptRe = regexp.MustCompile(`(?i),?\s+and\s+the\s+` + amountPat + `\s+(` + desigPat + `)\s+credit\s+requirement$`)
 	// complOtherUnitsRe matches "Courses offered by other academic units may
 	// not be counted towards this program".
 	complOtherUnitsRe = regexp.MustCompile(`(?i)^courses\s+offered\s+by\s+other\s+academic\s+units\s+may\s+not\s+be\s+counted\s+towards?\s+this\s+program$`)
 	// complLeadFilterPoolRe matches a pool whose lead is a filter: "2.0 APM/MAT
 	// credits at the 300+ level including 0.5 credit at the 400-level:
 	// ACT230H1/ ACT240H1".
-	complLeadFilterPoolRe = regexp.MustCompile(`^(?:[^:]+:\s*)?(\d+(?:\.\d+)?)\s+((?:[A-Z]{3}/)*[A-Z]{3})\s+credits\s+at\s+the\s+([1-4])00\+\s+level\s+including\s+(\d+(?:\.\d+)?)\s+credit\s+at\s+the\s+([1-4])00-level:\s*(.+)$`)
+	complLeadFilterPoolRe = regexp.MustCompile(`^(?:[^:]+:\s*)?` + amountPat + `\s+((?:[A-Z]{3}/)*[A-Z]{3})\s+credits\s+at\s+the\s+([1-4])00\+\s+level\s+including\s+` + amountPat + `\s+credit\s+at\s+the\s+([1-4])00-level:\s*(.+)$`)
 	// complAnyCombinationRe matches a note restating such a pool: "students can
 	// take any combination of 300+ and 400+ level APM or MAT courses that adds
 	// up to 2.0 credits, with the condition that at least a 0.5 credit is at
 	// the 400+ level".
-	complAnyCombinationRe = regexp.MustCompile(`(?i)^students\s+can\s+take\s+any\s+combination\s+of\s+300\+\s+and\s+400\+\s+level\s+((?-i:[A-Z]{3}))\s+or\s+((?-i:[A-Z]{3}))\s+courses\s+that\s+adds?\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits,\s+with\s+the\s+condition\s+that\s+at\s+least\s+an?\s+\d+(?:\.\d+)?\s+credit\s+is\s+at\s+the\s+400\+\s+level$`)
+	complAnyCombinationRe = regexp.MustCompile(`(?i)^students\s+can\s+take\s+any\s+combination\s+of\s+300\+\s+and\s+400\+\s+level\s+(` + desigPat + `)\s+or\s+(` + desigPat + `)\s+courses\s+that\s+adds?\s+up\s+to\s+` + amountPat + `\s+credits,\s+with\s+the\s+condition\s+that\s+` + atLeastPat + `\s+an?\s+` + numPat + `\s+credit\s+is\s+at\s+the\s+400\+\s+level$`)
 	// complUnitPoolRe matches a pool with any courses before it: "FRE272H1, 1.0
 	// credit selected from FRE210H1/ ( FSL320H1, FSL322H1)".
-	complUnitPoolRe = regexp.MustCompile(`(?i)^((?:` + codePat + `\s*,\s*)*)(\d+(?:\.\d+)?)\s+credits?\s+(?:selected\s+|chosen\s+)?from(?:\s+the\s+following)?\s*:?\s+(.+?)\.?$`)
+	complUnitPoolRe = regexp.MustCompile(`(?i)^((?:` + codePat + `\s*,\s*)*)` + amountPat + `\s+credits?\s+(?:selected\s+|chosen\s+)?from(?:\s+the\s+following)?\s*:?\s+(.+?)\.?$`)
 	// complPairUnitRe matches a pair: "( PHL205H1, PHL206H1)".
 	complPairUnitRe = regexp.MustCompile(`^\(\s*(` + codePat + `)\s*,\s*(` + codePat + `)\s*\)$`)
 	// complAltUnitRe matches alternatives in brackets: "( MAT235Y1/ MAT237Y1)".
@@ -49,7 +49,7 @@ var (
 	// ECO210H1 is strongly recommended for this program. Students taking one of
 	// these courses can have it count in lieu of 0.5 300-level course required
 	// for this program".
-	complPairInLieuRe = regexp.MustCompile(`(?i)^(.+?)\s+is\s+strongly\s+recommended\s+for\s+this\s+program\.?\s+students\s+taking\s+one\s+of\s+these\s+courses\s+can\s+have\s+it\s+count\s+in\s+lieu\s+of\s+(?:an?\s+)?(\d+(?:\.\d+)?)\s+([1-4])00-level\s+course\s+required\s+for\s+this\s+program$`)
+	complPairInLieuRe = regexp.MustCompile(`(?i)^(.+?)\s+is\s+strongly\s+recommended\s+for\s+this\s+program\.?\s+students\s+taking\s+one\s+of\s+these\s+courses\s+can\s+have\s+it\s+count\s+in\s+lieu\s+of\s+(?:an?\s+)?` + amountPat + `\s+([1-4])00-level\s+course\s+required\s+for\s+this\s+program$`)
 )
 
 // unitRows reads a row of text that is a pool of pairs or a pool joining its

@@ -120,10 +120,7 @@ func (a *compAssembler) directCourses(s string) bool {
 	if n.Type == types.NodeCredits && n.Items == nil && !slices.ContainsFunc(codes, func(c string) bool { return !levelMatches(n.Levels, c) }) {
 		n.Courses = dedupe(append(slices.Clone(n.Courses), codes...))
 	} else {
-		var alts []*types.ReqNode
-		for _, c := range codes {
-			alts = append(alts, &types.ReqNode{Type: types.NodeCourse, Code: c})
-		}
+		alts := courseNodes(codes)
 		r.r.Req = orNode(append([]*types.ReqNode{n}, alts...)...)
 	}
 	addRaw(r, s)
@@ -568,7 +565,7 @@ func (a *compAssembler) footnoteItems(s string) []*compRow {
 
 var (
 	// complRouteLevelRe matches levels a route names: "300/400 level".
-	complRouteLevelRe = regexp.MustCompile(`(?i)\b[1-4]00(?:\s*(?:-|/|or|and|,)\s*[1-4]00)*\s*(?:\+|-?\s*levels?\b|-series\b)(?:\s+or\s+(?:higher|above))?`)
+	complRouteLevelRe = regexp.MustCompile(`(?i)\b` + levelPat + `(?:\s*(?:-|/|or|and|,)\s*` + levelPat + `)*\s*(?:\+|-?\s*levels?\b|-series\b)(?:\s+or\s+(?:higher|above))?`)
 	// complRouteYearLevelRe matches "third or fourth year levels".
 	complRouteYearLevelRe = regexp.MustCompile(`(?i)\b((?:first|second|third|fourth)(?:\s*(?:,|or|and|/)\s*(?:first|second|third|fourth))*)[\s-]+years?[\s-]+levels?\b`)
 	complRouteOrdinalRe   = regexp.MustCompile(`(?i)first|second|third|fourth`)
@@ -729,29 +726,35 @@ func (a *compAssembler) itemNaming(s string) *compRow {
 
 // complBoundPoolRe matches a route naming its wider pool, "any POL course with
 // European content"; the lazy theme never spans a designator's own pool.
-var complBoundPoolRe = regexp.MustCompile(`(?i)^(?:some\s+offerings\s+of\s+)?(?:other\s+|any\s+(?:other\s+)?)(?:([1-4]00)-level\s+)?(?:[\w,/\s-]+?[-\s]themed\s+)??((?-i:[A-Z]{3}))\s+(?:special\s+topics\s+(?:and\s+(?-i:[A-Z]{3})\s+summer\s+abroad\s+)?)?courses?\b`)
+var complBoundPoolRe = regexp.MustCompile(`(?i)^(?:some\s+offerings\s+of\s+)?(?:other\s+|any\s+(?:other\s+)?)(?:(` + levelPat + `)-level\s+)?(?:[\w,/\s-]+?[-\s]themed\s+)??(` + desigPat + `)\s+(?:special\s+topics\s+(?:and\s+` + desigPat + `\s+summer\s+abroad\s+)?)?courses?\b`)
 
 // boundRoutes bounds the approval routes that name their wider pool:
 // or(strict, text) becomes or(strict, and(the amount from the wider pool,
 // text)), so a course outside both pools is NotMet rather than Review.
 func (a *compAssembler) boundRoutes() {
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			if n := r.r.Req; r.r.Kind == types.RequirementAllocation && n != nil && n.Type == types.NodeOr && len(n.Items) >= 2 {
-				strict := n.Items[0]
-				if strict.Type == types.NodeCredits && strict.Amount > 0 && strict.MaxAmount == nil && strict.Items == nil && strict.Lists == nil {
-					for i, it := range n.Items[1:] {
-						if wider := routePool(strict, it); wider != nil {
-							n.Items[i+1] = andNode(wider, it)
-						}
+	a.boundOrRoutes(func(strict *types.ReqNode) *types.ReqNode {
+		if strict.Type == types.NodeCredits && strict.Amount > 0 && strict.MaxAmount == nil && strict.Items == nil && strict.Lists == nil {
+			return strict
+		}
+		return nil
+	})
+}
+
+// boundOrRoutes turns each allocation or(strict, routes...) into
+// or(strict, and(wider, route)...), wider bounded by pool(strict); a nil pool
+// skips the row.
+func (a *compAssembler) boundOrRoutes(pool func(strict *types.ReqNode) *types.ReqNode) {
+	walkRows(a.items, func(r *compRow) {
+		if n := r.r.Req; r.r.Kind == types.RequirementAllocation && n != nil && n.Type == types.NodeOr && len(n.Items) >= 2 {
+			if p := pool(n.Items[0]); p != nil {
+				for i, it := range n.Items[1:] {
+					if wider := routePool(p, it); wider != nil {
+						n.Items[i+1] = andNode(wider, it)
 					}
 				}
 			}
-			walk(r.children)
 		}
-	}
-	walk(a.items)
+	})
 }
 
 // complAnotherPoolRe matches a second pool after the one complBoundPoolRe
@@ -1035,7 +1038,7 @@ const complRouteCodesPat = `((?:` + codePat + `)(?:\s*(?:[/,;]|,?\s*(?:or|and))\
 var (
 	// complSuitableCodesRe matches "Up to 1.0 credit can be used from GGR493Y1,
 	// based on suitability". Group 1, "up to", makes it a cap.
-	complSuitableCodesRe = regexp.MustCompile(`(?i)^(up\s+to\s+)?(?:an?\s+|one\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:can\s+be\s+used\s+)?from\s+` + complRouteCodesPat + `,?\s+(?:can\s+be\s+used\s+to\s+meet\s+this\s+requirement,?\s+)?based\s+on\s+(?:the\s+)?suitability\b`)
+	complSuitableCodesRe = regexp.MustCompile(`(?i)^(up\s+to\s+)?(?:an?\s+|one\s+)?` + amountPat + `\s+credits?\s+(?:can\s+be\s+used\s+)?from\s+` + complRouteCodesPat + `,?\s+(?:can\s+be\s+used\s+to\s+meet\s+this\s+requirement,?\s+)?based\s+on\s+(?:the\s+)?suitability\b`)
 	// complRouteOfferingsRe matches "Some offerings of POL336H1; ...; POL497H1
 	// may also count towards", with any separator.
 	complRouteOfferingsRe = regexp.MustCompile(`(?i)^(?:note:\s*)?some\s+offerings\s+of\s+` + complRouteCodesPat + `\s+may\s+also\s+count\s+towards?\b`)
@@ -1044,7 +1047,7 @@ var (
 	complDiscretionRe = regexp.MustCompile(`(?i)\b(?:discretion|approv\w*|permission)\b`)
 	// complSubstituteForRe matches "students may substitute ARH495H1 (Research
 	// Practicum) for 0.5 credit of this requirement". Groups: the code, the cap.
-	complSubstituteForRe = regexp.MustCompile(`(?i)\bstudents\s+may\s+substitute\s+(` + codePat + `)(?:\s*\([^)]*\))?\s+for\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+this\s+requirement\b`)
+	complSubstituteForRe = regexp.MustCompile(`(?i)\bstudents\s+may\s+substitute\s+(` + codePat + `)(?:\s*\([^)]*\))?\s+for\s+` + amountPat + `\s+credits?\s+of\s+this\s+requirement\b`)
 	// complSubstituteOneOfRe matches "may request to substitute one of CSC494H1/
 	// CSC495H1 for one of the courses in list 2".
 	complSubstituteOneOfRe = regexp.MustCompile(`(?i)\bmay\s+request\s+to\s+substitute\s+one\s+of\s+` + complRouteCodesPat + `\s+for\s+one\s+of\s+the\s+courses\s+in\b`)
@@ -1053,16 +1056,16 @@ var (
 	complUnitTopicsRe = regexp.MustCompile(`(?i)^(?:special\s+topics\s+courses,\s+research\s+opportunity\s+courses,\s+and\s+research\s+excursion\s+courses\s+from\s+([\w&\s]+?)\s+can\s+be\s+used\s+to\s+meet\s+this\s+requirement\b|([\w\s-]+?)\s+special\s+topics\s+courses\s+may\s+be\s+chosen\s+when\s+offered\s+at\s+the\s+[\w\s]+?\s+levels?$)`)
 	// complOtherLevelRe matches any course at a level: "Other 400-level courses
 	// ... can also be considered for fulfillment of".
-	complOtherLevelRe = regexp.MustCompile(`(?i)^other\s+([1-4]00)-level\s+courses\b.*\bcan\s+(?:also\s+)?be\s+considered\s+for\s+fulfil?lment\s+of\b`)
+	complOtherLevelRe = regexp.MustCompile(`(?i)^other\s+(` + levelPat + `)-level\s+courses\b.*\bcan\s+(?:also\s+)?be\s+considered\s+for\s+fulfil?lment\s+of\b`)
 	// complOneOutsideRe matches one course off the lists: "One 0.5 credit course
 	// at the 300- or 400-level not listed in the above clusters may count".
-	complOneOutsideRe = regexp.MustCompile(`(?i)^(?:note:\s*)?one\s+(\d+(?:\.\d+)?)\s+credit\s+course\s+at\s+the\s+([\w\s-]+?levels?)\s+not\s+listed\s+in\s+the\s+above\s+(?:clusters|lists|groups)\s+may\s+count\s+towards?\b`)
+	complOneOutsideRe = regexp.MustCompile(`(?i)^(?:note:\s*)?one\s+` + amountPat + `\s+credit\s+course\s+at\s+the\s+([\w\s-]+?levels?)\s+not\s+listed\s+in\s+the\s+above\s+(?:clusters|lists|groups)\s+may\s+count\s+towards?\b`)
 	// complOtherProgramsRe matches "Approved courses in other programs may be
 	// substituted for up to 1.0 FAH credit". Groups: the cap, the designator.
-	complOtherProgramsRe = regexp.MustCompile(`(?i)^approved\s+courses\s+in\s+other\s+programs\s+may\s+be\s+substituted\s+for\s+up\s+to\s+(\d+(?:\.\d+)?)\s+((?-i:[A-Z]{3}))\s+credits?$`)
+	complOtherProgramsRe = regexp.MustCompile(`(?i)^approved\s+courses\s+in\s+other\s+programs\s+may\s+be\s+substituted\s+for\s+up\s+to\s+` + amountPat + `\s+(` + desigPat + `)\s+credits?$`)
 	// complSubjectShareRe matches subjects' courses up to a cap: "students may
 	// take 0.5 credit in history or political science courses corresponding".
-	complSubjectShareRe = regexp.MustCompile(`(?i)^in\s+consultation\s+with\s+the\s+undergraduate\s+coordinator,\s+students\s+may\s+take\s+(?:up\s+to\s+)?(\d+(?:\.\d+)?)\s+credits?\s+in\s+([\w\s]+?)\s+courses\s+corresponding\s+to\s+their\s+(?:two\s+)?chosen\s+language\s+areas?(?:\s+\((\d+(?:\.\d+)?)\s+credits?\s+per\s+language\s+area\))?\s+and\s+taught\s+outside\s+the\s+department$`)
+	complSubjectShareRe = regexp.MustCompile(`(?i)^in\s+consultation\s+with\s+the\s+undergraduate\s+coordinator,\s+students\s+may\s+take\s+(?:up\s+to\s+)?` + amountPat + `\s+credits?\s+in\s+([\w\s]+?)\s+courses\s+corresponding\s+to\s+their\s+(?:two\s+)?chosen\s+language\s+areas?(?:\s+\(` + amountPat + `\s+credits?\s+per\s+language\s+area\))?\s+and\s+taught\s+outside\s+the\s+department$`)
 	// complSiblingSubstituteRe matches "some students may substitute language
 	// courses with the equivalent number of credits in requirement 3".
 	complSiblingSubstituteRe = regexp.MustCompile(`(?i)\bsome\s+students\s+may\s+substitute\s+language\s+courses\s+with\s+the\s+equivalent\s+number\s+of\s+credits\s+in\s+requirement\s+\d+\b`)
@@ -1142,10 +1145,7 @@ func (a *compAssembler) strictPool(n *types.ReqNode, byName map[string]*types.Co
 // or levels as and(wider, text), so a course outside both pools is NotMet
 // rather than Review. A route no reader reads stays bare.
 func (a *compAssembler) namedRoutes(lists []*types.CourseList) {
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
+	byName := listsByName(lists)
 	var walk func(rs []*compRow, parent *compRow)
 	walk = func(rs []*compRow, parent *compRow) {
 		for _, r := range rs {
@@ -1493,7 +1493,7 @@ func (a *compAssembler) floorWith(n *types.ReqNode, courses, added []string, byN
 
 // complExemptAtLevelRe matches "Students exempted from FSL320H1/ FSL322H1 may
 // replace it with any FRE course at the 300+ level".
-var complExemptAtLevelRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+` + complRelaxCodesPat + `\s+may\s+replace\s+(?:it|them)\s+with\s+any\s+((?-i:[A-Z]{3}))\s+course\s+at\s+the\s+([1-4]00)\+\s+level$`)
+var complExemptAtLevelRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+` + complRelaxCodesPat + `\s+may\s+replace\s+(?:it|them)\s+with\s+any\s+(` + desigPat + `)\s+course\s+at\s+the\s+(` + levelPat + `)\+\s+level$`)
 
 // exemptAtLevel bounds the complExemptAtLevelRe alternatives of the rows' or
 // nodes: and(credits{the exempted credits, DES, the level and up},

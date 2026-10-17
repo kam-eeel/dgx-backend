@@ -18,7 +18,7 @@ var (
 	// avgHeadRe matches the phrase before the courses: "a 77% average in".
 	avgHeadRe = regexp.MustCompile(`^(?i:(?:an?\s+)?(?:(?:minimum|overall|cumulative|combined)\s+(?:of\s+)?)*)(?:` +
 		avgGradePat + `\s+(?i:average\s+(?:grade\s+|mark\s+)?(?:in|over|across|for))` +
-		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:at\s+least\s+)?)` + avgGradePat + avgUpPat + `\s+(?i:in|over|across|for)` +
+		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:` + atLeastPat + `\s+)?)` + avgGradePat + avgUpPat + `\s+(?i:in|over|across|for)` +
 		`|(\d{2})\s*%\s+(?i:over|across))\b`)
 	// avgAllRe, avgCoursesEndRe and avgTakenRe read courses named without an
 	// amount: "all ECO courses taken".
@@ -27,9 +27,9 @@ var (
 	avgTakenRe      = regexp.MustCompile(`^(?:\s*(?i:credits?)\b)?(?:\s+(?i:taken|completed)\b)?`)
 
 	// avgSuffixRe matches an average after a credit phrase: "with a 77% average".
-	avgSuffixRe = regexp.MustCompile(`^\s*,?\s*(?i:with\s+(?:at\s+least\s+)?(?:an?\s+)?(?:(?:minimum|overall|combined)\s+)*)(?:` +
+	avgSuffixRe = regexp.MustCompile(`^\s*,?\s*(?i:with\s+(?:` + atLeastPat + `\s+)?(?:an?\s+)?(?:(?:minimum|overall|combined)\s+)*)(?:` +
 		avgGradePat + `\s+(?i:average)` +
-		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:at\s+least\s+)?)` + avgGradePat + avgUpPat + `)`)
+		`|(?i:average\s+(?:grade\s+|mark\s+)?(?:of\s+)?(?:` + atLeastPat + `\s+)?)` + avgGradePat + avgUpPat + `)`)
 
 	// avgOfBody matches an average over the group just before it: "(average of
 	// both must be 80%)".

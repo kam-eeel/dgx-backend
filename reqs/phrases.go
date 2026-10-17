@@ -18,32 +18,31 @@ var (
 
 	// gradePrefixRe matches a grade before courses: "minimum of 77% in". The last
 	// group marks a list the grade applies to as a whole.
-	gradePrefixRe = regexp.MustCompile(`^(?i:(?:a\s+)?(?:(?:minimum|final)\s+)*(?:(?:grade|mark)\s+)?(?:of\s+)?(?:at\s+least\s+)?)?(\d{2})%\s+(?i:(?:or\s+(?:higher|above|better|greater)|is\s+required)\s+)?(?i:in)\b(\s+(?i:each\s+of|all\s+of|required\s+courses\s*:))?`)
+	gradePrefixRe = regexp.MustCompile(`^(?i:(?:a\s+)?(?:(?:minimum|final)\s+)*(?:(?:grade|mark)\s+)?(?:of\s+)?(?:` + atLeastPat + `\s+)?)?(\d{2})%\s+(?i:(?:or\s+(?:higher|above|better|greater)|is\s+required)\s+)?(?i:in)\b(\s+(?i:each\s+of|all\s+of|required\s+courses\s*:))?`)
 
 	condRe      = regexp.MustCompile(`^(?:For\s+[^:;.()]{1,60}|[A-Z][A-Za-z]+\s+students|[A-Z][a-z]+\s+[A-Z][a-z]+):`)
 	condLabelRe = regexp.MustCompile(`^(?:Note|Notes|Recommended|Prerequisites?|Corequisites?|Exclusions?)\b`)
-	condNextRe  = regexp.MustCompile(`^\s*(?:` + codePat + `|\()`)
 	// condCommaRe is a label that ends in a comma: "For FASE students, A, B".
 	condCommaRe = regexp.MustCompile(`^For\s+[^:;.(),]{0,60}?\bstudents,`)
 
 	// poolCountRe matches a count pool: "two of".
-	poolCountRe = regexp.MustCompile(`^(?i:(?:completion\s+of\s+)?(?:at\s+least\s+)?)` +
+	poolCountRe = regexp.MustCompile(`^(?i:(?:completion\s+of\s+)?(?:` + atLeastPat + `\s+)?)` +
 		`(?i:(a|an|one|any|two|three|four|[1-4]))\s+(?:[A-Z]{3}\s+)?(?i:courses?\s+)?(?i:in\s+[a-z]+\s+)?(?i:of|from)\b` +
 		`(?i:\s+either)?(?i:\s+the\s+following(?:\s+(?:courses|combinations|options))?)?(?i:\s+is\s+required)?(?:\s*:)?`)
 	// poolOfWhichCountRe matches a count after a pool: "of which at least one
 	// course needs to be".
-	poolOfWhichCountRe = regexp.MustCompile(`^(?i:of\s+which\s+at\s+least\s+)(?i:(one|two|three|four|[1-4]))\s+(?i:(?:courses?\s+)?(?:needs?\s+to\s+be|must\s+be|is|are|from|of))\b(?:\s*:)?`)
+	poolOfWhichCountRe = regexp.MustCompile(`^(?i:of\s+which\s+` + atLeastPat + `\s+)(?i:(one|two|three|four|[1-4]))\s+(?i:(?:courses?\s+)?(?:needs?\s+to\s+be|must\s+be|is|are|from|of))\b(?:\s*:)?`)
 	// poolFromRe matches a credit pool: "1.0 credit from:".
-	poolFromRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:additional\s+)?(?:[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s+)?` +
+	poolFromRe = regexp.MustCompile(`^(?i:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?i:additional\s+)?(?:[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s+)?` +
 		`(?i:(?:credits?|courses?)\s+)?(?i:from|among|in)\b(?:(?:\s+(?:[A-Za-z][A-Za-z-]*|\d00(?:-level|\+)?))*\s*:|(?i:\s+the\s+following))?`)
-	poolOfWhichRe = regexp.MustCompile(`^(?i:of\s+which\s+(?:at\s+least\s+)?)(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?(?:(?:must|should)\s+be\s+)?(?:in|from))(?:\s*:)?`)
+	poolOfWhichRe = regexp.MustCompile(`^(?i:of\s+which\s+(?:` + atLeastPat + `\s+)?)` + amountPat + `\s+(?i:(?:credits?\s+)?(?:(?:must|should)\s+be\s+)?(?:in|from))(?:\s*:)?`)
 	poolNextRe    = regexp.MustCompile(`^\s*(?:` + codePat + `|\()`)
 
-	breadthRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+(?:\.\d+)?)\s+(?i:(?:credits?\s+)?of\s+which\s+(?:should|must)\s+be\s+in\s+(?:the\s+)?)(?:[A-Z]{3}\s*/\s*)?BR\s*=\s*([1-5](?:\s*/\s*[1-5])*)`)
+	breadthRe = regexp.MustCompile(`^(?i:` + atLeastPat + `\s+)?` + amountPat + `\s+(?i:(?:credits?\s+)?of\s+which\s+(?:should|must)\s+be\s+in\s+(?:the\s+)?)(?:[A-Z]{3}\s*/\s*)?BR\s*=\s*([1-5](?:\s*/\s*[1-5])*)`)
 
 	scopePat = `(?:[A-Z]{2,}|[A-Z][a-z]+)(?:\s+(?:and\s+)?(?:[A-Z]{2,}|[A-Z][a-z]+|program|courses?|credits?))*`
 	// gpaRe matches a GPA requirement: "Cumulative GPA of at least 2.70".
-	gpaRe = regexp.MustCompile(`^(?i:(?:with\s+)?(?:an?\s+)?(?:(?:minimum|cumulative|overall)\s+(?:of\s+)?)*)?(?i:c?gpa)\s+(?i:of\s+)?(?i:at\s+least\s+)?` +
+	gpaRe = regexp.MustCompile(`^(?i:(?:with\s+)?(?:an?\s+)?(?:(?:minimum|cumulative|overall)\s+(?:of\s+)?)*)?(?i:c?gpa)\s+(?i:of\s+)?(?i:` + atLeastPat + `\s+)?` +
 		`(\d\.\d+|[A-D][+-]?)(?:\s+(?i:or\s+(?:higher|above|better)))?(?:\s+(?i:required))?(?:\s+(?i:in|for)\s+(?i:all\s+)?(` + scopePat + `))?`)
 	// gpaNumFirstRe matches a GPA written number first: "3.0 CGPA required".
 	gpaNumFirstRe = regexp.MustCompile(`^(\d\.\d+)\s+(?i:c?gpa)(?:\s+(?i:required))?(?:\s+(?i:in|for)\s+(?i:all\s+)?(` + scopePat + `))?`)
@@ -57,7 +56,7 @@ var (
 	creditHeadRe = regexp.MustCompile(
 		`^(?:(?i:(?:completion(?:\s+of)?|(?:(?:students\s+)?(?:who\s+|must\s+)?ha(?:ve|s)\s+)?(?:completed|taken)|(?:at\s+)?least|(?:a\s+)?(?:combined\s+)?minimum(?:\s+of)?|any|an\s+additional|additional|another|other|one|a\s+further|a\s+total\s+of)\s+)|` +
 			`(?i:any\s+)[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s+|(?i:an?\s+)\d00\+?(?:\s*-?\s*(?i:level))?\s+)*` +
-			`(\d+(?:\.\d+)?)\s+` +
+			amountPat + `\s+` +
 			`(?i:(?:additional|more|full|half|other)\s+)?` +
 			`((?:(?:[A-Z]{3}\b|\d00(?:-level\b|\+)?)\s*(?:(?:/|or)\s*)?)*)` + // "HIS or POL ", "ENG ", "200-level CAS "
 			`(?:BR\s*=?\s*(` + brNumsPat + `)\s+)?` + // "3.0 BR= 1/ 2 credits"
@@ -68,12 +67,11 @@ var (
 	// topicRe matches words naming a kind of course before "course": the
 	// " literature course" of "ITA literature course".
 	topicRe     = regexp.MustCompile(`^\s+([A-Za-z]+(?:(?:\s*/\s*|\s+)[A-Za-z]+){0,4})\s+(?i:courses?)\b`)
-	topicWordRe = regexp.MustCompile(`[A-Za-z]+`)
 	topicStopRe = regexp.MustCompile(`^(?i:and|or|in|at|of|from|the|with|any|to|for|by|other|additional|credits?|courses?|levels?|including|plus|which|must|should|be|is|are|not|but|each|all|this|these|that|than|more|higher|above|their|program|programs)$|^an?$`) // "Group A" is a name
 	// subjectParenRe matches designators spelling out a subject: " (PHY/ JPE)".
 	subjectParenRe = regexp.MustCompile(`^\s*\(\s*([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\s*\)`)
 
-	anyCourseHeadRe = regexp.MustCompile(`^(?i:(?:(?:a\s+)?minimum\s+of\s+|at\s+least\s+)?(?:a|an|any|one))\s+`)
+	anyCourseHeadRe = regexp.MustCompile(`^(?i:(?:(?:a\s+)?minimum\s+of\s+|` + atLeastPat + `\s+)?(?:a|an|any|one))\s+`)
 	// fullCourseRe matches "full course" or "half-course equivalent".
 	fullCourseRe = regexp.MustCompile(`^(?i:(full|half)[- ]course(?:\s+equivalent)?)\b`)
 	levelLedRe   = regexp.MustCompile(`^\d00`)
@@ -184,7 +182,7 @@ func matchGradePrefix(s string) (token, bool) {
 }
 
 func matchCond(s string) (token, bool) {
-	if loc := condCommaRe.FindStringIndex(s); loc != nil && condNextRe.MatchString(s[loc[1]:]) {
+	if loc := condCommaRe.FindStringIndex(s); loc != nil && poolNextRe.MatchString(s[loc[1]:]) {
 		return token{kind: tCond, end: loc[1]}, true
 	}
 	loc := condRe.FindStringIndex(s)
@@ -192,7 +190,7 @@ func matchCond(s string) (token, bool) {
 		return token{}, false
 	}
 	// "Rotman Commerce:" only counts as a label when a course or group follows it.
-	if !strings.HasPrefix(s, "For") && !condNextRe.MatchString(s[loc[1]:]) {
+	if !strings.HasPrefix(s, "For") && !poolNextRe.MatchString(s[loc[1]:]) {
 		return token{}, false
 	}
 	return token{kind: tCond, end: loc[1]}, true
@@ -409,7 +407,7 @@ func courseTopic(s string, n *types.ReqNode) (*types.ReqNode, int) {
 	if m == nil {
 		return nil, 0
 	}
-	for _, w := range topicWordRe.FindAllString(s[m[2]:m[3]], -1) {
+	for _, w := range wordRe.FindAllString(s[m[2]:m[3]], -1) {
 		if topicStopRe.MatchString(w) || desigRe.MatchString(w) {
 			return nil, 0 // not just topic words: "PHL or equivalent courses"
 		}

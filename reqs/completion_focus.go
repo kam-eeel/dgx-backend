@@ -15,7 +15,7 @@ import (
 var (
 	// complFocusAmountRe matches a focus's amount after its code: "(2.0
 	// credits)".
-	complFocusAmountRe = regexp.MustCompile(`(?i)^\((\d+(?:\.\d+)?)(?:\s+or\s+\d+(?:\.\d+)?)?\s+credits?\)\s*`)
+	complFocusAmountRe = regexp.MustCompile(`(?i)^\(` + amountPat + `(?:\s+or\s+` + numPat + `)?\s+credits?\)\s*`)
 	// complFocusWordings rewrites a focus line's wordings into the item
 	// grammar's: "with a combined minimum grade average of" is "with an average
 	// grade of".
@@ -24,8 +24,8 @@ var (
 		with string
 	}{
 		{regexp.MustCompile(`(?i)\bwith\s+a\s+combined\s+minimum\s+grade\s+average\s+of\b`), "with an average grade of"},
-		{regexp.MustCompile(`(?i)\b(\d+(?:\.\d+)?\s+credits?)\s+from\s+(\([^()]*\bat\s+least\b[^()]*\))`), "$1 $2 from"},
-		{regexp.MustCompile(`(?i)\b(\d+(?:\.\d+)?\s+credits?)\s+(\d00\+)\s+series\s+((?-i:[A-Z]{3}))\s+courses?\s+with\s+the\s+exception\s+of\b`), "$1 from $2 level $3 courses excluding"},
+		{regexp.MustCompile(`(?i)\b(` + numPat + `\s+credits?)\s+from\s+(\([^()]*\b` + atLeastPat + `\b[^()]*\))`), "$1 $2 from"},
+		{regexp.MustCompile(`(?i)\b(` + numPat + `\s+credits?)\s+(\d00\+)\s+series\s+(` + desigPat + `)\s+courses?\s+with\s+the\s+exception\s+of\b`), "$1 from $2 level $3 courses excluding"},
 	}
 )
 
@@ -179,17 +179,9 @@ func focusCredits(n *types.ReqNode) (float64, bool) {
 // listedOnly reports whether n names courses only: courses, and pools of listed
 // courses with no other filter.
 func listedOnly(n *types.ReqNode) bool {
-	ok := true
-	walkReq(n, func(x *types.ReqNode) {
-		switch x.Type {
-		case types.NodeAnd, types.NodeOr, types.NodeCourse:
-		case types.NodeCredits:
-			ok = ok && len(x.Courses) > 0 && x.Designators == nil && x.Levels == nil && x.Breadth == nil && x.Exclude == nil && x.Items == nil && x.Requirements == nil
-		default:
-			ok = false
-		}
+	return structureOnly(n, func(x *types.ReqNode) bool {
+		return x.Type == types.NodeCredits && len(x.Courses) > 0 && x.Designators == nil && x.Levels == nil && x.Breadth == nil && x.Exclude == nil && x.Items == nil && x.Requirements == nil
 	})
-	return ok
 }
 
 // focusLimitsSafe reports whether the limits a focus adds under the focus row,

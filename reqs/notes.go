@@ -110,7 +110,7 @@ func advisoryParens(s string, notes *[]string) string {
 			continue
 		}
 		var keep []string
-		for _, piece := range splitPieces(inner) {
+		for _, piece := range splitPieces(inner, ";,") {
 			if contactRe.MatchString(piece.text) || recommendedRe.MatchString(piece.text) {
 				*notes = append(*notes, cleanNote(piece.text))
 			} else if len(keep) == 0 {
@@ -160,9 +160,9 @@ func topParens(s string) [][2]int {
 
 type piece struct{ sep, text string }
 
-// splitPieces splits bracket content on top-level ";" and ",", keeping the
-// separator before each piece.
-func splitPieces(s string) []piece {
+// splitPieces splits s on the top-level bytes of seps, keeping the separator
+// before each piece.
+func splitPieces(s, seps string) []piece {
 	var out []piece
 	depth, start, sep := 0, 0, ""
 	for i := 0; i < len(s); i++ {
@@ -171,8 +171,8 @@ func splitPieces(s string) []piece {
 			depth++
 		case ')':
 			depth = max(0, depth-1)
-		case ';', ',':
-			if depth == 0 {
+		default:
+			if depth == 0 && strings.IndexByte(seps, s[i]) >= 0 {
 				out = append(out, piece{sep, s[start:i]})
 				start, sep = i+1, s[i:i+1]
 			}
@@ -231,21 +231,10 @@ func splitSentences(s string) []string {
 // splitTop splits s on sep, ignoring separators inside brackets.
 func splitTop(s string, sep byte) []string {
 	var out []string
-	depth, start := 0, 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			depth++
-		case ')':
-			depth = max(0, depth-1)
-		case sep:
-			if depth == 0 {
-				out = append(out, s[start:i])
-				start = i + 1
-			}
-		}
+	for _, p := range splitPieces(s, string([]byte{sep})) {
+		out = append(out, p.text)
 	}
-	return append(out, s[start:])
+	return out
 }
 
 // cleanNote collapses whitespace, trims, and drops one trailing ".".

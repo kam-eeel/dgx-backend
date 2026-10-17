@@ -341,20 +341,15 @@ func (a *compAssembler) campusFloors() {
 			}
 		}
 	}
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			if pool := listedPool(r.r.Req); pool != nil {
-				for _, k := range r.children {
-					if k.r.Kind == types.RequirementConstraint {
-						campusFloor(k.r.Req, pool)
-					}
+	walkRows(a.items, func(r *compRow) {
+		if pool := listedPool(r.r.Req); pool != nil {
+			for _, k := range r.children {
+				if k.r.Kind == types.RequirementConstraint {
+					campusFloor(k.r.Req, pool)
 				}
 			}
-			walk(r.children)
 		}
-	}
-	walk(a.items)
+	})
 }
 
 // listedPool returns the first pool in n that lists courses by code, or nil.

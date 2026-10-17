@@ -152,14 +152,14 @@ var (
 	// complGatewayRe matches courses grouped under the disciplines that offer
 	// them: "1.0 credit from the gateway courses in American Studies ( AMS100H1),
 	// English ( ENG250H1 and ENG270H1), ...".
-	complGatewayRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+[\w-]+\s+courses\s+in\s+(.+)$`)
+	complGatewayRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from\s+the\s+[\w-]+\s+courses\s+in\s+(.+)$`)
 	// complGatewayGroupRe matches one discipline and its courses, and the
 	// separator after it: "English ( ENG250H1 and ENG270H1), ".
 	complGatewayGroupRe = regexp.MustCompile(`^\s*[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*\s*\(\s*(` + codePat + `(?:\s+and\s+` + codePat + `)*)\s*\)\s*(?:,\s*(?:or\s+)?|,?\s+or\s+|$)`)
 	// complAdditionalUnionRe matches Req 1's pool as designators or lists:
 	// "Additional AMS/USA courses or courses from the American Studies Program
 	// disciplinary/thematic clusters to a total of 7.0 credits".
-	complAdditionalUnionRe = regexp.MustCompile(`(?i)^additional\s+((?-i:[A-Z]{3})(?:/(?-i:[A-Z]{3}))*)\s+courses\s+or\s+courses\s+from\s+the\s+[\w\s/-]*?\b(clusters|groups)\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?(?:,\s*including\s+requirement\s+#?\d+\s+above)?$`)
+	complAdditionalUnionRe = regexp.MustCompile(`(?i)^additional\s+(` + desigPat + `(?:/` + desigPat + `)*)\s+courses\s+or\s+courses\s+from\s+the\s+[\w\s/-]*?\b(clusters|groups)\s+to\s+a\s+total\s+of\s+` + amountPat + `\s+credits?(?:,\s*including\s+requirement\s+#?\d+\s+above)?$`)
 )
 
 // oneOffRow reads a row of text (text: the body, or the first item of
@@ -433,23 +433,23 @@ var (
 	complFromOneOfRe = regexp.MustCompile(`(?i)\b(credits?\s+from)\s+one\s+of\s+(` + codePat + `)`)
 	// complAllRequiredRe matches a lead over courses all required: "2.0 credits
 	// comprised of the following core PCJ courses, all of which are required: ".
-	complAllRequiredRe = regexp.MustCompile(`(?i)^\d+(?:\.\d+)?\s+credits?\s+(?:comprised\s+)?of\s+the\s+following\s+[\w\s]*?courses,\s+all\s+of\s+which\s+are\s+required:\s*`)
+	complAllRequiredRe = regexp.MustCompile(`(?i)^` + numPat + `\s+credits?\s+(?:comprised\s+)?of\s+the\s+following\s+[\w\s]*?courses,\s+all\s+of\s+which\s+are\s+required:\s*`)
 	// complListFloorRe matches a floor before its list: "At least 3.5 credits
 	// from the following list including at least 2.5 with the BMS/JSM/JWB
 	// designator: BMS300H1/ ...".
-	complListFloorRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(\d+(?:\.\d+)?\s+credits?)\s+from\s+the\s+following\s+list\s+including\s+at\s+least\s+(\d+(?:\.\d+)?)\s+(?:credits?\s+)?with\s+the\s+((?-i:[A-Z]{3})(?:/(?-i:[A-Z]{3}))*)\s+designators?:\s*(.+)$`)
+	complListFloorRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?(` + numPat + `\s+credits?)\s+from\s+the\s+following\s+list\s+including\s+` + atLeastPat + `\s+` + amountPat + `\s+(?:credits?\s+)?with\s+the\s+(` + desigPat + `(?:/` + desigPat + `)*)\s+designators?:\s*(.+)$`)
 	// complGroupFloorRe matches a group set out after its floors: "2.0 credits
 	// from the Core Group at the 300+ level, at least 0.5 of which must be at the
 	// 400-level: CAR315H1, ...". The groups: amount, level, floors, codes.
-	complGroupFloorRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?)\s+from\s+the\s+[\w\s]+?\s+group(?:\s+at\s+the\s+([1-4])00\+\s+level)?(?:,\s*|\s*\(\s*)((?:including\s+)?at\s+least\s+[^():]+?)\)?:\s*((?:` + codePat + `,?\s*)+)$`)
+	complGroupFloorRe = regexp.MustCompile(`(?i)^(` + numPat + `\s+credits?)\s+from\s+the\s+[\w\s]+?\s+group(?:\s+at\s+the\s+([1-4])00\+\s+level)?(?:,\s*|\s*\(\s*)((?:including\s+)?` + atLeastPat + `\s+[^():]+?)\)?:\s*((?:` + codePat + `,?\s*)+)$`)
 	// complWhichFloorRe matches "at least 0.5 of which must be at the 400-level".
-	complWhichFloorRe = regexp.MustCompile(`(?i)^at\s+least\s+(\d+(?:\.\d+)?)\s+of\s+which\s+must\s+be\s+(at\s+the\s+[1-4]00-level)$`)
+	complWhichFloorRe = regexp.MustCompile(`(?i)^` + atLeastPat + `\s+` + amountPat + `\s+of\s+which\s+must\s+be\s+(at\s+the\s+` + levelPat + `-level)$`)
 	// complDesigButNotRe matches "in courses with a GER designator, but cannot be
 	// GER400H1 or GER401H1".
-	complDesigButNotRe = regexp.MustCompile(`(?i)\bin\s+courses\s+with\s+an?\s+((?-i:[A-Z]{3}))\s+designator,\s+but\s+cannot\s+be\s+(` + codePat + `)\s+or\s+(` + codePat + `)`)
+	complDesigButNotRe = regexp.MustCompile(`(?i)\bin\s+courses\s+with\s+an?\s+(` + desigPat + `)\s+designator,\s+but\s+cannot\s+be\s+(` + codePat + `)\s+or\s+(` + codePat + `)`)
 	// complFurtherDesigRe matches "in further ITA courses, including language
 	// courses": the language courses are ITA courses too.
-	complFurtherDesigRe = regexp.MustCompile(`(?i)\bin\s+further\s+((?-i:[A-Z]{3}))\s+courses(?:,\s+including\s+language\s+courses$)?`)
+	complFurtherDesigRe = regexp.MustCompile(`(?i)\bin\s+further\s+(` + desigPat + `)\s+courses(?:,\s+including\s+language\s+courses$)?`)
 	// complOnlyOneFromRe matches a cap at the end of a "/" list: "/ (only one
 	// from ESS261H1/ GGR203H1)".
 	complOnlyOneFromRe = regexp.MustCompile(`(?i)/?\s*\(\s*only\s+one\s+from\s+((?:` + codePat + `\s*/\s*)*` + codePat + `)\s*\)$`)
@@ -648,7 +648,7 @@ func possibilities(r *compRow) {
 var (
 	// complDistributionRe matches a lead summing up the items below it: "The
 	// distribution of the 7.0 credits is as follows:".
-	complDistributionRe = regexp.MustCompile(`(?i)^the\s+distribution\s+of\s+the\s+\d+(?:\.\d+)?\s+credits\s+is\s+as\s+follows:?$`)
+	complDistributionRe = regexp.MustCompile(`(?i)^the\s+distribution\s+of\s+the\s+` + numPat + `\s+credits\s+is\s+as\s+follows:?$`)
 	// complSingleLanguageRe matches the rule such a summary adds: "A two-year
 	// progressive sequence of courses in a single language".
 	complSingleLanguageRe = regexp.MustCompile(`(?i)\bsequence\s+of\s+courses\s+in\s+a\s+single\s+language\b`)
@@ -737,11 +737,11 @@ func approvalOverAll(r *compRow) {
 
 // complTrailingCodeRe matches a pool ending at a ";" before one more
 // course: "1.0 credit from FOR300H1, ..., FOR310H1; EEB321H1".
-var complTrailingCodeRe = regexp.MustCompile(`\d+(?:\.\d+)?\s+credits?\s+from\s+[^;]+;\s*(` + codePat + `)\.?$`)
+var complTrailingCodeRe = regexp.MustCompile(numPat + `\s+credits?\s+from\s+[^;]+;\s*(` + codePat + `)\.?$`)
 
 // complSemicolonPoolRe matches a pool whose ";" separates groups of its
 // courses: "1.0 credit from MSE101H1; ECO101H1, ECO102H1".
-var complSemicolonPoolRe = regexp.MustCompile(`\d+(?:\.\d+)?\s+credits?\s+from\s+[^;]+;`)
+var complSemicolonPoolRe = regexp.MustCompile(numPat + `\s+credits?\s+from\s+[^;]+;`)
 
 // trailingCode reads complTrailingCodeRe by the ambiguity policy: the last
 // course as its own item is strict, the pool taking it is Review. Where another
@@ -775,7 +775,7 @@ func (a *compAssembler) trailingCode(r *compRow) {
 // complCapstoneSubstituteRe matches "May substitute a 0.5 credit in this
 // requirement from the list of Capstone courses (all 400-level SDS and JNS
 // courses)". The groups are the amount, the level, the designators.
-var complCapstoneSubstituteRe = regexp.MustCompile(`(?i)^may\s+substitute\s+an?\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+this\s+requirement\s+from\s+the\s+list\s+of\s+[\w\s]+\s+courses\s+\(all\s+([1-4])00-level\s+((?-i:[A-Z]{3})(?:\s*(?:,|and)\s*(?-i:[A-Z]{3}))*)\s+courses\)$`)
+var complCapstoneSubstituteRe = regexp.MustCompile(`(?i)^may\s+substitute\s+an?\s+` + amountPat + `\s+credits?\s+in\s+this\s+requirement\s+from\s+the\s+list\s+of\s+[\w\s]+\s+courses\s+\(all\s+([1-4])00-level\s+(` + desigPat + `(?:\s*(?:,|and)\s*` + desigPat + `)*)\s+courses\)$`)
 
 // capstoneSubstitute reads or(and(parts), text{complCapstoneSubstituteRe}),
 // each part an amount from one list, as one part less and a capstone. A
@@ -884,11 +884,11 @@ func (a *compAssembler) noteFloorAfterLine() {
 // complFloorIfCompletedRe matches "at least 1.0 must be 300+ series if 1.0
 // credit is completed in #7 above" (ASSPE1006). The groups are the amount
 // the condition names and the item.
-var complFloorIfCompletedRe = regexp.MustCompile(`(?i)^at\s+least\s+\d+(?:\.\d+)?\s+must\s+be\s+[1-4]00\+\s+series\s+if\s+(\d+(?:\.\d+)?)\s+credits?\s+is\s+completed\s+in\s+#(\d+)\s+above$`)
+var complFloorIfCompletedRe = regexp.MustCompile(`(?i)^` + atLeastPat + `\s+` + numPat + `\s+must\s+be\s+` + levelPat + `\+\s+series\s+if\s+` + amountPat + `\s+credits?\s+is\s+completed\s+in\s+#(\d+)\s+above$`)
 
 // complRangeLeadRe matches an item's range: "1.0 to 1.5 credits". The group
 // is the upper amount.
-var complRangeLeadRe = regexp.MustCompile(`(?i)^(?:\d+\.\s+)?\d+(?:\.\d+)?\s+to\s+(\d+(?:\.\d+)?)\s+credits?\b`)
+var complRangeLeadRe = regexp.MustCompile(`(?i)^(?:\d+\.\s+)?` + numPat + `\s+to\s+` + amountPat + `\s+credits?\b`)
 
 // floorIfCompleted reads a complFloorIfCompletedRe text constraint as
 // or(credits{upper, requirements: [the item]}, text): the floor is on credits
@@ -932,6 +932,9 @@ func (a *compAssembler) floorIfCompleted() {
 // languages: Arabic, Hebrew, Persian, Turkish" (ASMAJ2669).
 var complNamedLanguagesRe = regexp.MustCompile(`\blanguages:\s*([A-Z][a-z]+(?:,\s*(?:and\s+)?[A-Z][a-z]+)*)\.?$`)
 
+// complNamedLanguageRe matches a capitalised word: "Spanish".
+var complNamedLanguageRe = regexp.MustCompile(`[A-Z][a-z]+`)
+
 // languagesNamed gives and(credits{amount}, text{complNamedLanguagesRe}) in
 // r's body the languages' designators; the text stays, since which of their
 // courses count is the course's language.
@@ -947,7 +950,7 @@ func languagesNamed(r *compRow) {
 			return
 		}
 		var desigs []string
-		for _, l := range regexp.MustCompile(`[A-Z][a-z]+`).FindAllString(m[1], -1) {
+		for _, l := range complNamedLanguageRe.FindAllString(m[1], -1) {
 			d := languageDesignators[strings.ToLower(l)]
 			if d == nil {
 				return
@@ -960,7 +963,10 @@ func languagesNamed(r *compRow) {
 
 // complLevelCodedRe matches a route by level: "any 100 or 200 level coded
 // course from Munk ... with prior permission of the Director" (ASMAJ2660).
-var complLevelCodedRe = regexp.MustCompile(`(?i)^any\s+([1-4]00(?:\s+or\s+[1-4]00)*)\s+level\s+coded\s+course\s+from\b.*\bwith\s+prior\s+permission\b`)
+var complLevelCodedRe = regexp.MustCompile(`(?i)^any\s+(` + levelPat + `(?:\s+or\s+` + levelPat + `)*)\s+level\s+coded\s+course\s+from\b.*\bwith\s+prior\s+permission\b`)
+
+// complLevelHundredRe matches a level: "300".
+var complLevelHundredRe = regexp.MustCompile(levelPat)
 
 // levelCodedRoute bounds r's complLevelCodedRe route by its levels: the
 // unit's courses carry designators the text doesn't list, so the levels are
@@ -976,7 +982,7 @@ func levelCodedRoute(r *compRow) {
 		return
 	}
 	var levels []int
-	for _, l := range regexp.MustCompile(`[1-4]00`).FindAllString(m[1], -1) {
+	for _, l := range complLevelHundredRe.FindAllString(m[1], -1) {
 		levels = append(levels, int(l[0]-'0')*100)
 	}
 	n.Items[1] = andNode(&types.ReqNode{Type: types.NodeCredits, Amount: n.Items[0].Amount, Levels: levels}, n.Items[1])
@@ -1005,7 +1011,7 @@ func approvedOnLists(r *compRow) {
 // complGraduateShareRe matches a share of graduate courses at a level:
 // "Students may be permitted to take Math graduate courses. A 0.5 credit of
 // these courses may count toward ... at the 400-level" (ASSPE1165, ASSPE1580).
-var complGraduateShareRe = regexp.MustCompile(`(?i)^students\s+may\s+be\s+permitted\s+to\s+take\s+(\w+)\s+graduate\s+courses\.\s+an?\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+these\s+courses\s+may\s+count\s+toward\b.*\bat\s+the\s+([1-4])00-level\b`)
+var complGraduateShareRe = regexp.MustCompile(`(?i)^students\s+may\s+be\s+permitted\s+to\s+take\s+(\w+)\s+graduate\s+courses\.\s+an?\s+` + amountPat + `\s+credits?\s+of\s+these\s+courses\s+may\s+count\s+toward\b.*\bat\s+the\s+([1-4])00-level\b`)
 
 // graduateAtLevel gives the program's graduate-course route to every other
 // pool or floor at its level, as or(row, and(row less the share, text)):
@@ -1046,7 +1052,7 @@ func (a *compAssembler) graduateAtLevel() {
 
 // complAsNecessaryRe matches an item holding the rest of the total: "(as
 // necessary to total 4.0 credits in minor)" (ASMIN1333).
-var complAsNecessaryRe = regexp.MustCompile(`(?i)\(as\s+necessary\s+to\s+total\s+(\d+(?:\.\d+)?)\s+credits\b`)
+var complAsNecessaryRe = regexp.MustCompile(`(?i)\(as\s+necessary\s+to\s+total\s+` + amountPat + `\s+credits\b`)
 
 // remainderTotalPool makes a complAsNecessaryRe item's list the total's pool
 // when every other item's courses are in it. The total counts the rest from
@@ -1065,10 +1071,7 @@ func (a *compAssembler) remainderTotalPool(lists []*types.CourseList) {
 	if v, _ := strconv.ParseFloat(m[1], 64); v != total.Amount {
 		return
 	}
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
+	byName := listsByName(lists)
 	union := byName[last.r.Req.Lists[0]]
 	if union == nil {
 		return
@@ -1127,7 +1130,7 @@ func onlyListsItem(n *types.ReqNode) bool {
 // complOneDisciplineRe matches "1.0 credit in ONE other discipline offered
 // within the Faculty of Arts & Science – African Studies, ..., and other
 // departments as approved by the program coordinator".
-var complOneDisciplineRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+(credits?)\s+in\s+one\s+other\s+discipline\s+offered\s+within\s+the\s+Faculty\s+of\s+Arts\s+(?:&|and)\s+Science\s*[–—-]\s*(.+?),?\s+and\s+other\s+departments\s+as\s+approved\s+by\s+the\s+program\s+coordinator$`)
+var complOneDisciplineRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+(credits?)\s+in\s+one\s+other\s+discipline\s+offered\s+within\s+the\s+Faculty\s+of\s+Arts\s+(?:&|and)\s+Science\s*[–—-]\s*(.+?),?\s+and\s+other\s+departments\s+as\s+approved\s+by\s+the\s+program\s+coordinator$`)
 
 // oneDiscipline reads complOneDisciplineRe (ASMAJ1023, ASSPE1023) as an or of
 // the amount from each discipline's designator, content text for those with
@@ -1165,43 +1168,35 @@ func oneDiscipline(r *compRow) {
 // complSeparatorCapRe matches a "/" run that pairCaps capped but may be the
 // list's separator: "at least 1.0 from PSY320H1/ PSY321H1/ PSY322H1,
 // PSY324H1/" (ASSPE2270), "1.0 credit from HMB430H1/ ...; JPM400Y1;" (ASMAJ0482).
-var complSeparatorCapRe = regexp.MustCompile(`(?:\bat\s+least\s+1\.0\s+from|\b1\.0\s+credit\s+from)\s+((?:` + codePat + `\s*/\s*){2}` + codePat + `)\s*(?:,\s*PSY324H1\s*/|;\s*JPM400Y1\s*;)`)
+var complSeparatorCapRe = regexp.MustCompile(`(?:\b` + atLeastPat + `\s+1\.0\s+from|\b1\.0\s+credit\s+from)\s+((?:` + codePat + `\s*/\s*){2}` + codePat + `)\s*(?:,\s*PSY324H1\s*/|;\s*JPM400Y1\s*;)`)
 
 // separatorCaps reads complSeparatorCapRe by the ambiguity policy: the cap is
 // strict (Met), the group as plain courses lenient (Review). The limit goes,
 // and its pool P becomes or(and(P, P less the cap from its other courses),
 // and(P, text{ambiguity})).
 func (a *compAssembler) separatorCaps(roots []*compRow, lists []*types.CourseList) {
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
+	byName := listsByName(lists)
 	for _, u := range a.rowUnions {
 		byName[u.list.Name] = u.list // named after numbering (nameRowUnions)
 	}
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			walk(r.children)
-			for _, k := range slices.Clone(r.children) {
-				l := k.r.Req
-				if k.r.Kind != types.RequirementLimit || l == nil || !isCourseCap(l) || len(l.Courses) < 2 {
-					continue
-				}
-				m := complSeparatorCapRe.FindStringSubmatch(k.r.Raw)
-				if m == nil || !slices.Equal(codeRe.FindAllString(m[1], -1), l.Courses) {
-					continue
-				}
-				n, ok := a.separatorPool(r.r.Req, l.Courses, *l.MaxAmount, byName)
-				if !ok {
-					continue
-				}
-				r.r.Req = n
-				r.children = slices.DeleteFunc(r.children, func(x *compRow) bool { return x == k })
+	walkRowsPost(roots, func(r *compRow) {
+		for _, k := range slices.Clone(r.children) {
+			l := k.r.Req
+			if k.r.Kind != types.RequirementLimit || l == nil || !isCourseCap(l) || len(l.Courses) < 2 {
+				continue
 			}
+			m := complSeparatorCapRe.FindStringSubmatch(k.r.Raw)
+			if m == nil || !slices.Equal(codeRe.FindAllString(m[1], -1), l.Courses) {
+				continue
+			}
+			n, ok := a.separatorPool(r.r.Req, l.Courses, *l.MaxAmount, byName)
+			if !ok {
+				continue
+			}
+			r.r.Req = n
+			r.children = slices.DeleteFunc(r.children, func(x *compRow) bool { return x == k })
 		}
-	}
-	walk(roots)
+	})
 }
 
 // separatorPool returns n with the pool that names every course of group,

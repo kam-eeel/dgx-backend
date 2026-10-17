@@ -19,7 +19,7 @@ var (
 	floorRe = regexp.MustCompile(`(?i)\b(?:lower\s+than|below)\s+(?:(\d{2})\s*%|an?\s+([A-D][+-]?)\b)`)
 	// floorAtLeastRe matches "An average of at least 73% in the prerequisite
 	// courses".
-	floorAtLeastRe = regexp.MustCompile(`(?i)\ban\s+average\s+of\s+at\s+least\s+(\d{2})%`)
+	floorAtLeastRe = regexp.MustCompile(`(?i)\ban\s+average\s+of\s+` + atLeastPat + `\s+(\d{2})%`)
 	// floorTargetRe matches the courses right after a floor, up to the next one:
 	// "in either BIO220H1 or ( BIO230H1/ BIO255H1)".
 	floorTargetRe = regexp.MustCompile(`^\s*in\s+(?:either\s+)?((?:[\s(),/]|` + codePat + `|\bor\b|\band\b)+)`)

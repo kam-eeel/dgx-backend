@@ -21,15 +21,15 @@ var (
 	// complCrNcrProgramBanRe matches a ban on CR/NCR courses in the program: "The
 	// CR/NCR option cannot be used for any program completion requirements".
 	complCrNcrProgramBanRe = regexp.MustCompile(`(?i)^(?:no\s+courses\s+in\s+the\s+[^,.]+?\s+can\s+be\s+taken\s+as\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)\s+if\s+they\s+are\s+to\s+(?:fulfill|satisfy)\s+(?:the\s+)?(?:certificate|program)\s+requirements` +
-		`|the\s+CR\s*/\s*NCR\s+option\s+cannot\s+be\s+used\s+for\s+any\s+program\s+(?:completion\s+)?requirements(?:,?\s+and\s+the\s+\d+(?:\.\d+)?\s+(?-i:[A-Z]{3})\s+credit\s+requirement)?)$`)
+		`|the\s+CR\s*/\s*NCR\s+option\s+cannot\s+be\s+used\s+for\s+any\s+program\s+(?:completion\s+)?requirements(?:,?\s+and\s+the\s+` + numPat + `\s+` + desigPat + `\s+credit\s+requirement)?)$`)
 	// complCrNcrShareRe matches a share of CR/NCR courses: "Only 0.5 credit of
 	// Credit/No Credit coursework ...". The rest of the sentence stays text.
-	complCrNcrShareRe = regexp.MustCompile(`(?i)^only\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+credits?\s+of\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)\s+(?:coursework|courses)\b`)
+	complCrNcrShareRe = regexp.MustCompile(`(?i)^only\s+(?:a\s+)?` + amountPat + `\s+credits?\s+of\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)\s+(?:coursework|courses)\b`)
 )
 
 // complCrNcrOutsideRe matches "Only 0.5 credit of Credit/No Credit coursework
 // or coursework taken outside of FRE or FSL courses ... must be pre-approved".
-var complCrNcrOutsideRe = regexp.MustCompile(`(?i)^only\s+(?:a\s+)?(\d+(?:\.\d+)?)\s+credits?\s+of\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)\s+coursework\s+or\s+coursework\s+taken\s+outside\s+of\s+((?-i:[A-Z]{3})(?:\s+or\s+(?-i:[A-Z]{3}))*)\s+courses\b[^,]*?\s+may\s+be\s+accepted,?\s+and\s+(must\s+be\s+pre-?approved\s+by\s+.+)$`)
+var complCrNcrOutsideRe = regexp.MustCompile(`(?i)^only\s+(?:a\s+)?` + amountPat + `\s+credits?\s+of\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)\s+coursework\s+or\s+coursework\s+taken\s+outside\s+of\s+(` + desigPat + `(?:\s+or\s+` + desigPat + `)*)\s+courses\b[^,]*?\s+may\s+be\s+accepted,?\s+and\s+(must\s+be\s+pre-?approved\s+by\s+.+)$`)
 
 // crNcrOutside reads complCrNcrOutsideRe under target: a limit on a list of
 // CR/NCR courses and courses outside the designators, and the approval as
@@ -95,17 +95,13 @@ func (a *compAssembler) widenOutsideShares() {
 			})
 		}
 		widen(pool)
-		var walk func(rs []*compRow)
-		walk = func(rs []*compRow) {
-			for _, r := range rs {
-				widen(r.r.Req)
-				walk(r.children)
-			}
+		visit := func(r *compRow) {
+			widen(r.r.Req)
 		}
-		walk(a.total.children)
-		walk(a.floors)
-		walk(a.items)
-		walk(a.program)
+		walkRows(a.total.children, visit)
+		walkRows(a.floors, visit)
+		walkRows(a.items, visit)
+		walkRows(a.program, visit)
 		return
 	}
 }
@@ -135,7 +131,7 @@ func (a *compAssembler) titledLimits() {
 
 // complTakeMoreRe matches a cap only permission lifts: "Students cannot take
 // more than a 0.5 credit at the 400-level without written permission".
-var complTakeMoreRe = regexp.MustCompile(`(?i)^students\s+cannot\s+take\s+more\s+than\s+(?:an?\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:at\s+the\s+([1-4]00)-level|of\s+the\s+([\w-]+)\s+courses)\s+without\s+(?:written\s+)?permission\b`)
+var complTakeMoreRe = regexp.MustCompile(`(?i)^students\s+cannot\s+take\s+more\s+than\s+(?:an?\s+)?` + amountPat + `\s+credits?\s+(?:at\s+the\s+(` + levelPat + `)-level|of\s+the\s+([\w-]+)\s+courses)\s+without\s+(?:written\s+)?permission\b`)
 
 // permittedCaps reads complTakeMoreRe constraints into or(credits{max N, the
 // courses}, text{permission}), the courses being the level or the naming item's
@@ -238,14 +234,9 @@ func (a *compAssembler) nameRowUnions(roots []*compRow, lists []*types.CourseLis
 			}
 		})
 	}
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			rename(r.r.Req)
-			walk(r.children)
-		}
-	}
-	walk(roots)
+	walkRows(roots, func(r *compRow) {
+		rename(r.r.Req)
+	})
 	for _, l := range lists {
 		for _, it := range l.Items {
 			rename(it)
@@ -317,7 +308,7 @@ var (
 	complLearningCommunityRe = regexp.MustCompile(`(?i)^(?:[\w-]+\s+){1,4}learning\s+community(?:\s*\([^()]*\))?\.?$`)
 	// complProficiencyRe matches "At least second-year proficiency in Chinese,
 	// Korean or Japanese, either by completing an appropriate language course".
-	complProficiencyRe = regexp.MustCompile(`(?i)^at\s+least\s+(first|second|third|fourth)-year\s+proficiency\s+in\s+((?-i:[A-Z][a-z]+)(?:,\s*(?-i:[A-Z][a-z]+))*,?\s+or\s+(?-i:[A-Z][a-z]+)),\s+either\s+by\s+completing\s+an\s+appropriate\s+language\s+course\s+\(e\.g\.,?\s+([^()]+)\)\s+or\s+(by\s+demonstrating\s+the\s+required\s+proficiency\s+in\s+the\s+initial\s+placement)\.?$`)
+	complProficiencyRe = regexp.MustCompile(`(?i)^` + atLeastPat + `\s+(first|second|third|fourth)-year\s+proficiency\s+in\s+((?-i:[A-Z][a-z]+)(?:,\s*(?-i:[A-Z][a-z]+))*,?\s+or\s+(?-i:[A-Z][a-z]+)),\s+either\s+by\s+completing\s+an\s+appropriate\s+language\s+course\s+\(e\.g\.,?\s+([^()]+)\)\s+or\s+(by\s+demonstrating\s+the\s+required\s+proficiency\s+in\s+the\s+initial\s+placement)\.?$`)
 	// complLanguageNameRe matches a language in complProficiencyRe's list.
 	complLanguageNameRe = regexp.MustCompile(`(?-i:[A-Z][a-z]+)`)
 )
@@ -440,7 +431,7 @@ func (a *compAssembler) appliedTo(s string) bool {
 
 // complCourseCountCapRe matches a cap counted in courses: "Up to two language
 // courses totaling 1.0 credit in Pali ( RLG264H1, RLG265H1) ... will count".
-var complCourseCountCapRe = regexp.MustCompile(`(?i)^(?:up\s+to|a\s+maximum\s+of)\s+(one|two|three|four)\s+[\w-]+\s+courses?\s+totall?ing\s+(\d+(?:\.\d+)?)\s+credits?\s+(\(?in\s+.+?)\s+will\s+count\s+towards?\b`)
+var complCourseCountCapRe = regexp.MustCompile(`(?i)^(?:up\s+to|a\s+maximum\s+of)\s+(one|two|three|four)\s+[\w-]+\s+courses?\s+totall?ing\s+` + amountPat + `\s+credits?\s+(\(?in\s+.+?)\s+will\s+count\s+towards?\b`)
 
 // courseCountCap reads a complCourseCountCapRe sentence into a limit on its
 // courses when the count and the credits agree: every course is a half course.
@@ -467,29 +458,15 @@ func courseCountCap(t string) *types.Requirement {
 // whose strict pool is lists of listed courses only. Lists with filters stay
 // bare: their union with the designator would need a list of its own.
 func (a *compAssembler) boundListRoutes(lists []*types.CourseList) {
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			if n := r.r.Req; r.r.Kind == types.RequirementAllocation && n != nil && n.Type == types.NodeOr && len(n.Items) >= 2 {
-				if strict := n.Items[0]; onlyLists(strict) {
-					if codes, ok := a.listCodes(strict.Lists, byName); ok {
-						pool := &types.ReqNode{Type: types.NodeCredits, Amount: strict.Amount, Courses: codes}
-						for i, it := range n.Items[1:] {
-							if wider := routePool(pool, it); wider != nil {
-								n.Items[i+1] = andNode(wider, it)
-							}
-						}
-					}
-				}
+	byName := listsByName(lists)
+	a.boundOrRoutes(func(strict *types.ReqNode) *types.ReqNode {
+		if onlyLists(strict) {
+			if codes, ok := a.listCodes(strict.Lists, byName); ok {
+				return &types.ReqNode{Type: types.NodeCredits, Amount: strict.Amount, Courses: codes}
 			}
-			walk(r.children)
 		}
-	}
-	walk(a.items)
+		return nil
+	})
 }
 
 // complOpenListRe matches a note that the program's lists leave courses out:
@@ -628,7 +605,7 @@ func sectionLabel(label string) bool {
 var (
 	// complPairPoolRe matches a pool of single courses and pairs: "1.0 credit
 	// from JMB170Y1/ ( MAT148H1, MAT149H1)/ MAT137Y1".
-	complPairPoolRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from(?:\s+(?:any\s+of\s+)?the\s+following)?:?\s+(.+)$`)
+	complPairPoolRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from(?:\s+(?:any\s+of\s+)?the\s+following)?:?\s+(.+)$`)
 	// complPairRe matches a pair in a pool: "( MAT148H1, MAT149H1)".
 	complPairRe = regexp.MustCompile(`\(\s*(` + codePat + `)\s*(?:,|and)\s*(` + codePat + `)\s*\)`)
 	// complPairAfterSlashRe and complPairOutRe match a pair with the "/" before
@@ -676,16 +653,16 @@ func (a *compAssembler) pairPool(s string) (body *types.ReqNode, rows []*types.R
 var (
 	// complOnlyTotalFromRe matches "Only 1.0 credit total from Computer Science
 	// may count toward the ..., with only 0.5 credit at the 100-level being ...".
-	complOnlyTotalFromRe = regexp.MustCompile(`(?i)^-?\s*only\s+(\d+(?:\.\d+)?)\s+credits?\s+total\s+from\s+([\w&\s]+?)\s+may\s+count\s+towards?\s+the\s+[\w\s]+?,\s+with\s+only\s+(\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+([1-4]00)-level\s+being\s+accepted\s+towards?\s+program\s+completion$`)
+	complOnlyTotalFromRe = regexp.MustCompile(`(?i)^-?\s*only\s+` + amountPat + `\s+credits?\s+total\s+from\s+([\w&\s]+?)\s+may\s+count\s+towards?\s+the\s+[\w\s]+?,\s+with\s+only\s+` + amountPat + `\s+credits?\s+at\s+the\s+(` + levelPat + `)-level\s+being\s+accepted\s+towards?\s+program\s+completion$`)
 	// complAdditionalProjectsRe matches "Additional BCH research project courses
 	// can be taken ..., but cannot be counted towards the program completion".
-	complAdditionalProjectsRe = regexp.MustCompile(`(?i)^additional\s+((?-i:[A-Z]{3}))\s+research\s+project\s+courses\s+can\s+be\s+taken\b.*\bcannot\s+be\s+counted\s+towards?\s+the\s+program(?:\s+completion)?$`)
+	complAdditionalProjectsRe = regexp.MustCompile(`(?i)^additional\s+(` + desigPat + `)\s+research\s+project\s+courses\s+can\s+be\s+taken\b.*\bcannot\s+be\s+counted\s+towards?\s+the\s+program(?:\s+completion)?$`)
 	// complProjectCoursesRe matches the research project courses an item names:
 	// "research project course: BCH372Y1/ BCH374Y1".
 	complProjectCoursesRe = regexp.MustCompile(`(?i)\bresearch\s+project\s+courses?:\s*((?:` + codePat + `)(?:\s*/\s*` + codePat + `)*)`)
 	// complProjectCapRe matches the note that caps them: "may count up to 1.0
 	// credits from a biochemistry research project course".
-	complProjectCapRe = regexp.MustCompile(`(?i)\bmay\s+count\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+an?\s+[\w\s]*?research\s+project\s+course\b`)
+	complProjectCapRe = regexp.MustCompile(`(?i)\bmay\s+count\s+up\s+to\s+` + amountPat + `\s+credits?\s+from\s+an?\s+[\w\s]*?research\s+project\s+course\b`)
 )
 
 // programCaps reads text constraints that cap courses over the program into
@@ -743,10 +720,10 @@ func (a *compAssembler) programCaps() {
 var (
 	// complCognatePartRe matches "6.5 additional PRT credits, of which up to 1.0
 	// credit may be taken from: SPA courses at any level, ... or cognate ...".
-	complCognatePartRe = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s+additional\s+([A-Z]{3})\s+credits,\s+of\s+which\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+may\s+be\s+taken\s+from:\s+((?:[A-Z]{3}\s+courses\s+at\s+any\s+level,\s+)+)or\s+cognate\s+course\s+offerings\s+in\s+([A-Z]{3}(?:,\s*[A-Z]{3})*)$`)
+	complCognatePartRe = regexp.MustCompile(`^` + amountPat + `\s+additional\s+([A-Z]{3})\s+credits,\s+of\s+which\s+up\s+to\s+` + amountPat + `\s+credits?\s+may\s+be\s+taken\s+from:\s+((?:[A-Z]{3}\s+courses\s+at\s+any\s+level,\s+)+)or\s+cognate\s+course\s+offerings\s+in\s+([A-Z]{3}(?:,\s*[A-Z]{3})*)$`)
 	// complCognateShareRe matches "Of these 9.0 credits, up to 2.0 credits at the
 	// 200+ level may be taken from the following cognate ... offerings: EUR".
-	complCognateShareRe = regexp.MustCompile(`(?i)^of\s+these\s+(\d+(?:\.\d+)?)\s+credits,\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+([1-4]00)\+\s+level\s+may\s+be\s+taken\s+from\s+the\s+following\s+cognate\s+departmental\s+or\s+college\s+offerings:\s+((?-i:[A-Z]{3})(?:,\s*(?-i:[A-Z]{3}))*)$`)
+	complCognateShareRe = regexp.MustCompile(`(?i)^of\s+these\s+` + amountPat + `\s+credits,\s+up\s+to\s+` + amountPat + `\s+credits?\s+at\s+the\s+(` + levelPat + `)\+\s+level\s+may\s+be\s+taken\s+from\s+the\s+following\s+cognate\s+departmental\s+or\s+college\s+offerings:\s+(` + desigPat + `(?:,\s*` + desigPat + `)*)$`)
 	// complEligibleListRe matches a note on where the cognate offerings are
 	// listed: "A complete list of eligible courses is available at ...".
 	complEligibleListRe = regexp.MustCompile(`(?i)^(?:please,?\s+consult\s+with\b.*\bupdated\s+list\s+of\s+courses\s+pre-approved\b|a\s+complete\s+list\s+of\s+eligible\s+courses\s+is\s+available\b)`)
@@ -829,7 +806,7 @@ func (a *compAssembler) cognateShares() {
 
 // complCountNoMoreRe matches "Two seminar courses (1.0 credit), and no more,
 // taken from the following: JLP471H1, PSY402H1/ PSY403H1, ...".
-var complCountNoMoreRe = regexp.MustCompile(`(?i)^(?:two|three|four)\s+[a-z]+\s+courses\s+\((\d+(?:\.\d+)?)\s+credits?\),\s+and\s+no\s+more,\s+taken\s+from(?:\s+the\s+following)?\s*:\s*` + complRouteCodesPat + `$`)
+var complCountNoMoreRe = regexp.MustCompile(`(?i)^(?:two|three|four)\s+[a-z]+\s+courses\s+\(` + amountPat + `\s+credits?\),\s+and\s+no\s+more,\s+taken\s+from(?:\s+the\s+following)?\s*:\s*` + complRouteCodesPat + `$`)
 
 // countNoMore reads a complCountNoMoreRe item: credits{N, the codes}, a
 // program limit of N on them, and a one-course limit on each "/" group.

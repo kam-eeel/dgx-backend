@@ -29,10 +29,10 @@ var complRestatedRes = []*regexp.Regexp{
 	// require BIO130H1 and BIO230H1/ BIO255H1)"
 	regexp.MustCompile(`(?i)\bprerequisites\s+for\s+these\s+courses\s+cannot\s+be\s+used\s+towards\b|^note\s+that\s+(?:both|these(?:\s+courses)?|this\s+course|they|it)\s+requires?\s|^` + codePat + `\s+may\s+be\s+taken\s+without\s+` + codePat + `\s+for\s+students\s+who\b`),
 	// amounts the rows encode: "Sub-total = 8.5 credits"
-	regexp.MustCompile(`(?i)^if\s+taking\s+` + codePat + `,\s+the\s+extra\s+\d+(?:\.\d+)?\s+credit\s+can\s+go\s+to\b|^or\s+any\s+of\s+the\s+following:\s*` + codePat + `(?:\s*[/,]\s*` + codePat + `)*$|^sub-?total\s*=\s*\d+(?:\.\d+)?(?:\s+or\s+\d+(?:\.\d+)?)?\s+credits?(?:\s*\([^)]*\))?$|^in\s+addition\s+to\s+the\s+above\s+core\s+courses,\s+you\s+need\s+to\s+take\s+\d+(?:\.\d+)?\s+credits?\s+of\s+electives$|^plus\s+a\s+disciplinary\s+focus\s+requiring\s+\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s+credits$`),
+	regexp.MustCompile(`(?i)^if\s+taking\s+` + codePat + `,\s+the\s+extra\s+` + numPat + `\s+credit\s+can\s+go\s+to\b|^or\s+any\s+of\s+the\s+following:\s*` + codePat + `(?:\s*[/,]\s*` + codePat + `)*$|^sub-?total\s*=\s*` + numPat + `(?:\s+or\s+` + numPat + `)?\s+credits?(?:\s*\([^)]*\))?$|^in\s+addition\s+to\s+the\s+above\s+core\s+courses,\s+you\s+need\s+to\s+take\s+` + numPat + `\s+credits?\s+of\s+electives$|^plus\s+a\s+disciplinary\s+focus\s+requiring\s+` + numPat + `\s*-\s*` + numPat + `\s+credits$`),
 	// a focus's own requirements, which focusChoices reads: "Health Studies
 	// (ASFOC2270A): (2.0 credits) HMB342H1, ..."
-	regexp.MustCompile(`(?i)^[^:()]{1,80}\((?-i:[A-Z]{2}FOC\d{4}[A-Z])\):\s*\(\d+(?:\.\d+)?(?:\s+or\s+\d+(?:\.\d+)?)?\s+credits\)`),
+	regexp.MustCompile(`(?i)^[^:()]{1,80}\((?-i:[A-Z]{2}FOC\d{4}[A-Z])\):\s*\(` + numPat + `(?:\s+or\s+` + numPat + `)?\s+credits\)`),
 	// a designator definition, which aliasDesignators applies
 	complAliasPrefixesRe,
 	// enrolment in courses, not what counts: "... may request to enroll in the
@@ -67,7 +67,7 @@ func (a *compAssembler) restatedOmission() {
 
 // complCognateMayCountRe matches a share of approved cognate courses: "Up to
 // 2.0 credits in identified or preapproved cognate courses may count ...".
-var complCognateMayCountRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+identified\s+or\s+pre-?approved\s+cognate\s+courses\s+may\s+count\b.*\bapprov`)
+var complCognateMayCountRe = regexp.MustCompile(`(?i)^up\s+to\s+` + amountPat + `\s+credits?\s+in\s+identified\s+or\s+pre-?approved\s+cognate\s+courses\s+may\s+count\b.*\bapprov`)
 
 // cognateRouteTotal reads a complCognateMayCountRe note beside a total whose
 // allocations all draw on one designator: the total becomes or(credits{N, D},
@@ -130,7 +130,7 @@ func (a *compAssembler) cognateRouteTotal() {
 // complEnrolledExceptRe matches a cap's exception for another program's
 // students: "except for student enrolled in the Education and Society Minor
 // may apply 1.0 credit of MAT329Y1 toward the Minor program".
-var complEnrolledExceptRe = regexp.MustCompile(`(?i)^except\s+for\s+students?\s+enrolled\s+in\s+the\s+.+?\s+may\s+apply\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+(` + codePat + `)\s+toward\s+the\s+minor\s+program$`)
+var complEnrolledExceptRe = regexp.MustCompile(`(?i)^except\s+for\s+students?\s+enrolled\s+in\s+the\s+.+?\s+may\s+apply\s+` + amountPat + `\s+credits?\s+of\s+(` + codePat + `)\s+toward\s+the\s+minor\s+program$`)
 
 // enrolledException reads a complEnrolledExceptRe note on a limit as the
 // total's lenient alternative, or(credits{N}, and(credits{N less the trimmed
@@ -191,10 +191,7 @@ var complRepeatTopicRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+can\s+be\s
 // on the one allocation whose pool holds the course: the transcript's codes
 // can't tell topics apart, so it is Review.
 func (a *compAssembler) repeatTopic(lists []*types.CourseList) {
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
+	byName := listsByName(lists)
 	all := slices.Clone(a.notes)
 	for _, r := range a.allRows() {
 		all = append(all, r.r.Notes...)

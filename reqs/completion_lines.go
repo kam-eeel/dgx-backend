@@ -14,19 +14,18 @@ import (
 // them in the rows they concern: widenings, designator aliases, electives.
 
 var (
-	complWidenNumPat = `(\d+(?:\.\d+)?)`
 	// complWidenOtherDeptsRe matches "Up to 1.0 credit may be from other
 	// departments".
-	complWidenOtherDeptsRe = regexp.MustCompile(`(?i)^(?:up\s+to|a\s+maximum\s+of)\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+may\s+be\s+from\s+other\s+departments$`)
+	complWidenOtherDeptsRe = regexp.MustCompile(`(?i)^(?:up\s+to|a\s+maximum\s+of)\s+(?:a\s+)?` + amountPat + `\s+credits?\s+may\s+be\s+from\s+other\s+departments$`)
 	// complWidenRelatedRe matches "1.0 credit of related courses offered by other
 	// academic units may be counted towards the fulfillment of the program".
-	complWidenRelatedRe = regexp.MustCompile(`(?i)^` + complWidenNumPat + `\s+credits?\s+of\s+related\s+courses\s+offered\s+by\s+other\s+academic\s+units\s+may\s+be\s+counted\s+towards?\s+the\s+fulfil+ment\s+of\s+the\s+program$`)
+	complWidenRelatedRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+of\s+related\s+courses\s+offered\s+by\s+other\s+academic\s+units\s+may\s+be\s+counted\s+towards?\s+the\s+fulfil+ment\s+of\s+the\s+program$`)
 	// complWidenOutsideRe matches "No more than 1.0 credit of courses from
 	// outside of the Department of Political Science may be used".
-	complWidenOutsideRe = regexp.MustCompile(`(?i)^no\s+more\s+than\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+of\s+courses\s+(?:offered\s+)?(?:from\s+)?outside\s+(?:of\s+)?the\s+department\s+of\s+.+?\s+may\s+be\s+used\s+to\s+fulfil+\s+the\s+program\s+requirements$`)
+	complWidenOutsideRe = regexp.MustCompile(`(?i)^` + noMoreThanPat + `\s+(?:a\s+)?` + amountPat + `\s+credits?\s+of\s+courses\s+(?:offered\s+)?(?:from\s+)?outside\s+(?:of\s+)?the\s+department\s+of\s+.+?\s+may\s+be\s+used\s+to\s+fulfil+\s+the\s+program\s+requirements$`)
 	// complWidenOnRe matches "1.5 credits may be courses on East Asia offered by
 	// other departments", over a list headed with that phrase.
-	complWidenOnRe = regexp.MustCompile(`(?i)^` + complWidenNumPat + `\s+credits?\s+may\s+be\s+courses\s+on\s+(.+?)\s+offered\s+by\s+other\s+departments$`)
+	complWidenOnRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+may\s+be\s+courses\s+on\s+(.+?)\s+offered\s+by\s+other\s+departments$`)
 	// The sentences that name the courses: "Approved courses include ...", "...
 	// are examples".
 	complWidenApprovedRe = regexp.MustCompile(`(?i)^approved\s+courses\s+include\s+(.+)$`)
@@ -241,10 +240,10 @@ func (a *compAssembler) dropEncoded(used []string) {
 }
 
 var (
-	complAliasDesigListPat = `((?-i:[A-Z]{3})(?:\s*(?:,|,?\s*and|,?\s*or)\s*(?-i:[A-Z]{3}))*)`
+	complAliasDesigListPat = `(` + desigPat + `(?:\s*(?:,|,?\s*and|,?\s*or)\s*` + desigPat + `)*)`
 	// complAliasPrefixesRe matches "ANT courses are those offered with the
 	// following prefixes: ANT, ARH, INS, JAL, and JGA".
-	complAliasPrefixesRe = regexp.MustCompile(`(?i)^((?-i:[A-Z]{3}))\s+courses\s+are\s+those\s+offered\s+with\s+the\s+following\s+prefixes:\s*` + complAliasDesigListPat + `$`)
+	complAliasPrefixesRe = regexp.MustCompile(`(?i)^(` + desigPat + `)\s+courses\s+are\s+those\s+offered\s+with\s+the\s+following\s+prefixes:\s*` + complAliasDesigListPat + `$`)
 	// complAliasExcludingRe matches "(excluding the following language courses:
 	// MHB255H1, ..., RLG265H1)", read as ", excluding MHB255H1, ...".
 	complAliasExcludingRe = regexp.MustCompile(`(?i)\s*\(\s*excluding\s+the\s+following(?:\s+[a-z]+)?\s+courses:\s*((?:` + codePat + `)(?:\s*,\s*(?:` + codePat + `))*)\s*\)`)
@@ -412,25 +411,21 @@ func (a *compAssembler) courseCountsAs(s string) bool {
 // allRows returns every row read so far, in document order.
 func (a *compAssembler) allRows() []*compRow {
 	var out []*compRow
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			out = append(out, r)
-			walk(r.children)
-		}
+	visit := func(r *compRow) {
+		out = append(out, r)
 	}
 	if a.total != nil {
 		out = append(out, a.total)
 	}
-	walk(a.floors)
-	walk(a.items)
-	walk(a.program)
+	walkRows(a.floors, visit)
+	walkRows(a.items, visit)
+	walkRows(a.program, visit)
 	return out
 }
 
 // complAdditionalElectiveRe matches "An additional 0.5 credit can be taken
 // from any 3rd or 4th year elective listed above".
-var complAdditionalElectiveRe = regexp.MustCompile(`(?i)^an?\s+additional\s+(\d+(?:\.\d+)?)\s+credits?\s+(?:can|may|must)\s+be\s+taken\s+from\s+any\s+(?:3rd|third)\s+or\s+(?:4th|fourth)\s+year\s+electives?\s+listed\s+above\s*(.*)$`)
+var complAdditionalElectiveRe = regexp.MustCompile(`(?i)^an?\s+additional\s+` + amountPat + `\s+credits?\s+(?:can|may|must)\s+be\s+taken\s+from\s+any\s+(?:3rd|third)\s+or\s+(?:4th|fourth)\s+year\s+electives?\s+listed\s+above\s*(.*)$`)
 
 // additionalElectives makes a complAdditionalElectiveRe note an item: the
 // amount from the third- and fourth-year items' pools. As a note it would

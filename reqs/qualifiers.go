@@ -16,7 +16,7 @@ var (
 	// Which words are present decides whether it counts as a grade at all.
 	gradeBodyRe = regexp.MustCompile(`^(?P<with>(?i:with)\s+)?(?i:an?\s+)?` +
 		`(?P<min>(?i:(?:minimum|final)\s+)+)?(?P<word>(?i:(?:grade|mark)\s+))?(?i:of\s+)?` +
-		`(?P<least>(?i:at\s+least)\s+)?(?i:an?\s+)?` +
+		`(?P<least>(?i:` + atLeastPat + `)\s+)?(?i:an?\s+)?` +
 		`(?:(?P<pct>\d{2})\s*%|(?P<num>\d{2})|(?P<letter>[A-D][+-]?))` +
 		`(?P<up>\s+(?i:or\s+(?:higher|above|better|greater))(?:\s+(?i:grade))?|\s+(?i:minimum|grade))?` +
 		`(?P<each>\s+(?i:in\s+(?:each|all)(?:\s+(?:of\s+(?:these|the)\s+)?courses?)?))?`)
@@ -44,13 +44,13 @@ var (
 	ordPat      = `(?:first|second|third|fourth|1st|2nd|3rd|4th)`
 	yearInRe    = regexp.MustCompile(`^(?i:(?:(?:an?\s+)?students?\s+(?:must|should)\s+be\s+|must\s+be\s+|(?:available|open)\s+(?:only\s+)?to\s+students\s+)?(?:(?:enrolled|registered)\s+)?in\s+(?:their\s+|the\s+)?` + ordPat + `(?:\s*(?:and|or|/|,)\s*` + ordPat + `)*[- ]year(?:\s+of\s+(?:study|studies))?)\b`)
 	yearEndRe   = regexp.MustCompile(`^\s*(?:$|[.,;()]|(?i:and|or)\b)`)
-	maxHeadRe   = regexp.MustCompile(`^(?i:no\s+more\s+than|not\s+more\s+than|at\s+most|a\s+maximum\s+of|maximum\s+of|maximum|(?:students\s+)?(?:cannot|may\s+not|must\s+not)\s+have\s+(?:completed|taken)\s+more\s+than)\s+`)
-	countHeadRe = regexp.MustCompile(`^(?i:(?:at\s+least\s+)?(two|three|four)\s+(?:other\s+|additional\s+|more\s+)?)\d`)
+	maxHeadRe   = regexp.MustCompile(`^(?i:` + noMoreThanPat + `|not\s+more\s+than|at\s+most|a\s+maximum\s+of|maximum\s+of|maximum|(?:students\s+)?(?:cannot|may\s+not|must\s+not)\s+have\s+(?:completed|taken)\s+more\s+than)\s+`)
+	countHeadRe = regexp.MustCompile(`^(?i:(?:` + atLeastPat + `\s+)?(two|three|four)\s+(?:other\s+|additional\s+|more\s+)?)\d`)
 	completedRe = regexp.MustCompile(`^\s+(?i:completed)\b`)
 
 	// ofWhichRe matches a part of a credit requirement that must also match
 	// narrower filters: ", of which 1.0 LIN credit must be at the 300+ level".
-	ofWhichRe = regexp.MustCompile(`^\s*,?\s*(?:(?i:of\s+which\s+(?:at\s+least\s+)?(?:an?\s+)?)(\d+\.\d+)|(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:(?:credits?\s+)?of\s+which)|(?i:with\s+(?:at\s+least\s+)?)(\d+\.\d+))` +
+	ofWhichRe = regexp.MustCompile(`^\s*,?\s*(?:(?i:of\s+which\s+(?:` + atLeastPat + `\s+)?(?:an?\s+)?)(\d+\.\d+)|(?i:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?i:(?:credits?\s+)?of\s+which)|(?i:with\s+(?:` + atLeastPat + `\s+)?)(\d+\.\d+))` +
 		`((?:\s+[A-Z]{3}\b(?:\s*/\s*[A-Z]{3}\b)*)?)(?:\s+(?i:credits?|courses?)\b)?` +
 		`(?:\s+(?i:(?:must|should|needs?\s+to)\s+be|is|are))?(?:\s+(?i:an?)\b)?`)
 	creditWordRe = regexp.MustCompile(`^\s*(?i:credits?|courses?)\b`)

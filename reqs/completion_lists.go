@@ -48,7 +48,7 @@ var (
 	complChoiceListLabelRe = regexp.MustCompile(`(?i)\b(?:approved|eligible|accepted|elective|optional)\b.*\bcourses?\b`)
 	// complMemberLineRe matches a line that describes a list's members instead of
 	// listing them: "Any other GGR courses not listed in Group A".
-	complMemberLineRe = regexp.MustCompile(`^Any\s+(?:other\s+)?(?:(?-i:[A-Z]{3})(?:\s*(?:,|or|and|/)\s*(?-i:[A-Z]{3}))*\s+)?courses?\b`)
+	complMemberLineRe = regexp.MustCompile(`^Any\s+(?:other\s+)?(?:` + desigPat + `(?:\s*(?:,|or|and|/)\s*` + desigPat + `)*\s+)?courses?\b`)
 )
 
 // listLine reports whether program-level line b is a list rather than a
@@ -345,7 +345,7 @@ var complSubListNameRe = regexp.MustCompile(`^([^:]{1,80}):\s+`)
 
 // complPoolLeadClauseRe matches a lead that is only an amount over the lists
 // after it: "2.0 credits from the following".
-var complPoolLeadClauseRe = regexp.MustCompile(`(?i)^(?:any\s+\d+\s+(?:half\s+)?courses\s+\(\s*)?(\d+(?:\.\d+)?)\s+credits?\)?\s+(?:(?:chosen|selected|taken)\s+)?(?:in\s+[A-Z][\w ,]*?(?:,?\s+or\s+[A-Z]\w*)\s+)?(?:from|of)(?:\s+(?:the\s+following(?:\s+(?:(?:two|three|four|five|six|\d)\s+)?(?:list|courses|groups?|categories))?|one\s+or\s+more\s+of\s+the\s+groups\s+below|the\s+groups\s+below|the\s+list\s+below))?\s*:?$`)
+var complPoolLeadClauseRe = regexp.MustCompile(`(?i)^(?:any\s+\d+\s+(?:half\s+)?courses\s+\(\s*)?` + amountPat + `\s+credits?\)?\s+(?:(?:chosen|selected|taken)\s+)?(?:in\s+[A-Z][\w ,]*?(?:,?\s+or\s+[A-Z]\w*)\s+)?(?:from|of)(?:\s+(?:the\s+following(?:\s+(?:(?:two|three|four|five|six|\d)\s+)?(?:list|courses|groups?|categories))?|one\s+or\s+more\s+of\s+the\s+groups\s+below|the\s+groups\s+below|the\s+list\s+below))?\s*:?$`)
 
 // poolLeadHead splits a lead into its pool clause ("4.0 credits from") and the
 // rules after it. head is empty when lead isn't a pool lead.
@@ -372,10 +372,10 @@ func firstOf(n *types.ReqNode, _ []*types.ReqNode) *types.ReqNode { return n }
 var (
 	// complNumberedListsRe matches a lead over two numbered lists: "2.0 credits
 	// to be selected from lists 1 and 2".
-	complNumberedListsRe = regexp.MustCompile(`(?i)^(?:plus\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:to\s+be\s+selected\s+|selected\s+|chosen\s+)?from\s+(?:[\w-]+\s+)?lists\s+\(?(\d)\)?\s+and\s+\(?(\d)\)?`)
+	complNumberedListsRe = regexp.MustCompile(`(?i)^(?:plus\s+)?` + amountPat + `\s+credits?\s+(?:to\s+be\s+selected\s+|selected\s+|chosen\s+)?from\s+(?:[\w-]+\s+)?lists\s+\(?(\d)\)?\s+and\s+\(?(\d)\)?`)
 	// complListNumRuleRe matches a floor or cap on one of them: "Up to 1.0
 	// credit may be taken from list 2".
-	complListNumRuleRe = regexp.MustCompile(`(?i)\b(at\s+least|up\s+to|(?:at\s+)?a\s+maximum(?:\s+of)?|no\s+more\s+than)\s+(\d+(?:\.\d+)?)\s+credits?\b[^.;:]*?\blist\s+\(?(\d)\)?`)
+	complListNumRuleRe = regexp.MustCompile(`(?i)\b(` + atLeastPat + `|up\s+to|(?:at\s+)?a\s+maximum(?:\s+of)?|` + noMoreThanPat + `)\s+` + amountPat + `\s+credits?\b[^.;:]*?\blist\s+\(?(\d)\)?`)
 	// complListNumDefRe matches a list's members: "(1) ACT350H1, ...".
 	complListNumDefRe = regexp.MustCompile(`(?i)^\((\d)\)\s*(.*)$|\blist\s+\(?(\d)\)?\s*:\s*(.*)$`)
 )
@@ -496,7 +496,7 @@ func (a *compAssembler) namedListCodes(name string) []string {
 
 // complWidenNamedListRe matches a capped share from a list named below:
 // "Students may take up to a 0.5 credit from the Equivalent Courses list below".
-var complWidenNamedListRe = regexp.MustCompile(`(?i)^students\s+may\s+take\s+up\s+to\s+(?:a\s+)?` + complWidenNumPat + `\s+credits?\s+from\s+the\s+(.+?)\s+list\s+below$`)
+var complWidenNamedListRe = regexp.MustCompile(`(?i)^students\s+may\s+take\s+up\s+to\s+(?:a\s+)?` + amountPat + `\s+credits?\s+from\s+the\s+(.+?)\s+list\s+below$`)
 
 // complItemListRe matches a sentence listing the courses of the requirement
 // before it: "The following courses fulfill the Diversity and Identity
@@ -538,7 +538,7 @@ var (
 	complUpToFromListRe = regexp.MustCompile(`(?i),\s+(up\s+to\s+[^,;]*?\bfrom\s+(?:group|list)\s+\w+)\s*\.?$`)
 	// complListMemberTextRe matches text naming more of a pool's members:
 	// "400-level courses in Group I".
-	complListMemberTextRe = regexp.MustCompile(`(?i)^(?:and\s+)?(?:any\s+)?(?:[1-4]00(?:[-/+\s]*[1-4]00)*[-+]?\s*-?\s*level\s+)?(?:(?-i:[A-Z]{3})\s+)?courses?\s+(?:in|from)\s+(?:group|list)\s+\w+$`)
+	complListMemberTextRe = regexp.MustCompile(`(?i)^(?:and\s+)?(?:any\s+)?(?:` + levelPat + `(?:[-/+\s]*` + levelPat + `)*[-+]?\s*-?\s*level\s+)?(?:` + desigPat + `\s+)?courses?\s+(?:in|from)\s+(?:group|list)\s+\w+$`)
 )
 
 // listMemberAlt turns and(pool, text naming more of its members) into

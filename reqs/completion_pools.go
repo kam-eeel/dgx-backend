@@ -170,34 +170,34 @@ func (a *compAssembler) poolTexts(r *compRow, ls compListRefs) {
 var (
 	// complCountCreditsRe matches a course count with its credits: "Any 6
 	// courses (3.0 credits) from".
-	complCountCreditsRe = regexp.MustCompile(`(?i)^any\s+(?:\d+|one|two|three|four|five|six)\s+(?:half[- ]?)?courses?\s+(?:or\s+the\s+equivalent\s+)?\((\d+(?:\.\d+)?)\s+credits?\)\s+from\b`)
+	complCountCreditsRe = regexp.MustCompile(`(?i)^any\s+(?:\d+|one|two|three|four|five|six)\s+(?:half[- ]?)?courses?\s+(?:or\s+the\s+equivalent\s+)?\(` + amountPat + `\s+credits?\)\s+from\b`)
 	// complCountFromTheRe matches a count of courses: "Two courses from the BCH
 	// 400-series lecture courses:".
 	complCountFromTheRe = regexp.MustCompile(`(?i)^(two|three|four)\s+courses\s+from\s+the\s+[^:]+:\s*`)
 	// complNoMoreRe matches a capped pool: "One lab course (0.5 credit), and no
 	// more, taken from the following:".
-	complNoMoreRe = regexp.MustCompile(`(?i)^one\s+[a-z]+\s+course\s+\((\d+(?:\.\d+)?)\s+credits?\),\s+and\s+no\s+more,\s+taken\s+from(?:\s+the\s+following)?\s*:?`)
+	complNoMoreRe = regexp.MustCompile(`(?i)^one\s+[a-z]+\s+course\s+\(` + amountPat + `\s+credits?\),\s+and\s+no\s+more,\s+taken\s+from(?:\s+the\s+following)?\s*:?`)
 	// complHalfCoursesOfWhichRe matches a floor in two subjects: ", at least two
 	// of which must be Math or Physics half courses".
-	complHalfCoursesOfWhichRe = regexp.MustCompile(`(?i),\s*at\s+least\s+(one|two|three|four)\s+of\s+which\s+must\s+be\s+([A-Za-z]+)\s+or\s+([A-Za-z]+)\s+half\s+courses$`)
+	complHalfCoursesOfWhichRe = regexp.MustCompile(`(?i),\s*` + atLeastPat + `\s+(one|two|three|four)\s+of\s+which\s+must\s+be\s+([A-Za-z]+)\s+or\s+([A-Za-z]+)\s+half\s+courses$`)
 	// complSubjectCreditsRe matches a subject named in words: "2.0 credits in
 	// Sociology".
 	complSubjectCreditsRe = regexp.MustCompile(`(?i)\bcredits\s+in\s+([A-Z][a-z]+)\b`)
 	// complOfWhichIeRe matches a floor with its restatement: "(0.5 of which must
 	// be taken at the 300-level, i.e., ...)".
-	complOfWhichIeRe = regexp.MustCompile(`(?i)\s*\((\d+(?:\.\d+)?)\s+of\s+which\s+must\s+be\s+taken\s+at\s+the\s+(\d00)-level,\s*i\.e\.,[^()]*\)$`)
+	complOfWhichIeRe = regexp.MustCompile(`(?i)\s*\(` + amountPat + `\s+of\s+which\s+must\s+be\s+taken\s+at\s+the\s+(\d00)-level,\s*i\.e\.,[^()]*\)$`)
 	// complPrefixCoursesRe matches courses named with their designator: "Peace,
 	// Conflict and Justice courses (i.e. PCJ prefix classes)".
 	complPrefixCoursesRe = regexp.MustCompile(`(?i)\b[A-Z][A-Za-z,\s]+?\s+courses\s+\(i\.e\.\s+([A-Z]{3})\s+prefix\s+classes\)`)
 	// complBareFloorRe matches a floor without the word credit: "at least 0.5 at
 	// the 400 level".
-	complBareFloorRe = regexp.MustCompile(`(?i)\b(at\s+least\s+\d+(?:\.\d+)?)(\s+at\s+the\s+\d00)`)
+	complBareFloorRe = regexp.MustCompile(`(?i)\b(` + atLeastPat + `\s+` + numPat + `)(\s+at\s+the\s+\d00)`)
 	// complBreadthOrRe matches a pool or a breadth category: "<pool> or 0.5
 	// credit in any BR=5 course".
-	complBreadthOrRe = regexp.MustCompile(`(?i)^(.+?)\s+or\s+(?:any\s+)?(\d+(?:\.\d+)?)\s+credits?\s+(?:in|from)\s+(?:any|an?)\s+(?:(\d00(?:/\d00)*)-level\s+)?(?:course\s+(?:from\s+)?)?(?:BR\s*=\s*|Breadth\s+(?:Requirement\s+)?Category\s+#?)(\d)\b(?:\s+course)?(?::\s*The\s+[A-Za-z&\s]+)?$`)
+	complBreadthOrRe = regexp.MustCompile(`(?i)^(.+?)\s+or\s+(?:any\s+)?` + amountPat + `\s+credits?\s+(?:in|from)\s+(?:any|an?)\s+(?:(\d00(?:/\d00)*)-level\s+)?(?:course\s+(?:from\s+)?)?(?:BR\s*=\s*|Breadth\s+(?:Requirement\s+)?Category\s+#?)(\d)\b(?:\s+course)?(?::\s*The\s+[A-Za-z&\s]+)?$`)
 	// complTitledFromRe matches a title before the courses: "0.5 credit from
 	// Quantitative Methods: ENG286H1/ ENG287H1".
-	complTitledFromRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?\s+from)\s+[A-Z][A-Za-z\s]+:\s+(` + codePat + `)`)
+	complTitledFromRe = regexp.MustCompile(`(?i)^(` + numPat + `\s+credits?\s+from)\s+[A-Z][A-Za-z\s]+:\s+(` + codePat + `)`)
 )
 
 // poolRewrite rewrites s into the item grammar's wording; caps reports an
@@ -305,7 +305,7 @@ func (a *compAssembler) poolText(r *compRow, text string, ls compListRefs) (n *t
 var (
 	// complAtLeastOneOfRe matches "at least one 0.5 credit from PCL367H1 or
 	// PCL368H1".
-	complAtLeastOneOfRe = regexp.MustCompile(`,?\s*at\s+least\s+one\s+0\.5\s+credit\s+from\s+(` + codePat + `)\s+or\s+(` + codePat + `)`)
+	complAtLeastOneOfRe = regexp.MustCompile(`,?\s*` + atLeastPat + `\s+one\s+0\.5\s+credit\s+from\s+(` + codePat + `)\s+or\s+(` + codePat + `)`)
 	// complSeeNoteRe matches "(see NOTE 2)".
 	complSeeNoteRe = regexp.MustCompile(`(?i)\s*\(see\s+note(?:\s+\d+)?\)`)
 )
@@ -339,7 +339,7 @@ var complExcludesRe = regexp.MustCompile(`^Excludes\s+((?:` + codePat + `(?:\s*,
 
 // complFromListCapNoteRe matches a note letting part of a pool come from
 // another list: "One course (0.5 credit) can be from Group F".
-var complFromListCapNoteRe = regexp.MustCompile(`(?i)^(?:one|a)\s+course\s+\((\d+(?:\.\d+)?)\s+credits?\)\s+can\s+be\s+from\s+(.+)$`)
+var complFromListCapNoteRe = regexp.MustCompile(`(?i)^(?:one|a)\s+course\s+\(` + amountPat + `\s+credits?\)\s+can\s+be\s+from\s+(.+)$`)
 
 // capNotes adds to pool n the lists r's notes let part of it come from, with a
 // limit on that part. An unresolved list leaves the pool unread (false): read
@@ -402,7 +402,7 @@ func (a *compAssembler) keepsCodes(s string, n *types.ReqNode, rows []*types.Req
 var (
 	// complFilterUnionLeadRe matches a pool lead with an optional floor: "1.5
 	// credits, including at least 0.5 credit at the 400-level, from <members>".
-	complFilterUnionLeadRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+(?:additional\s+)?credits?(?:\s*,?\s*(including\s+at\s+least\s+[^,:]+?)\s*,?)?\s+(?:from|of|selected\s+from)\s*:?\s+(.+)$`)
+	complFilterUnionLeadRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+(?:additional\s+)?credits?(?:\s*,?\s*(including\s+` + atLeastPat + `\s+[^,:]+?)\s*,?)?\s+(?:from|of|selected\s+from)\s*:?\s+(.+)$`)
 	// complMemberFilterRe matches a filter among a pool's members: "PSL400-series
 	// courses". Each alternative has its own groups; filterMembers indexes them.
 	complMemberFilterRe = regexp.MustCompile(`(?:[Aa]ny\s+(?:other\s+)?|further\s+)?(?:\b([A-Z]{3})\s?([1-4])00(\+)?[- ]?(?:series|level)\s+courses?|\b([A-Z]{3})\s+at\s+the\s+([1-4])00(\+)?\s+level|\b([A-Z]{3})\s+coded\s*([1-4])00\s+level\s+courses|courses\s+carrying\s+the\s+([A-Z]{3})\s+designator|\b([A-Z]{3}(?:\s+or\s+[A-Z]{3})*)\s+(half-)?courses?\s+at\s+the\s+([1-4])00(\+)?\s+level)`)
@@ -520,7 +520,8 @@ func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n 
 			x, y := items[i], items[j]
 			if x.Courses == nil && y.Courses == nil && x.Levels != nil && y.Levels != nil && slices.Equal(x.Designators, y.Designators) && slices.Equal(x.Exclude, y.Exclude) &&
 				x.MaxCourseAmount == y.MaxCourseAmount {
-				x.Levels = dedupeInts(append(x.Levels, y.Levels...))
+				x.Levels = dedupe(append(x.Levels, y.Levels...))
+				slices.Sort(x.Levels)
 				items = slices.Delete(items, j, j+1)
 				j--
 			}
@@ -550,10 +551,4 @@ func (a *compAssembler) filterMembers(r *compRow, s string, ls compListRefs) (n 
 		return nil, nil, nil, false
 	}
 	return &types.ReqNode{Type: types.NodeCredits, Amount: amount, Lists: []string{name}}, rows, notes, true
-}
-
-// dedupeInts returns xs sorted, without repeats.
-func dedupeInts(xs []int) []int {
-	slices.Sort(xs)
-	return slices.Compact(xs)
 }

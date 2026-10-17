@@ -33,7 +33,7 @@ var (
 	// equivalent, taken previously ..." keeps its note.
 	prevConcurrentRe = regexp.MustCompile(`(` + codePat + `|\b(?i:courses?))(?:\s*\(\s*` + prevConcurrentPat + `\s*\)|\s*,?\s*` + prevConcurrentPat + `)`)
 	// gluedLevelRe matches a designator glued to its level: "FSL300+ level".
-	gluedLevelRe = regexp.MustCompile(`\b([A-Z]{3})([1-4]00(?:\s*\+|-level|\s+level))`)
+	gluedLevelRe = regexp.MustCompile(`\b([A-Z]{3})(` + levelPat + `(?:\s*\+|-level|\s+level))`)
 	// takenUnderRe matches "<Title> taken under URB432H1", rewritten "URB432H1 (<Title>)".
 	takenUnderRe = regexp.MustCompile(`(?i)^([^,;()]+?)\s+taken\s+under\s+(` + codePat + `)`)
 	// exceptTailRe matches an except list with a non-course tail, bracketed so it

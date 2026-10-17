@@ -83,7 +83,7 @@ var (
 	// bandRangeRe and bandMinRe match credit bands: "between 4.0 and 8.5
 	// credits", "9.0 or more credits".
 	bandRangeRe = regexp.MustCompile(`(?i)\b(?:between\s+)?(\d+\.\d+)\s+(?:and|to)\s+(\d+\.\d+)\s+credits\b`)
-	bandMinRe   = regexp.MustCompile(`(?i)\b(?:at\s+least\s+)?(\d+\.\d+)\s+(?:or\s+more\s+credits|credits(?:\s+or\s+more)?)\b`)
+	bandMinRe   = regexp.MustCompile(`(?i)\b(?:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?:or\s+more\s+credits|credits(?:\s+or\s+more)?)\b`)
 	// categoryRe matches an admission category: "students NOT admitted to the Year
 	// 1 Rotman Commerce admission category".
 	categoryRe = regexp.MustCompile(`(?i)admission\s+categor`)
@@ -203,7 +203,7 @@ func (p *enrolParser) sentence(s string, l enrolLine) {
 		p.subs = append(p.subs, sub)
 		p.notes = append(p.notes, s)
 	case p.routeSentence(s):
-	case isEnrolBoiler(s):
+	case matchAny(enrolBoilerRes, s):
 		p.notes = append(p.notes, s)
 	default:
 		if ok, lead := p.exclusionSentence(s); ok {

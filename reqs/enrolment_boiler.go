@@ -2,13 +2,16 @@ package reqs
 
 import "regexp"
 
+// asipRe matches the Arts & Science Internship Program stream: "ASIP".
+var asipRe = regexp.MustCompile(`(?i)Arts\s*&\s*Science\s+Internship\s+Program|\bASIP\b`)
+
 // enrolBoilerRes match enrolment sentences that are advice, never requirements;
 // each becomes a note. They are checked after the sentences that carry
 // structure, so a floor followed by "... does not guarantee admission" keeps it.
 var enrolBoilerRes = []*regexp.Regexp{
 	// the ASIP stream: its Year-3 course conditions are the stream's, not the
 	// program's
-	regexp.MustCompile(`(?i)Arts\s*&\s*Science\s+Internship\s+Program|\bASIP\b`),
+	asipRe,
 	// "Please consult the Arts & Science Program Toolkit"
 	regexp.MustCompile(`(?i)Program\s+Toolkit`),
 	// "Applications from students lacking numerical grades ... may be considered"
@@ -53,7 +56,7 @@ var enrolBoilerRes = []*regexp.Regexp{
 	// round"
 	regexp.MustCompile(`(?i)last\s+available\s+for\s+enrolment|archived\s+\d{4}-\d{2}\s+Academic\s+Calendar`),
 	// "enrolment is restricted to no more than 15 students per year"
-	regexp.MustCompile(`(?i)restricted\s+to\s+no\s+more\s+than|welcome\s+students\s+with\s+diverse`),
+	regexp.MustCompile(`(?i)restricted\s+to\s+` + noMoreThanPat + `|welcome\s+students\s+with\s+diverse`),
 	// "completion of the Studio (Group B) requirement will normally require"
 	regexp.MustCompile(`(?i)Studio\s+(?:courses\s+)?\(Group\s+B\)`),
 	// "Grades in MAT158H1 ... will be adjusted to account for the greater
@@ -75,12 +78,3 @@ var enrolBoilerRes = []*regexp.Regexp{
 // enrolNoiseRe matches sentences that say nothing the structure doesn't:
 // "Students must meet the requirements listed below to enrol."
 var enrolNoiseRe = regexp.MustCompile(`(?i)^students\s+must\s+meet\s+the\s+requirements?\s+listed\s+below|^(?:a\s+)?minimum\s+grades?(?:\s+(?:and|or)\s+(?:a\s+)?(?:minimum\s+)?grade\s+average)?\s+(?:is|are)\s+needed\s+for\s+entry$`)
-
-func isEnrolBoiler(s string) bool {
-	for _, re := range enrolBoilerRes {
-		if re.MatchString(s) {
-			return true
-		}
-	}
-	return false
-}

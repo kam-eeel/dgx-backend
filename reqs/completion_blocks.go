@@ -58,11 +58,8 @@ var (
 	// blkItalicSpanRe matches an italic span, its underscores next to a space
 	// or punctuation: "_First year_ (2.5 credits)".
 	blkItalicSpanRe = regexp.MustCompile(`(^|[\s(\[/,;:.*])_.*?_($|[\s)\]/,;:.*])`)
-	// blkInnerParenRe matches a bracketed span with none inside it, so
-	// replacing goes from the inside out: "(3.0 credits)".
-	blkInnerParenRe = regexp.MustCompile(`\([^()]*\)|\[[^\[\]]*\]`)
 	blkCreditRe     = regexp.MustCompile(`(?i)\bcredits?\b`)
-	blkAmountRe     = regexp.MustCompile(`(?i)\d+(?:\.\d+)?\s*(?:credits?|fces?)\b`)
+	blkAmountRe     = regexp.MustCompile(`(?i)` + numPat + `\s*(?:credits?|fces?)\b`)
 	blkDecimalRe    = regexp.MustCompile(`\d\.\d`) // "7.0", ".50" doesn't count
 	// blkStartsAmountRe matches a line starting with an amount: "(8.0 credits)".
 	blkStartsAmountRe = regexp.MustCompile(`^\(?\s*\d`)
@@ -79,7 +76,7 @@ var (
 	// blkGluedItemRe matches a marker glued to an amount: "1.1.0 credit".
 	blkGluedItemRe = regexp.MustCompile(`^(\d{1,2}\.)\d+\.\d`)
 	// blkNumberWordRe matches a label starting with a number: "4.5 of".
-	blkNumberWordRe = regexp.MustCompile(`^\d+(?:\.\d+)?(?:\s|$)`)
+	blkNumberWordRe = regexp.MustCompile(`^` + numPat + `(?:\s|$)`)
 	// blkSubHeadingRe matches a heading ranked below a group: "Cluster A".
 	blkSubHeadingRe = regexp.MustCompile(`(?i)^\(?(?:cluster|sub-?group)\b`)
 	// blkAdviceRe matches a bullet of advice, which ends a list: "Please note
@@ -457,6 +454,7 @@ func blkStripCreditParens(s string) string {
 	return b.String()
 }
 
+// blkMatchingParen returns the index of the ")" that closes the "(" at i, or -1.
 func blkMatchingParen(s string, i int) int {
 	depth := 0
 	for j := i; j < len(s); j++ {
@@ -475,7 +473,7 @@ func blkMatchingParen(s string, i int) int {
 // blkOutsideParens blanks out bracketed text.
 func blkOutsideParens(s string) string {
 	for {
-		t := blkInnerParenRe.ReplaceAllString(s, " ")
+		t := complParenRe.ReplaceAllString(s, " ")
 		if t == s {
 			return s
 		}

@@ -31,7 +31,7 @@ var (
 	complRelaxUnableRe = regexp.MustCompile(`(?i)^if\s+you\s+(?:are\s+unable\s+to|do\s+not|cannot)\s+complete\s+` + complRelaxCodesPat + `\b[^,]*,\s*this\s+requirement\s+must\s+be\s+(?:fulfilled|met|satisfied)\s+(?:with|by\s+completing)\s+(.+)$`)
 	// complRelaxExemptedRe matches "Students exempted from any of FSL220H1/
 	// FSL222H1 ... must replace". Group 1 holds codes, else group 2 a designator.
-	complRelaxExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\s+(?:any\s+of\s+)?(?:the\s+)?(?:` + complRelaxCodesPat + `|(?:required\s+)?((?-i:[A-Z]{3}))\s+(?:program\s+)?courses|required\s+courses)\b.*\b(?:must|may|can)\s+replace\b`)
+	complRelaxExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\s+(?:any\s+of\s+)?(?:the\s+)?(?:` + complRelaxCodesPat + `|(?:required\s+)?(` + desigPat + `)\s+(?:program\s+)?courses|required\s+courses)\b.*\b(?:must|may|can)\s+replace\b`)
 	// complRelaxInsteadRe matches "Students may use MAT351Y1 instead of
 	// APM346H1".
 	complRelaxInsteadRe = regexp.MustCompile(`(?i)\b(?:may|can)\s+(?:use|take|substitute)\s+` + complRelaxCodesPat + `\s+(?:instead\s+of|in\s+place\s+of|in\s+lieu\s+of)\s+` + complRelaxCodesPat + `\s*$`)
@@ -236,7 +236,7 @@ var complToReplaceTailRe = regexp.MustCompile(`(?i)\s+to\s+replace\s+` + codePat
 
 // complLevelCreditCourseRe matches "a 300 or 400-level 0.5 credit STA
 // course".
-var complLevelCreditCourseRe = regexp.MustCompile(`(?i)^(?:an?\s+)?([1-4]00(?:\s*(?:or|/|-|and)\s*[1-4]00)*)[-\s]*level\s+(\d+(?:\.\d+)?)\s+credits?\s+((?-i:[A-Z]{3})(?:\s*/\s*(?-i:[A-Z]{3}))*)\s+courses?$`)
+var complLevelCreditCourseRe = regexp.MustCompile(`(?i)^(?:an?\s+)?(` + levelPat + `(?:\s*(?:or|/|-|and)\s*` + levelPat + `)*)[-\s]*level\s+` + amountPat + `\s+credits?\s+(` + desigPat + `(?:\s*/\s*` + desigPat + `)*)\s+courses?$`)
 
 // requiredCodes returns the courses of designator desig (any when empty) that
 // the items require by code.
@@ -321,7 +321,7 @@ func (a *compAssembler) omitTotals() {
 var (
 	complStandInRe        = regexp.MustCompile(`(?i)^(` + codePat + `)\s+is\s+an?\s+(?:[a-z]+(?:\s+and\s+[a-z]+)?\s+)?version\s+of\s+(` + codePat + `)\s+(?:plus|and)\s+(` + codePat + `)\b`)
 	complStandInWithoutRe = regexp.MustCompile(`(?i)^if\s+you\s+take\s+(` + codePat + `)\s+without\s+(` + codePat + `)\s*,`)
-	complFootNoReplaceRe  = regexp.MustCompile(`(?i)^\((\d)\)\s+the\s+["“]?missing["”]?\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+the\s+substitution\s+does\s+not\s+(?:have|need)\s+to\s+be\s+replaced\b`)
+	complFootNoReplaceRe  = regexp.MustCompile(`(?i)^\((\d)\)\s+the\s+["“]?missing["”]?\s+` + amountPat + `\s+credits?\s+of\s+the\s+substitution\s+does\s+not\s+(?:have|need)\s+to\s+be\s+replaced\b`)
 )
 
 // standIns lets the two rows a stand-in counts for share it, since claims are
@@ -466,13 +466,13 @@ func splitYAlternatives(rows []*compRow) {
 var (
 	// complFloorItemRe matches an item worded as a floor: "11. At least 2.0
 	// credits from 400-level/ D-level courses".
-	complFloorItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?at\s+least\b`)
+	complFloorItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?` + atLeastPat + `\b`)
 	// complFloorOverRe matches a floor over other requirements or the program:
 	// "in Req5 or Req6", "of the student's program".
-	complFloorOverRe = regexp.MustCompile(`(?i)\breq(?:uirements?)?\s*\(?\d|\bof\s+the\s+student['’]s\s+(?:\d+(?:\.\d+)?\s+credits|program)\b`)
+	complFloorOverRe = regexp.MustCompile(`(?i)\breq(?:uirements?)?\s*\(?\d|\bof\s+the\s+student['’]s\s+(?:` + numPat + `\s+credits|program)\b`)
 	// complWithinCreditsRe matches a condition on courses counted elsewhere: "5.
 	// Within the 12.0 credits required for the specialist program".
-	complWithinCreditsRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?within\s+the\s+\d+(?:\.\d+)?\s+credits\s+required\b`)
+	complWithinCreditsRe = regexp.MustCompile(`(?i)^(?:\d{1,2}[.)]\s*)?within\s+the\s+` + numPat + `\s+credits\s+required\b`)
 )
 
 // floorItems makes the items that are floors on the program's courses

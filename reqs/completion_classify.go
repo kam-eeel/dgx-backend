@@ -25,7 +25,7 @@ const (
 	roleOverlap                         // a course may count toward two named requirements
 )
 
-const complAmountPat = `\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?`
+const complAmountPat = numPat + `(?:\s*[-–]\s*` + numPat + `)?`
 
 var (
 	// complLeadRe matches list markers, footnote stars and note labels before a
@@ -34,13 +34,10 @@ var (
 	// complNBRe matches "N.B.", rewritten as a label so it doesn't end a
 	// sentence.
 	complNBRe = regexp.MustCompile(`\bN\.\s?B\.\s*`)
-	// complMarkerRe matches a numbered list marker, which splitSentences would
-	// take for a sentence: "5. ".
-	complMarkerRe = regexp.MustCompile(`^(?:\d{1,2}|[a-zA-Z])\.\s+`)
 	// complAmountStartRe matches a full stop before a sentence starting with an
 	// amount, a level or a bracketed code: "courses.1.0 credit". Group 1 is the
 	// word before it; splitSentences only splits before an uppercase letter.
-	complAmountStartRe = regexp.MustCompile(`((?:[a-z]+\.)*[a-z]+|\)|` + codePat + `)\.(?:\s+\d+\.\d+\s|\d+\.\d+\s+(?:[A-Z]{3}\s+)?credits?\b|\s+\(\s*` + codePat + `|\s+[1-4]00(?:/[1-4]00)*(?:\+|-|\s+level))`)
+	complAmountStartRe = regexp.MustCompile(`((?:[a-z]+\.)*[a-z]+|\)|` + codePat + `)\.(?:\s+\d+\.\d+\s|\d+\.\d+\s+(?:[A-Z]{3}\s+)?credits?\b|\s+\(\s*` + codePat + `|\s+` + levelPat + `(?:/` + levelPat + `)*(?:\+|-|\s+level))`)
 	// complLetterNoteRe matches the start of each inline lettered note after the
 	// first: "; (b) ".
 	complLetterNoteRe = regexp.MustCompile(`;\s*\([b-z]\)\s`)
@@ -61,11 +58,10 @@ var (
 	// complBareMarkerRe matches a list marker left alone after cleaning: "a)".
 	complBareMarkerRe = regexp.MustCompile(`^(?:\d{1,2}|[a-zA-Z]|[ivxIVX]{1,4})[.)]?$`)
 
-	complCodeRe     = regexp.MustCompile(codePat)
 	complCodeLeadRe = regexp.MustCompile(`^(?i:in\s+addition,?\s+)?[(\s]*` + codePat)
 	complAmountRe   = regexp.MustCompile(`\b\d+\.\d+\b|\b\d+\s+(?:full|half)[-\s]courses?\b|(?i:\b(?:one|two|three|four)\s+years?\s+of\s+study\b)`)
 	// complFilterRe matches a filter a requirement can carry: "300-level".
-	complFilterRe = regexp.MustCompile(`\b[1-4]00(?:\+|\s*-?\s*(?:level|series)|\s*-?\s*/)|\bbreadth\b|\bBR\s*=|\b[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s*-?\s*(?:courses?|credits?|prefix|designators?|coded)\b|\b(?:Groups?|Lists?|Clusters?)\s+[A-Z0-9]\b`)
+	complFilterRe = regexp.MustCompile(`\b` + levelPat + `(?:\+|\s*-?\s*(?:level|series)|\s*-?\s*/)|\bbreadth\b|\bBR\s*=|\b[A-Z]{3}(?:\s*/\s*[A-Z]{3})*\s*-?\s*(?:courses?|credits?|prefix|designators?|coded)\b|\b(?:Groups?|Lists?|Clusters?)\s+[A-Z0-9]\b`)
 	// complBindingRe matches a verb that binds even without a code or an
 	// amount: "must".
 	complBindingRe = regexp.MustCompile(`(?i)\bmust\b|\brequire[sd]?\b|\bcannot\b|\bmay\s+not\b|\bwill\s+not\b|\bnot\s+(?:be\s+)?(?:accepted|counted|permitted|eligible|included)\b|\bonly\b|\bno\s+(?:more|other|course|courses|credits?)\b|\bwill\s+count\b`)
@@ -98,7 +94,7 @@ var (
 	complTransferRe = regexp.MustCompile(`(?i)\btransfer\s+credits?\b|\bin\s+transfer\s+credit\b`)
 	// complTransferRuleRe matches a cap or ban on transfer credit: "no more
 	// than".
-	complTransferRuleRe = regexp.MustCompile(`(?i)\bno\s+more\s+than\b|\bmaximum\b|\bmore\s+than\s+\d|\bup\s+to\b|\bcannot\b|\bmay\s+not\b|\bnot\s+(?:be\s+)?accepted\b|\bwill\s+not\b`)
+	complTransferRuleRe = regexp.MustCompile(`(?i)\b` + noMoreThanPat + `\b|\bmaximum\b|\bmore\s+than\s+\d|\bup\s+to\b|\bcannot\b|\bmay\s+not\b|\bnot\s+(?:be\s+)?accepted\b|\bwill\s+not\b`)
 
 	// complListLabelRe matches a list label, which names a list even with a cap
 	// in it: "Group A:".
@@ -116,9 +112,9 @@ var (
 	// optional label: "2.0 credits from Groups A-C". A floor or a cap in a
 	// later clause belongs to that allocation; the item grammar splits it off.
 	complAllocLeadRe = regexp.MustCompile(`(?i)^(?:[^:.()]{1,60}:\s*|[^:.()]{1,40}\(\s*)?` +
-		`(?:\(\s*|in\s+addition,?\s+|any\s+|all\s+|at\s+least\s+|(?:an\s+)?additional\s+|a\s+total\s+of\s+|a\s+minimum\s+of\s+|complete\s+|` +
+		`(?:\(\s*|in\s+addition,?\s+|any\s+|all\s+|` + atLeastPat + `\s+|(?:an\s+)?additional\s+|a\s+total\s+of\s+|a\s+minimum\s+of\s+|complete\s+|` +
 		`students\s+(?:must\s+)?complete\s+(?:a\s+total\s+of\s+)?|the\s+(?:[\w&]+\s+){1,3}requires\s+)*` +
-		`(?:(?:a\s+|one\s+)?` + complAmountPat + `\s+(?:\(\s*\d+(?:\.\d+)?\s+credits?\s*\)\s+)?(?:[\w/+-]+\s+){0,3}?(?:credits?|(?:half|full)[-\s]courses?|courses?)\b` +
+		`(?:(?:a\s+|one\s+)?` + complAmountPat + `\s+(?:\(\s*` + numPat + `\s+credits?\s*\)\s+)?(?:[\w/+-]+\s+){0,3}?(?:credits?|(?:half|full)[-\s]courses?|courses?)\b` +
 		`|total(?:\s+credits)?\s*:\s*` + complAmountPat +
 		`|[^.;:]{0,80}?\b(?:to|for)\s+a\s+total\s+of\b` +
 		`|(?:an?\s+)?additional\s+(?:[\w/+-]+\s+){0,3}?(?:credits?|courses?)\b` +
@@ -149,15 +145,15 @@ var (
 		// "These 3.0 credits must include:"
 		regexp.MustCompile(`(?i)\bmust\s+include\b`),
 		// "Higher Years (must include ...), including at least 0.5 at ..."
-		regexp.MustCompile(`(?i)\bincluding\s+at\s+least\b`),
+		regexp.MustCompile(`(?i)\bincluding\s+` + atLeastPat + `\b`),
 		// "At least 2.0 credits at the 300+ level, 0.5 of which must be ..."
-		regexp.MustCompile(`(?i)(?:^|,|\b(?:credits?|courses?|\d+(?:\.\d+)?|one))\s*of\s+which\b`),
+		regexp.MustCompile(`(?i)(?:^|,|\b(?:credits?|courses?|` + numPat + `|one))\s*of\s+which\b`),
 		// "The choices in 3 must satisfy the requirement for ..."
 		regexp.MustCompile(`(?i)\bthe\s+choices\s+(?:in|from)\s+\S+(?:\s+\S+)?\s+must\b`),
 		// "At least 1.5 credits must be in FRE or FSL courses"
-		regexp.MustCompile(`(?i)\bat\s+least\b[^.]*?\b(?:must|needs?\s+to|has\s+to|have\s+to|is\s+required)\b`),
+		regexp.MustCompile(`(?i)\b` + atLeastPat + `\b[^.]*?\b(?:must|needs?\s+to|has\s+to|have\s+to|is\s+required)\b`),
 		// "All 4.0 credits must be NMC and/or NML courses"
-		regexp.MustCompile(`(?i)\b(?:credits?|courses?)\s+(?:must|needs?\s+to)\s+(?:be\s+(?:taken\s+)?(?:at|in|from|a|an|[1-4]00|[A-Z]{3})\b|come\s+from\b|have\s+the\b)`),
+		regexp.MustCompile(`(?i)\b(?:credits?|courses?)\s+(?:must|needs?\s+to)\s+(?:be\s+(?:taken\s+)?(?:at|in|from|a|an|` + levelPat + `|[A-Z]{3})\b|come\s+from\b|have\s+the\b)`),
 	}
 	// complScopeRe matches a scope: "Of these 4.0 credits,". The cue after it
 	// decides the role; with none, it is a constraint.
@@ -166,14 +162,14 @@ var (
 	// complLimitRes are cues for a limit: at most an amount counts.
 	complLimitRes = []*regexp.Regexp{
 		// "No more than 1.0 credit of 100-level courses may be used"
-		regexp.MustCompile(`(?i)\bno\s+more\s+than\b|\bat\s+most\b|\bnot\s+exceed\b|\bcannot\s+comprise\s+more\s+than\b`),
+		regexp.MustCompile(`(?i)\b` + noMoreThanPat + `\b|\bat\s+most\b|\bnot\s+exceed\b|\bcannot\s+comprise\s+more\s+than\b`),
 		// "a maximum of 1.0 total program credits may be drawn from courses
 		// taught in English"
 		regexp.MustCompile(`(?i)\bmaximum\s+(?:of\s+)?(?:a\s+|one\s+|two\s+|\d)`),
 		// "Only 1.0 credit from 100-level ENG courses may be counted"
-		regexp.MustCompile(`(?i)\bonly\s+(?:a\s+)?(?:maximum\s+of\s+)?(?:\d+(?:\.\d+)?|one|two)\b[^.]*?\b(?:will|may|can)\s+(?:be\s+)?(?:accepted|counted|count|used|applied)\b`),
+		regexp.MustCompile(`(?i)\bonly\s+(?:a\s+)?(?:maximum\s+of\s+)?(?:` + numPat + `|one|two)\b[^.]*?\b(?:will|may|can)\s+(?:be\s+)?(?:accepted|counted|count|used|applied)\b`),
 		// "Up to 1.0 credit can be used from GGR493Y1"
-		regexp.MustCompile(`(?i)\bup\s+to\s+(?:a\s+|one\s+|two\s+)?(?:\d+(?:\.\d+)?\s+)?(?:credits?|courses?|half|full)?[^.]*?\b(?:can|may)\b`),
+		regexp.MustCompile(`(?i)\bup\s+to\s+(?:a\s+|one\s+|two\s+)?(?:` + numPat + `\s+)?(?:credits?|courses?|half|full)?[^.]*?\b(?:can|may)\b`),
 		// "MAT221H1 may not be used for this requirement".
 		regexp.MustCompile(`(?i)\b(?:cannot|may\s+not|will\s+not)\s+(?:count|be\s+(?:counted|used|applied|accepted))\s+(?:to|for|toward|towards)\b`),
 		// "STA220H1 and STA255H1 are not accepted for the major"
@@ -197,7 +193,7 @@ var (
 	complProcedureRe = regexp.MustCompile(`(?i)\bmust\s+(?:also\s+)?(?:first\s+)?(?:request|submit|check|consult|contact|apply|speak|receive|obtain\s+(?:prior\s+)?(?:consent|permission)|meet\s+(?:with|(?:all\s+)?(?:the\s+)?(?:specified\s+)?prerequisites)|be\s+enrolled|be\s+made|be\s+submitted)\b|\brequests?\s+must\s+be\b|\bmust\b[^.]*\bbefore\s+(?:starting|taking|enrolling|beginning|graduation)\b`)
 	// ... or a degree-level rule (complDegreeRuleRe): "must complete a total of
 	// at least 12.0 distinct credits" ...
-	complDegreeRuleRe = regexp.MustCompile(`(?i)\bcombination\s+of\s+programs\b|\bdistinct\s+credits\b|\b\d+\.\d\s+credit\s+rule\b|\bin\s+addition\s+to\s+the\s+\d+(?:\.\d+)?\s+credits\s+required\s+for\b|\btowards?\s+their\s+(?:[\w&]+\s+){0,3}degree\b`)
+	complDegreeRuleRe = regexp.MustCompile(`(?i)\bcombination\s+of\s+programs\b|\bdistinct\s+credits\b|\b\d+\.\d\s+credit\s+rule\b|\bin\s+addition\s+to\s+the\s+` + numPat + `\s+credits\s+required\s+for\b|\btowards?\s+their\s+(?:[\w&]+\s+){0,3}degree\b`)
 	// ... or a description naming required courses without requiring them here
 	// (complVetoDescriptionRe): "ACT390H1 is a required course in the actuarial
 	// science specialist program".
@@ -220,7 +216,7 @@ var complNotBindingRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^(?:[\w-]+\s+){0,2}students\s+can\s+take\s+` + codePat + `\b.*\bprovided\s+they\s+have\b|^students\s+can\s+take\s+either\s+course\s+as\s+their\s+required\b.*\bas\s+an\s+additional\s+elective$|^students\s+are\s+advised\s+to\s+discuss\b|^a\s+significant\s+part\s+of\s+the\s+course\s+must\s+involve\b`),
 	// Rules about other programs: "IRE/IRW courses cannot be used to fulfill
 	// enrolment/program requirements in Economics".
-	regexp.MustCompile(`(?i)^except\s+for\s+students\s+enrolled\s+in\b[^,;]*,\s+who\s+may\s+apply\b.*\btowards?\s+their\s+(?:Specialist|Major|Minor)\s+program$|\bprogram\s+requirements\s+in\s+(?-i:[A-Z])|\brequirements\s+for\s+(?:a|another|any)\s+(?:Specialist|Major|Minor)\b|\btowards?\s+an?\s+(?-i:[A-Z]{3})\s+(?:major|minor|specialist)\b|\bnot\s+considered\s+equivalent\b`),
+	regexp.MustCompile(`(?i)^except\s+for\s+students\s+enrolled\s+in\b[^,;]*,\s+who\s+may\s+apply\b.*\btowards?\s+their\s+(?:Specialist|Major|Minor)\s+program$|\bprogram\s+requirements\s+in\s+(?-i:[A-Z])|\brequirements\s+for\s+(?:a|another|any)\s+(?:Specialist|Major|Minor)\b|\btowards?\s+an?\s+` + desigPat + `\s+(?:major|minor|specialist)\b|\bnot\s+considered\s+equivalent\b`),
 	// Timing the checker doesn't enforce: "a maximum of 3.0 credits from Group
 	// B per year".
 	regexp.MustCompile(`(?i)\bper\s+(?:academic\s+)?(?:year|session|term|semester)\b`),
@@ -322,7 +318,7 @@ var complBindingProseRes = []*regexp.Regexp{
 	// requirement".
 	regexp.MustCompile(`(?i)\b(?:are|is)\s+(?:also\s+)?eligible\b|\bcounts?\s+towards?\s+this\s+requirement\b|\bsatisfied\s+by\b|\b(?:can|may)\s+(?:also\s+)?be\s+used\s+to\s+meet\b|\bmeet\s+this\s+requirement\b`),
 	// Inheritance: "begins with the requirements of First Year".
-	regexp.MustCompile(`(?i)\bbegins\s+with\s+the\s+requirements\s+of\b`),
+	complInheritRe,
 	// An exception to the total: "There is no need to replace the missing
 	// half-credit for program completion".
 	regexp.MustCompile(`(?i)\bno\s+need\s+to\s+replace\b`),
@@ -342,7 +338,7 @@ var complAsideRes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^(?:normally\s+taken\s+in\s+(?:the\s+)?first\s+year|to\s+be\s+taken\s+as\s+early\s+as\s+possible|first\s+offering\s+in\s+\d{4}(?:-\d{2,4})?)$|^should\s+be\s+taken\s+together\s+with\b|^(?:first|second|third|fourth)-year\s+students\s+should\s+take\b`),
 	// A course's own prerequisite or audience: "STA130H1 is restricted to
 	// first-year students".
-	regexp.MustCompile(`^(?:` + codePat + `(?:\s*(?:,|and|/)\s*` + codePat + `)*)\s+requires?\s|\bis\s+required\s+for\s+all\s+[A-Z]{3}\s+[1-4]00\+?[\s-]level\s+courses\b|^Students\s+taking\s+` + codePat + `\s+must\s+take\s+` + codePat + `\s+prior$|\bis\s+restricted\s+to\s+first-year\s+students\b|\bis\s+for\s+students\s+who\s+have\s+(?:previously\s+)?taken\b`),
+	regexp.MustCompile(`^(?:` + codePat + `(?:\s*(?:,|and|/)\s*` + codePat + `)*)\s+requires?\s|\bis\s+required\s+for\s+all\s+[A-Z]{3}\s+` + levelPat + `\+?[\s-]level\s+courses\b|^Students\s+taking\s+` + codePat + `\s+must\s+take\s+` + codePat + `\s+prior$|\bis\s+restricted\s+to\s+first-year\s+students\b|\bis\s+for\s+students\s+who\s+have\s+(?:previously\s+)?taken\b`),
 	// A course exclusion, which enrolment enforces: "please note that this
 	// course is an exclusion to EEB125H1".
 	regexp.MustCompile(`(?i)\bplease\s+note\s+that\s+(?:these\s+courses\s+are|this\s+course\s+is)\s+(?:an?\s+)?exclusions?\s+to\b`),
@@ -357,11 +353,11 @@ var complAsideRes = []*regexp.Regexp{
 	// toward the total like any other, and its pool already holds them.
 	regexp.MustCompile(`^including\s+` + codePat + `(?:\s*/\s*` + codePat + `)*\s+if\s+taken$`),
 	// A total restated in brackets after the items: "(3.0 credits in total)".
-	regexp.MustCompile(`(?i)^(?:a\s+)?total\s+of\s+\d+(?:\.\d+)?\s+credits?$|^\d+(?:\.\d+)?\s+credits\s+in\s+total$`),
+	regexp.MustCompile(`(?i)^(?:a\s+)?total\s+of\s+` + numPat + `\s+credits?$|^` + numPat + `\s+credits\s+in\s+total$`),
 	complAsideMustRe,
 	// The freedom an elective item leaves: "The 1.5 credits can be chosen to
 	// reflect the particular academic interests of each student".
-	regexp.MustCompile(`(?i)^the\s+\d+(?:\.\d+)?\s+credits?\s+can\s+be\s+chosen\s+to\s+reflect\b`),
+	regexp.MustCompile(`(?i)^the\s+` + numPat + `\s+credits?\s+can\s+be\s+chosen\s+to\s+reflect\b`),
 	// A descriptor closing a list of alternatives, kept by stripAsides: "a
 	// capstone integrative course".
 	regexp.MustCompile(`^an?\s+[a-z][a-z\s-]*\bcourse$`),
@@ -382,7 +378,7 @@ var complRecommendedHeadRe = regexp.MustCompile(`(?i)^[^:()]{0,40}\((?:strongly\
 var complAdvisoryRes = []*regexp.Regexp{
 	// "Students in this program have the option to complete the Arts & Science
 	// Internship Program (ASIP) stream"
-	regexp.MustCompile(`(?i)Arts\s*&\s*Science\s+Internship\s+Program|\bASIP\b`),
+	asipRe,
 	// Contacts and websites: "Please contact the Undergraduate Administrator".
 	// Not "consultation": an approval in consultation binds.
 	regexp.MustCompile(`(?i)\bconsult(?:ing)?\b|\bcontact(?:ing)?\b|\be-?mail\b|\bweb\s*(?:sites?|pages?)\b|https?://|www\.|@utoronto|reach\s+out|\bcheck\s+(?:with|the)\b|\bspeak\s+(?:with|to)\b|\bdiscuss(?:ed)?\s+with\b|\binquire\b|\bvisit\b|\bappointment\b|\badvice\b|\badvising\b|\btimetable\b`),
@@ -438,11 +434,11 @@ func classifySentence(s string) sentenceRole {
 		return roleAdvisory
 	}
 	switch {
-	case complMatchAny(complRestatedRes, t):
+	case matchAny(complRestatedRes, t):
 		return roleAdvisory
 	case complRecommendedHeadRe.MatchString(t) || isComplAdvisory(t, complAsideRes):
 		return roleAdvisory
-	case complMatchAny(complExclusionRes, t):
+	case matchAny(complExclusionRes, t):
 		return roleExclusion
 	case complOverlapRe.MatchString(t):
 		return roleOverlap
@@ -460,9 +456,9 @@ func classifySentence(s string) sentenceRole {
 		return roleRequirement
 	case isComplAdvisory(t, complNotBindingRes):
 		return roleAdvisory
-	case isComplAdvisory(t, complAdviceRes) && !complMatchAny(complSubstitutionRes, t):
+	case isComplAdvisory(t, complAdviceRes) && !matchAny(complSubstitutionRes, t):
 		return roleAdvisory
-	case complMatchAny(complApprovalRes, t) || complWidenRe.MatchString(t):
+	case matchAny(complApprovalRes, t) || complWidenRe.MatchString(t):
 		return roleRequirement
 	}
 	if r, ok := complRuleRole(t); ok {
@@ -471,11 +467,11 @@ func classifySentence(s string) sentenceRole {
 	switch {
 	case isComplListHead(t):
 		return roleListDef
-	case complMatchAny(complBindingProseRes, t):
+	case matchAny(complBindingProseRes, t):
 		return roleRequirement
 	case isComplAdvisory(t, complAdvisoryRes):
 		return roleAdvisory
-	case complCodeRe.MatchString(t) || complAmountRe.MatchString(t) || complFilterRe.MatchString(t) ||
+	case codeRe.MatchString(t) || complAmountRe.MatchString(t) || complFilterRe.MatchString(t) ||
 		complBindingRe.MatchString(t) || isComplHeading(t):
 		return roleRequirement
 	}
@@ -522,7 +518,7 @@ func complWrapped(u string) bool {
 	return depth == 0
 }
 
-func complMatchAny(res []*regexp.Regexp, s string) bool {
+func matchAny(res []*regexp.Regexp, s string) bool {
 	for _, re := range res {
 		if re.MatchString(s) {
 			return true
@@ -623,14 +619,14 @@ func isComplAdvisory(t string, res []*regexp.Regexp) bool {
 		!complVetoDescriptionRe.MatchString(t) && !complAsideMustRe.MatchString(t) {
 		return false
 	}
-	if complRecommendedTagRe.MatchString(t) && !complCodeRe.MatchString(t) {
+	if complRecommendedTagRe.MatchString(t) && !codeRe.MatchString(t) {
 		return true
 	}
 	bare := complStripParens(complTimingNoteRe.ReplaceAllString(t, ""))
 	bare = complAttributiveAdviceRe.ReplaceAllString(bare, "")
 	// advice in a later ";" clause doesn't make the sentence advice
 	bare = splitTop(bare, ';')[0]
-	return complMatchAny(res, bare)
+	return matchAny(res, bare)
 }
 
 // splitComplSentences splits a line of completion text into sentences as
@@ -639,7 +635,7 @@ func isComplAdvisory(t string, res []*regexp.Regexp) bool {
 func splitComplSentences(s string) []string {
 	s = complNBRe.ReplaceAllString(strings.TrimSpace(s), "NB: ")
 	s = stripEmphasis(complItalicNoteRe.ReplaceAllString(s, "$1. $2"))
-	marker := complMarkerRe.FindString(s)
+	marker := markerRe.FindString(s)
 	s = s[len(marker):]
 	if complWrapped(s) && strings.Contains(s, ". ") {
 		s = strings.TrimSpace(s[1 : len(s)-1])
@@ -714,7 +710,7 @@ var complContentRes = []struct {
 	{regexp.MustCompile(`\s*\b(?:(?:from\s+)?courses\s+)?(?:taught|taken)\s+in\s+(?:English|French|Spanish|Portuguese|German|Italian)\b`), ""},
 	// "where the primary language of study is not English", with any floor on
 	// those courses after it
-	{regexp.MustCompile(`\s*\bwhere\s+the\s+primary\s+language\s+of\s+study\s+is\s+not\s+English\b(?:,\s*including\s+at\s+least\s+\d+(?:\.\d+)?\s+credits?\s+at\s+the\s+\d00\+?[\s-]level)?`), ""},
+	{regexp.MustCompile(`\s*\bwhere\s+the\s+primary\s+language\s+of\s+study\s+is\s+not\s+English\b(?:,\s*including\s+` + atLeastPat + `\s+` + numPat + `\s+credits?\s+at\s+the\s+\d00\+?[\s-]level)?`), ""},
 	// "1.0 credit at the 100-level or above in a language other than English"
 	{regexp.MustCompile(`,?\s*\b(?:(?:that\s+)?(?:must\s+)?involve\s+reading\s+texts\s+)?in\s+a\s+language\s+other\s+than\s+English\b`), ""},
 	// Course types: "PRT language courses", "Language courses cannot be used",
@@ -753,7 +749,7 @@ func contentRest(t string) (string, bool) {
 
 // complContentFilterRe matches what a checker could read besides a bare amount:
 // a course, a level, a designator or a named list such as "Group A".
-var complContentFilterRe = regexp.MustCompile(codePat + `|\b[1-4]00(?:\+|\s*-?\s*(?:level|series))|\b[A-Z]{3}\b|\b(?:Groups?|Lists?|Categor(?:y|ies))\s+[A-Z0-9#]`)
+var complContentFilterRe = regexp.MustCompile(codePat + `|\b` + levelPat + `(?:\+|\s*-?\s*(?:level|series))|\b[A-Z]{3}\b|\b(?:Groups?|Lists?|Categor(?:y|ies))\s+[A-Z0-9#]`)
 
 // textKinds sets the kind of texts left as other: content, permission or
 // placement, never hiding a rule a checker could read. It runs after every pass
@@ -790,7 +786,7 @@ func textKinds(c *types.Completion) {
 // doesn't give, decides.
 func listBelowContent(n *types.ReqNode) {
 	walkReq(n, func(x *types.ReqNode) {
-		if x.Type == types.NodeText && x.Kind == types.TextOther && complNoListBelowRe.MatchString(x.Text) {
+		if x.Type == types.NodeText && x.Kind == types.TextOther && complFromListBelowRe.MatchString(x.Text) {
 			x.Kind = types.TextContent
 		}
 	})
@@ -801,7 +797,7 @@ func listBelowContent(n *types.ReqNode) {
 func listBelowGiven(raw string, r *types.Requirement) bool {
 	head, _, _ := strings.Cut(r.Raw, "\n")
 	i := strings.Index(raw, head)
-	return head != "" && i >= 0 && complCodeRe.MatchString(raw[i+len(head):])
+	return head != "" && i >= 0 && codeRe.MatchString(raw[i+len(head):])
 }
 
 // wholeTextKind marks a row's text as content when its rest reads as a pool,
@@ -866,7 +862,7 @@ func partTextKinds(n *types.ReqNode) {
 			continue
 		}
 		t := complClean(it.Text)
-		named := !slices.ContainsFunc(complCodeRe.FindAllString(t, -1), func(c string) bool { return !slices.Contains(codes, c) })
+		named := !slices.ContainsFunc(codeRe.FindAllString(t, -1), func(c string) bool { return !slices.Contains(codes, c) })
 		switch {
 		case it.Kind != types.TextOther && it.Kind != types.TextMembership:
 		case isComplApprovalText(t):
@@ -899,9 +895,6 @@ var (
 	// complAnyOtherApprovedRe matches an approval beside the listed courses:
 	// "any other approved course".
 	complAnyOtherApprovedRe = regexp.MustCompile(`(?i)^(?:or\s+)?any\s+other\s+approved\s+courses?\b`)
-	// complNoListBelowRe matches a pool drawn from "the list below": "2.5
-	// credits in MUS courses from the list below".
-	complNoListBelowRe = regexp.MustCompile(`(?i)\bfrom\s+the\s+list\s+below\b`)
 )
 
 // contentText reports a content sentence (complContentRes).
@@ -916,7 +909,7 @@ var complConsultRe = regexp.MustCompile(`(?i)\bin\s+(?:joint\s+)?consultation\s+
 
 // isComplApprovalText reports a sentence in which someone approves what counts.
 func isComplApprovalText(t string) bool {
-	return complMatchAny(complApprovalRes, t) || complCountQueryRe.MatchString(t) || complConsultRe.MatchString(t)
+	return matchAny(complApprovalRes, t) || complCountQueryRe.MatchString(t) || complConsultRe.MatchString(t)
 }
 
 // complSomeOfferingsRe matches courses that count in some offerings only: "Some
@@ -940,7 +933,7 @@ func someOfferings(n *types.ReqNode) {
 			continue
 		}
 		it.Kind = types.TextContent
-		wide := &types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount, Courses: dedupe(append(slices.Clone(pool.Courses), complCodeRe.FindAllString(m[1], -1)...))}
+		wide := &types.ReqNode{Type: types.NodeCredits, Amount: pool.Amount, Courses: dedupe(append(slices.Clone(pool.Courses), codeRe.FindAllString(m[1], -1)...))}
 		n.Items[i+1] = andNode(wide, it)
 	}
 }

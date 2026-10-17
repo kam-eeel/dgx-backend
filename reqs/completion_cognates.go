@@ -78,11 +78,11 @@ var (
 	// to 3.0 credits from approved courses ... taught by other departments,
 	// notably Art History, may be substituted for the 5.5 credits in CLA
 	// courses from Requirement 4".
-	complSubstApprovedRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+approved\s+courses\s+.+?\btaught\s+by\s+other\s+departments\s*,\s*notably\s+(.+?)\s*,\s*may\s+be\s+substituted\s+for\s+the\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
+	complSubstApprovedRe = regexp.MustCompile(`(?i)^up\s+to\s+` + amountPat + `\s+credits?\s+from\s+approved\s+courses\s+.+?\btaught\s+by\s+other\s+departments\s*,\s*notably\s+(.+?)\s*,\s*may\s+be\s+substituted\s+for\s+the\s+` + amountPat + `\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
 	// complSubstDesigsRe matches designators substituted for a pool: "Up to 2.0
 	// credits in GRK or LAT may be substituted for the 5.5 credits in CLA
 	// courses from Requirement 4".
-	complSubstDesigsRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+([A-Z]{3}(?:\s*(?:,|or|and)\s*[A-Z]{3})*)\s+may\s+be\s+substituted\s+for\s+the\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
+	complSubstDesigsRe = regexp.MustCompile(`(?i)^up\s+to\s+` + amountPat + `\s+credits?\s+in\s+([A-Z]{3}(?:\s*(?:,|or|and)\s*[A-Z]{3})*)\s+may\s+be\s+substituted\s+for\s+the\s+` + amountPat + `\s+credits\s+in\s+([A-Z]{3})\s+courses\s+from\s+requirement\s+(\d{1,2})$`)
 	// complTitledCodesRe matches a note of a list by its title: "Art History:
 	// FAH206H1, FAH207H1".
 	complTitledCodesRe = regexp.MustCompile(`^([A-Z][\w&' -]*?):\s*(.+)$`)
@@ -243,7 +243,7 @@ var (
 	// complMaxShareGroupRe matches an amount capping one group's share:
 	// "Additional 2.5 credits, of which a maximum 1.0 credit may be
 	// environmental courses (from Group A below)".
-	complMaxShareGroupRe = regexp.MustCompile(`(?i)^additional\s+(\d+(?:\.\d+)?)\s+credits\s*,\s*of\s+which\s+a\s+maximum\s+(?:of\s+)?(\d+(?:\.\d+)?)\s+credits?\s+may\s+be\s+.+?\s*\(\s*from\s+(group\s+[A-Z])\s+below\s*\)$`)
+	complMaxShareGroupRe = regexp.MustCompile(`(?i)^additional\s+` + amountPat + `\s+credits\s*,\s*of\s+which\s+a\s+maximum\s+(?:of\s+)?` + amountPat + `\s+credits?\s+may\s+be\s+.+?\s*\(\s*from\s+(group\s+[A-Z])\s+below\s*\)$`)
 	// complRemainderFromRe matches "The remainder must be selected from the
 	// following: ENV261H1/ ENV360H1".
 	complRemainderFromRe = regexp.MustCompile(`(?i)^the\s+remainder\s+must\s+be\s+selected\s+from\s+the\s+following:\s*(.+)$`)
@@ -345,10 +345,10 @@ var (
 	// complProgramCoursesRe matches "3.0 credits from courses offered by the
 	// Canadian Studies Program, including additional courses from Requirements
 	// 1 and 2".
-	complProgramCoursesRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+from\s+courses\s+(offered\s+by\s+the\s+.+?\s+program)\s*,\s*including\s+additional\s+courses\s+from\s+requirements\s+(\d{1,2}(?:\s*(?:,|and|or)\s*\d{1,2})*)$`)
+	complProgramCoursesRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits\s+from\s+courses\s+(offered\s+by\s+the\s+.+?\s+program)\s*,\s*including\s+additional\s+courses\s+from\s+requirements\s+(\d{1,2}(?:\s*(?:,|and|or)\s*\d{1,2})*)$`)
 	// complAlsoCompletedFromRe matches "Up to 1.0 credit of this requirement
 	// can also be completed from HST211H1/ PHS211H1".
-	complAlsoCompletedFromRe = regexp.MustCompile(`(?i)^up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+of\s+this\s+requirement\s+can\s+also\s+be\s+completed\s+from\s*:?\s*(.+)$`)
+	complAlsoCompletedFromRe = regexp.MustCompile(`(?i)^up\s+to\s+` + amountPat + `\s+credits?\s+of\s+this\s+requirement\s+can\s+also\s+be\s+completed\s+from\s*:?\s*(.+)$`)
 )
 
 // programShares reads an item of a program's courses, part of which may come
@@ -370,7 +370,7 @@ func (a *compAssembler) programShares(row *compRow, lists []*types.CourseList) [
 		return lists
 	}
 	var rows []*compRow
-	for _, l := range regexp.MustCompile(`\d{1,2}`).FindAllString(m[3], -1) {
+	for _, l := range complReqNumRe.FindAllString(m[3], -1) {
 		r := a.labelled(l)
 		if r == nil || r == row {
 			return lists
@@ -397,7 +397,7 @@ func (a *compAssembler) programShares(row *compRow, lists []*types.CourseList) [
 
 // complCognateItemRe matches an item capping the cognate courses its note
 // lists: "Up to 1.0 credit from Cognate Courses:".
-var complCognateItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}\.\s+)?up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+cognate\s+courses\s*:?$`)
+var complCognateItemRe = regexp.MustCompile(`(?i)^(?:\d{1,2}\.\s+)?up\s+to\s+` + amountPat + `\s+credits?\s+from\s+cognate\s+courses\s*:?$`)
 
 // cognateItem reads a complCognateItemRe item as a limit, when the other items
 // are closed: the plain total draws on their courses and the cognates, and the

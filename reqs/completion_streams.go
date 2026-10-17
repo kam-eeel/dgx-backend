@@ -87,7 +87,7 @@ func (a *compAssembler) streamLead(row *compRow, extra []string) bool {
 	}
 	fixed, _ := parseCompletionText(m[1])
 	pool, _ := parseCompletionText(m[2] + " from: " + m[3])
-	if fixed == nil || !coursesOnly(fixed) || !joinPool(pool, extra) {
+	if fixed == nil || !onlyCourses(fixed) || !joinPool(pool, extra) {
 		return false
 	}
 	all := append(nodeCodes(fixed), pool.Courses...)
@@ -100,17 +100,6 @@ func (a *compAssembler) streamLead(row *compRow, extra []string) bool {
 	return true
 }
 
-// coursesOnly reports whether n is a course, or an and or or of such nodes.
-func coursesOnly(n *types.ReqNode) bool {
-	switch n.Type {
-	case types.NodeCourse:
-		return true
-	case types.NodeAnd, types.NodeOr:
-		return !slices.ContainsFunc(n.Items, func(it *types.ReqNode) bool { return !coursesOnly(it) })
-	}
-	return false
-}
-
 var (
 	// complInLieuCreditRe matches courses and a pool with its floors and a
 	// course's extra credit: "BCH311H1/ MGY311Y1; 2.5 credits from MGY314H1
@@ -120,7 +109,7 @@ var (
 	// complLabFloorRe matches a floor on laboratory courses, which no filter
 	// marks, so it is kept as content: "at least 0.5 credit must be a
 	// laboratory course".
-	complLabFloorRe = regexp.MustCompile(`(?i)^at\s+least\s+(\d+\.\d+)\s+credits?\s+must\s+be\s+an?\s+laboratory\s+course$`)
+	complLabFloorRe = regexp.MustCompile(`(?i)^` + atLeastPat + `\s+(\d+\.\d+)\s+credits?\s+must\s+be\s+an?\s+laboratory\s+course$`)
 )
 
 // inLieuCredit encodes a complInLieuCreditRe row as or(and(courses replaced,
@@ -141,8 +130,8 @@ func (a *compAssembler) inLieuCredit(row *compRow) bool {
 	extra, _ := strconv.ParseFloat(m[4], 64)
 	replaced := codeRe.FindAllString(m[6], -1)
 	// the courses must be one of the course and those it replaces, no other
-	if courses == nil || courses.Type != types.NodeOr || !coursesOnly(courses) || pool == nil || pool.Type != types.NodeCredits || len(pool.Courses) == 0 ||
-		!slices.Equal(sortedCopy(nodeCodes(courses)), sortedCopy(append([]string{m[5]}, replaced...))) ||
+	if courses == nil || courses.Type != types.NodeOr || !onlyCourses(courses) || pool == nil || pool.Type != types.NodeCredits || len(pool.Courses) == 0 ||
+		!slices.Equal(slices.Sorted(slices.Values(nodeCodes(courses))), slices.Sorted(slices.Values(append([]string{m[5]}, replaced...)))) ||
 		courseWeight(m[5])-courseWeight(replaced[0]) != extra || pool.Amount <= extra {
 		return false
 	}
@@ -177,12 +166,6 @@ func (a *compAssembler) inLieuCredit(row *compRow) bool {
 	return true
 }
 
-func sortedCopy(xs []string) []string {
-	out := slices.Clone(xs)
-	slices.Sort(out)
-	return out
-}
-
 var (
 	// complPlusRe matches the "plus" between an item's parts.
 	complPlusRe = regexp.MustCompile(`,?\s+plus\s+`)
@@ -192,7 +175,7 @@ var (
 	// complPlusRestRe matches a designator's credits with a floor on a list:
 	// "2.0 additional PHL credits, at least 0.5 credit of which must be from
 	// Course Group 2 - Value Theory".
-	complPlusRestRe = regexp.MustCompile(`^(\d+\.\d+)\s+additional\s+([A-Z]{3})\s+credits,\s+at\s+least\s+(\d+\.\d+)\s+credits?\s+of\s+which\s+must\s+be\s+from\s+(?:Course\s+)?(Group\s+\w+)(?:\s+-\s+[A-Z][\w ]*)?$`)
+	complPlusRestRe = regexp.MustCompile(`^(\d+\.\d+)\s+additional\s+([A-Z]{3})\s+credits,\s+` + atLeastPat + `\s+(\d+\.\d+)\s+credits?\s+of\s+which\s+must\s+be\s+from\s+(?:Course\s+)?(Group\s+\w+)(?:\s+-\s+[A-Z][\w ]*)?$`)
 )
 
 // plusParts splits an item of three parts joined by "plus" into a group of two
@@ -212,7 +195,7 @@ func (a *compAssembler) plusParts(ls compListRefs) {
 		fixed, _ := parseCompletionText(parts[0])
 		pm := complPlusPoolRe.FindStringSubmatch(strings.TrimSpace(parts[1]))
 		rm := complPlusRestRe.FindStringSubmatch(strings.TrimSpace(parts[2]))
-		if fixed == nil || !coursesOnly(fixed) || pm == nil || rm == nil {
+		if fixed == nil || !onlyCourses(fixed) || pm == nil || rm == nil {
 			continue
 		}
 		pool, _ := parseCompletionText(pm[1] + " from: " + pm[2])

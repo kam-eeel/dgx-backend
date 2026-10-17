@@ -26,7 +26,7 @@ var (
 	complOrUnderRe = regexp.MustCompile(`(?i)^(.+?)\s+or\s+under\s+the\s+(.+?)\.?$`)
 	// complListedInRe matches a pool another program lists: "2.0 credits in
 	// eligible elective courses listed in the European Affairs Major".
-	complListedInRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+eligible\s+elective\s+courses\s+listed\s+in\s+the\s+(.+?)\.?$`)
+	complListedInRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+in\s+eligible\s+elective\s+courses\s+listed\s+in\s+the\s+(.+?)\.?$`)
 )
 
 // inheritSource is one part of an inheritance sentence: the rows of a section,
@@ -144,14 +144,8 @@ func linkInheritance(c *types.Completion, self string, byCode map[string]*types.
 // the lists those name, that c lacks. A name c gives another list, or a list
 // referring to source rows, is a conflict (not ok): the sentence stays text.
 func inheritLists(c *types.Completion, src *types.Completion, copies []*types.Requirement) ([]*types.CourseList, bool) {
-	own := map[string]*types.CourseList{}
-	for _, l := range c.Lists {
-		own[l.Name] = l
-	}
-	theirs := map[string]*types.CourseList{}
-	for _, l := range src.Lists {
-		theirs[l.Name] = l
-	}
+	own := listsByName(c.Lists)
+	theirs := listsByName(src.Lists)
 	var names []string
 	for _, k := range copies {
 		walkReq(k.Req, func(n *types.ReqNode) { names = append(names, n.Lists...) })

@@ -39,7 +39,7 @@ var (
 	eligibleRe = regexp.MustCompile(`(?i)[\s,]*\b(?:in\s+order\s+)?to\s+be\s+eligible\s+for\b[^.;]*`)
 	// haveTakenRe matches "have taken 10.0 credits", rewritten to "completed 10.0
 	// credits" for the credit phrase; "who have completed ..." is left alone.
-	haveTakenRe = regexp.MustCompile(`(?i)(\bwho\s+)?\b(?:students\s+)?(?:must\s+)?have\s+(?:completed|taken)\s+((?:at\s+least\s+)?\d)`)
+	haveTakenRe = regexp.MustCompile(`(?i)(\bwho\s+)?\b(?:students\s+)?(?:must\s+)?have\s+(?:completed|taken)\s+((?:` + atLeastPat + `\s+)?\d)`)
 	// creditCopulaRe matches a copula between a credit amount and its qualifiers:
 	// "1.0 credit is from EEB/ BIO".
 	creditCopulaRe = regexp.MustCompile(`\b(\d+\.\d+(?:\s+[A-Z]{3})?(?:\s+(?i:credits?))?)(\s+(?i:of\s+which))?\s+(?i:is|are|(?:must|should|needs?\s+to)\s+be)\s+(?i:an?\s+)?`)

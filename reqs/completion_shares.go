@@ -15,7 +15,7 @@ import (
 
 // complShareRouteRe matches a share route: "1.0 credit may be taken from
 // courses offered by other departments, pending approval".
-var complShareRouteRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+may\s+be\s+taken\s+from\s+courses\s+offered\s+by\s+other\s+departments,?\s+pending\s+approval\b`)
+var complShareRouteRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+may\s+be\s+taken\s+from\s+courses\s+offered\s+by\s+other\s+departments,?\s+pending\s+approval\b`)
 
 // shareRoutes makes a plain credits total either the floor's designators plus
 // the courses listed outside them, or the total with the route's approval.
@@ -90,12 +90,12 @@ func (a *compAssembler) listedOutside(desigs []string) []string {
 
 // complLanguageCountRe matches an amount in a few languages of one designator:
 // "4.0 credits in one or two primary source languages (with NML designator)".
-var complLanguageCountRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+one\s+or\s+two\s+(?:[\w-]+\s+){0,3}languages\s+\(with\s+((?-i:[A-Z]{3}))\s+designator\)`)
+var complLanguageCountRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+in\s+one\s+or\s+two\s+(?:[\w-]+\s+){0,3}languages\s+\(with\s+(` + desigPat + `)\s+designator\)`)
 
 // complStreamPoolRe matches a pool of two streams or approved courses: "1.0
 // credit in Medieval or Modern stream courses or those from a list of
 // pre-approved courses offered by other departments".
-var complStreamPoolRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+(\w+)\s+or\s+(\w+)\s+stream\s+courses\s+or\s+(those\s+from\s+a\s+list\s+of\s+pre-approved\s+courses\s+offered\s+by\s+other\s+departments)$`)
+var complStreamPoolRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+in\s+(\w+)\s+or\s+(\w+)\s+stream\s+courses\s+or\s+(those\s+from\s+a\s+list\s+of\s+pre-approved\s+courses\s+offered\s+by\s+other\s+departments)$`)
 
 // languagePools encodes a language count as its designator plus the row's text,
 // since the languages aren't in the catalogue, and a stream pool as the

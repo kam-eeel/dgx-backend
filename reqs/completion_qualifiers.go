@@ -15,11 +15,11 @@ import (
 // complHalfCoursesCapRe matches a cap on a list counted in half courses, with
 // its credits: "The total number of half courses from Group I must not exceed
 // 3 (1.5 credits)".
-var complHalfCoursesCapRe = regexp.MustCompile(`(?i)^the\s+total\s+number\s+of\s+(?:half\s+)?courses\s+from\s+(` + complListRefPat + `)(?:\s*\(\s*including\s+[^()]*\))?\s+must\s+not\s+exceed\s+\w+\s*\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\)$`)
+var complHalfCoursesCapRe = regexp.MustCompile(`(?i)^the\s+total\s+number\s+of\s+(?:half\s+)?courses\s+from\s+(` + complListRefPat + `)(?:\s*\(\s*including\s+[^()]*\))?\s+must\s+not\s+exceed\s+\w+\s*\(\s*` + amountPat + `\s+credits?\s*\)$`)
 
 // complDesignatorPhraseRe matches a floor's designators in words: "carrying
 // the CHC/JCA/JCR designator".
-var complDesignatorPhraseRe = regexp.MustCompile(`(?i)\s+(?:must\s+(?:have|carry)|carrying|having|with)\s+(?:the\s+|an?\s+)?((?-i:[A-Z]{3})(?:\s*/\s*(?-i:[A-Z]{3}))*)\s+designators?\b`)
+var complDesignatorPhraseRe = regexp.MustCompile(`(?i)\s+(?:must\s+(?:have|carry)|carrying|having|with)\s+(?:the\s+|an?\s+)?(` + desigPat + `(?:\s*/\s*` + desigPat + `)*)\s+designators?\b`)
 
 // complExcludingLevelRe matches "excluding 100-level courses".
 var complExcludingLevelRe = regexp.MustCompile(`(?i)^excluding\s+(` + complListLevelsPat + `)\s*-?\s*level\s+courses$`)
@@ -106,20 +106,20 @@ var (
 	complEachOfListsRe = regexp.MustCompile(`(?i)\s*\bfrom\s+each\s+of\s+(` + complListRefPat + `)`)
 	// complFloorBeingRe matches "1.0 being at the at the "; the calendar may
 	// double the words.
-	complFloorBeingRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+(?:credits?\s+)?being\s+(?:at\s+the\s+)+`)
+	complFloorBeingRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+(?:credits?\s+)?being\s+(?:at\s+the\s+)+`)
 	// complMustBeACourseRe matches the floor's level in "1.0 credit must be a
 	// 300/400-level course".
-	complMustBeACourseRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?)\s+must\s+be\s+an?\s+([1-4]00(?:\s*[-/+]\s*[1-4]?0?0?)*\s*-?\s*level)\s+courses?\b`)
+	complMustBeACourseRe = regexp.MustCompile(`(?i)^(` + numPat + `\s+credits?)\s+must\s+be\s+an?\s+(` + levelPat + `(?:\s*[-/+]\s*[1-4]?0?0?)*\s*-?\s*level)\s+courses?\b`)
 	// complFloorAtRe matches a floor's amount without its unit before a level:
 	// "0.5 at ".
-	complFloorAtRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+at\s+`)
+	complFloorAtRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+at\s+`)
 	// complBareAmountRe matches an amount and nothing else: "0.5 credit".
-	complBareAmountRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?$`)
+	complBareAmountRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?$`)
 	// complFloorArticleRe matches the article before a floor's amount: "a 0.5 ".
-	complFloorArticleRe = regexp.MustCompile(`(?i)^an?\s+(\d+(?:\.\d+)?\s)`)
+	complFloorArticleRe = regexp.MustCompile(`(?i)^an?\s+(` + numPat + `\s)`)
 	// complFloorWithRe matches a floor's amount without its unit before what it
 	// counts: "2.5 with ".
-	complFloorWithRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+(?:with|in|from)\s+`)
+	complFloorWithRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+(?:with|in|from)\s+`)
 )
 
 // narrowFilter returns floor n within filter w: the courses matching both,
@@ -158,10 +158,10 @@ var complOfWhichRe = regexp.MustCompile(`(?i)\bof\s+which\b`)
 var (
 	// complQualifiedHeadRe matches a pool's lead before its courses once its
 	// floors are out: "3.5 credits from the Core Group:".
-	complQualifiedHeadRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(\d+(?:\.\d+)?\s+(?:additional\s+)?credits?)\s+(?:of\s+(?:electives|courses)\s+)?(?:(?:chosen|selected|taken)\s+)?(?:from\s+)?(?:the\s+following(?:\s+(?:courses|list))?(?:\s+below)?|the\s+(?:core|following)\s+group|any\s+of\s+the\s+following)?\s*:\s*`)
+	complQualifiedHeadRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?(` + numPat + `\s+(?:additional\s+)?credits?)\s+(?:of\s+(?:electives|courses)\s+)?(?:(?:chosen|selected|taken)\s+)?(?:from\s+)?(?:the\s+following(?:\s+(?:courses|list))?(?:\s+below)?|the\s+(?:core|following)\s+group|any\s+of\s+the\s+following)?\s*:\s*`)
 	// complFromCommaRe matches ", from" left once a floor between the amount and
 	// its pool is out: "1.5 credits, from ".
-	complFromCommaRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?\s+credits?)\s*,\s*from\s+`)
+	complFromCommaRe = regexp.MustCompile(`(?i)^(` + numPat + `\s+credits?)\s*,\s*from\s+`)
 )
 
 // qualifiedPool reads the pool of courses left once its floors and caps are
@@ -236,7 +236,7 @@ var complUpToRe = regexp.MustCompile(`(?i)^(?:;\s*)?up\s+to\b`)
 // complWeightRe matches a full-year course counting part of its weight
 // toward a requirement: "If students complete CSC110Y1, 0.5 credit from the
 // course contributes to the First Year requirements".
-var complWeightRe = regexp.MustCompile(`(?i)^if\s+students\s+(?:complete|take)\s+(` + codePat + `),\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+course\s+contributes?\s+to\s+(?:the\s+)?(?:group\s+[A-Z]\s+in\s+)?(.+?)\s*\.?$`)
+var complWeightRe = regexp.MustCompile(`(?i)^if\s+students\s+(?:complete|take)\s+(` + codePat + `),\s+` + amountPat + `\s+credits?\s+from\s+the\s+course\s+contributes?\s+to\s+(?:the\s+)?(?:group\s+[A-Z]\s+in\s+)?(.+?)\s*\.?$`)
 
 // complRequirementLabelRe matches "requirement 2".
 var complRequirementLabelRe = regexp.MustCompile(`(?i)^requirement\s+(\d+)$`)
@@ -257,16 +257,11 @@ func (a *compAssembler) weights(ls compListRefs) {
 			label = lm[1] // the row labelled 2
 		}
 		var rows []*compRow
-		var walk func(rs []*compRow)
-		walk = func(rs []*compRow) {
-			for _, r := range rs {
-				if r.r.Kind == types.RequirementAllocation && (label == "" && strings.ToLower(r.r.Section) == target || label != "" && r.r.Label == label) {
-					rows = append(rows, r)
-				}
-				walk(r.children)
+		walkRows(a.items, func(r *compRow) {
+			if r.r.Kind == types.RequirementAllocation && (label == "" && strings.ToLower(r.r.Section) == target || label != "" && r.r.Label == label) {
+				rows = append(rows, r)
 			}
-		}
-		walk(a.items)
+		})
 		done := false
 		for _, r := range rows {
 			if a.weigh(r, m[1], w, ls) {
@@ -277,20 +272,15 @@ func (a *compAssembler) weights(ls compListRefs) {
 		return done
 	}
 	a.notes = slices.DeleteFunc(a.notes, place)
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			r.r.Notes = slices.DeleteFunc(r.r.Notes, place)
-			if n := r.r.Req; n != nil && n.Type == types.NodeOr {
-				n.Items = slices.DeleteFunc(n.Items, func(it *types.ReqNode) bool { return it.Type == types.NodeText && place(it.Text) })
-				if len(n.Items) == 1 {
-					r.r.Req = n.Items[0]
-				}
+	walkRows(a.items, func(r *compRow) {
+		r.r.Notes = slices.DeleteFunc(r.r.Notes, place)
+		if n := r.r.Req; n != nil && n.Type == types.NodeOr {
+			n.Items = slices.DeleteFunc(n.Items, func(it *types.ReqNode) bool { return it.Type == types.NodeText && place(it.Text) })
+			if len(n.Items) == 1 {
+				r.r.Req = n.Items[0]
 			}
-			walk(r.children)
 		}
-	}
-	walk(a.items)
+	})
 }
 
 // weigh makes code count w toward row and reports whether row lists it.

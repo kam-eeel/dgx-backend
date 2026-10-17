@@ -30,12 +30,12 @@ var (
 	// fromCampusRe matches campus notes on alternatives: "PSY100Y5 from UTM".
 	fromCampusRe = regexp.MustCompile(`(?i)\s*\(both\)|\s+from\s+(?:UTM|UTSC)\b`)
 	// seriesLevelRe matches "200-series", read as "200-level".
-	seriesLevelRe = regexp.MustCompile(`\b([1-4]00)-series\b`)
+	seriesLevelRe = regexp.MustCompile(`\b(` + levelPat + `)-series\b`)
 	// doubleLeastRe matches a source typo: "at least at least 63%".
-	doubleLeastRe = regexp.MustCompile(`(?i)(at\s+least\s+){2,}`)
+	doubleLeastRe = regexp.MustCompile(`(?i)(` + atLeastPat + `\s+){2,}`)
 	// eachWithRe matches ", each with a mark of at least 77%", moved after the
 	// courses as "in each".
-	eachWithRe = regexp.MustCompile(`(?i),?\s*each\s+(with\s+an?\s+(?:final\s+)?(?:mark|grade)\s+of\s+(?:at\s+least\s+)?\d{2}%)`)
+	eachWithRe = regexp.MustCompile(`(?i),?\s*each\s+(with\s+an?\s+(?:final\s+)?(?:mark|grade)\s+of\s+(?:` + atLeastPat + `\s+)?\d{2}%)`)
 	// labelPoolRe matches a pool naming its courses after a label or qualifiers:
 	// "1.0 credit in Economics: ECO101H1, ...". The listed courses say it all.
 	labelPoolRe = regexp.MustCompile(`(?i)\b(\d+\.\d+)\s+(?:\d00-level\s+)?(?:[A-Z]{3}\s+)?credits?\s+(?:in\s+[^:]+:|(?:in\s+[A-Z]{3}\s+)?from\s*:?)\s*(` + codePat + `)`)
@@ -54,7 +54,7 @@ var (
 	// The list must start the item or follow ", and", ", or" or "; or".
 	listGradeRe = regexp.MustCompile(`(?i)(^(?:completion\s+of\s+)?|,\s+(?:and|or)\s+|;\s+(?:or\s+)?)` +
 		`((?:(?:\d+\.\d+\s+(?:additional\s+)?credits?\s+(?:from|in):?|one\s+of)\s+)?` + codePat + `(?:\s*(?:,\s*(?:or\b|and\b)?|/|\bor\b|\band\b)\s*` + codePat + `)*)` +
-		`\s*,?\s+with\s+an?\s+(?:minimum\s+|final\s+)*(?:grade|mark)\s+of\s+(?:at\s+least\s+)?(\d{2})%(?:\s+in\s+each(?:\s+course)?)?`)
+		`\s*,?\s+with\s+an?\s+(?:minimum\s+|final\s+)*(?:grade|mark)\s+of\s+(?:` + atLeastPat + `\s+)?(\d{2})%(?:\s+in\s+each(?:\s+course)?)?`)
 	// slashGradeRe matches one grade after a slash list, which covers the list:
 	// "MAT130H1/ MAT135H1 (60%)".
 	slashGradeRe = regexp.MustCompile(`((?:` + codePat + `\s*/\s*)+)(` + codePat + `)\s*\(\s*(\d{2})%\s*\)`)
@@ -84,12 +84,12 @@ var (
 	// anyLevelRe and ofWhichMaxRe rewrite "1.5 credits from SOC/ PSY/ IRE/ IRW,
 	// at any level, of which no more than 0.5 credit can be IRE/ IRW" as a cap.
 	anyLevelRe     = regexp.MustCompile(`(?i),?\s*at\s+any\s+level\b`)
-	ofWhichMaxRe   = regexp.MustCompile(`(?i),?\s*of\s+which\s+no\s+more\s+than\s+(\d+\.\d+)\s+credits?\s+(?:can|may)\s+be\s+`)
+	ofWhichMaxRe   = regexp.MustCompile(`(?i),?\s*of\s+which\s+` + noMoreThanPat + `\s+(\d+\.\d+)\s+credits?\s+(?:can|may)\s+be\s+`)
 	creditsFromDes = regexp.MustCompile(`(?i)\b(\d+\.\d+\s+credits?)\s+from\s+([A-Z]{3}(?:\s*/\s*[A-Z]{3})+)\b`)
 
 	// itemAvgRe matches an average over the group before it: "( ACT240H1 and
 	// ACT245H1) with an average grade of 63%".
-	itemAvgRe = regexp.MustCompile(`(?i),?\s*with\s+(?:at\s+least\s+)?an?\s+(?:combined\s+)?(?:minimum\s+)?(?:(?:average\s+grade|grade\s+average|average)\s+of\s+(\d{2})%|(\d{2})%\s+average)(?:\s+across\s+(?:all\s+)?(?:the\s+)?\w+\s+(?:courses|of\s+them))?`)
+	itemAvgRe = regexp.MustCompile(`(?i),?\s*with\s+(?:` + atLeastPat + `\s+)?an?\s+(?:combined\s+)?(?:minimum\s+)?(?:(?:average\s+grade|grade\s+average|average)\s+of\s+(\d{2})%|(\d{2})%\s+average)(?:\s+across\s+(?:all\s+)?(?:the\s+)?\w+\s+(?:courses|of\s+them))?`)
 )
 
 // itemConj strips a trailing conjunction from an item and returns it in lower

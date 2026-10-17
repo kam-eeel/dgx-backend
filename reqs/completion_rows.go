@@ -35,7 +35,7 @@ var (
 	complFloorsLeadRe = regexp.MustCompile(`(?i)\b(?:including|must\s+include|of\s+which)\s*:\s*$`)
 	// complItemFloorParenRe matches a floor in brackets right after an item's
 	// amount: "1.5 credits (at least 0.5 credit at the 400-level) from: ...".
-	complItemFloorParenRe = regexp.MustCompile(`^(.*?\d+(?:\.\d+)?\s+credits?)\s*\(([^()]*\b(?:at\s+least|must|minimum)\b[^()]*)\)\s*(.*)$`)
+	complItemFloorParenRe = regexp.MustCompile(`^(.*?` + numPat + `\s+credits?)\s*\(([^()]*\b(?:` + atLeastPat + `|must|minimum)\b[^()]*)\)\s*(.*)$`)
 	// complCapScopeRe matches the scope a cap ends with: "can be used towards
 	// this requirement". The cap applies where it is written.
 	complCapScopeRe = regexp.MustCompile(`(?i)\s+(?:can|may|will)\s+(?:be\s+)?(?:used|counted|count|applied|accepted)\s+(?:to(?:wards?)?|for)\s+(?:fulfill\s+|satisfy\s+)?(?:this|the|any|our)\s+(?:[\w-]+\s+)?(?:requirements?|program|minor|major|specialist|certificate|focus)\b.*$`)
@@ -110,7 +110,7 @@ func (a *compAssembler) blocks(bs []*compBlock, ctx compCtx) {
 
 // complPoolRuleLineRe matches a line that adds to or caps the pool before it:
 // "No more than one from".
-var complPoolRuleLineRe = regexp.MustCompile(`(?i)^(?:no\s+more\s+than|up\s+to|at\s+most|any\s+(?:(?-i:[A-Z]{3})\s+)?courses?)\b`)
+var complPoolRuleLineRe = regexp.MustCompile(`(?i)^(?:` + noMoreThanPat + `|up\s+to|at\s+most|any\s+(?:` + desigPat + `\s+)?courses?)\b`)
 
 // poolRuleLine reads b, the line after prev, as a rule on the pool of the lead
 // prev ends, and reports whether it did: prose right after the sub-lists that
@@ -314,7 +314,7 @@ func fociHeading(b *compBlock) *compBlock {
 
 // complFocusChoiceRe matches the rule focuses come with: "must enrol in and
 // complete at least one disciplinary focus".
-var complFocusChoiceRe = regexp.MustCompile(`(?i)\bcomplete\s+at\s+least\s+one\b[^.]*\bfocus\b`)
+var complFocusChoiceRe = regexp.MustCompile(`(?i)\bcomplete\s+` + atLeastPat + `\s+one\b[^.]*\bfocus\b`)
 
 // focusLine reads a line under a heading of focuses (h) into the one row they
 // make, never an allocation per focus, which every student would then need. The
@@ -355,7 +355,7 @@ var (
 	complFocusCodeRe = regexp.MustCompile(`^(.+?)\s+\(([A-Z]{2}FOC\d{4}[A-Z])\)\s*:`)
 	// complFocusNoCodeRe matches a focus line without one: "Immunology (3.0
 	// Credits) - ".
-	complFocusNoCodeRe = regexp.MustCompile(`^([A-Z][^():]*?)\s+\(\d+(?:\.\d+)?\s+(?i:credits?)\)\s+-\s`)
+	complFocusNoCodeRe = regexp.MustCompile(`^([A-Z][^():]*?)\s+\(` + numPat + `\s+(?i:credits?)\)\s+-\s`)
 )
 
 // focusChoices makes a focus heading's rule the or of its focuses' program
@@ -428,16 +428,11 @@ func (a *compAssembler) focusChoices() {
 // requiredSoFar returns the codes the items read so far name in their raw.
 func (a *compAssembler) requiredSoFar() map[string]bool {
 	seen := map[string]bool{}
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			for _, c := range codeRe.FindAllString(r.r.Raw, -1) {
-				seen[c] = true
-			}
-			walk(r.children)
+	walkRows(a.items, func(r *compRow) {
+		for _, c := range codeRe.FindAllString(r.r.Raw, -1) {
+			seen[c] = true
 		}
-	}
-	walk(a.items)
+	})
 	return seen
 }
 
@@ -445,10 +440,10 @@ var (
 	// complTotalPoolLeadRe matches a line giving the total its pool (group 2)
 	// and leading into conditions on it: "At least 6.0 FAH credits fulfilling
 	// the following distribution requirements:".
-	complTotalPoolLeadRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(\d+(?:\.\d+)?)\s+(?:\(\d+(?:\.\d+)?\)\s+)?((?-i:[A-Z]{3})(?:\s*(?:/|,|or|and/or)\s*(?-i:[A-Z]{3}))*)\s+credits?\s+(?:fulfilling|meeting|that\s+meet|satisfying)\s+the\s+following\b[^.]*:?$`)
+	complTotalPoolLeadRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?` + amountPat + `\s+(?:\(` + numPat + `\)\s+)?(` + desigPat + `(?:\s*(?:/|,|or|and/or)\s*` + desigPat + `)*)\s+credits?\s+(?:fulfilling|meeting|that\s+meet|satisfying)\s+the\s+following\b[^.]*:?$`)
 	// complConditionFloorRe matches an item that is a floor on the total's
 	// pool: "3.0 credits at the 300+ level".
-	complConditionFloorRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(?:one\s+|an?\s+)?\d+(?:\.\d+)?\s+credits?\s+at\s+the\b`)
+	complConditionFloorRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?(?:one\s+|an?\s+)?` + numPat + `\s+credits?\s+at\s+the\b`)
 )
 
 // totalPoolLead reads a complTotalPoolLeadRe line into the total's pool, and
@@ -497,11 +492,11 @@ func (a *compAssembler) poolCondition(row *compRow, text string) bool {
 // complRemainingLeadRe matches a lead whose group is the line of codes after
 // it: "Other Electives (1.5-2.5 credits): Remaining credits from the SDS
 // Electives Group".
-var complRemainingLeadRe = regexp.MustCompile(`(?i)^[^:(]*\((\d+(?:\.\d+)?)(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s+credits?\)\s*:\s*remaining\s+credits\s+(?:selected\s+)?from\s+the\s+[^.]+?\bgroup\.?$`)
+var complRemainingLeadRe = regexp.MustCompile(`(?i)^[^:(]*\(` + amountPat + `(?:\s*[-–]\s*` + numPat + `)?\s+credits?\)\s*:\s*remaining\s+credits\s+(?:selected\s+)?from\s+the\s+[^.]+?\bgroup\.?$`)
 
 // complHeadingFloorRe matches a floor in a heading's brackets: "Fourth Year:
 // (at least 2.0 credits at 400-level)".
-var complHeadingFloorRe = regexp.MustCompile(`(?i)\(\s*(?:[^()]*?,\s*)?(at\s+least\s+[^()]+?)\s*\)`)
+var complHeadingFloorRe = regexp.MustCompile(`(?i)\(\s*(?:[^()]*?,\s*)?(` + atLeastPat + `\s+[^()]+?)\s*\)`)
 
 // headingFloors keeps a floor stated in a heading as a constraint on the
 // program (or the item the heading is in): the heading is for display only, but
@@ -801,7 +796,7 @@ func poolCaps(n *types.ReqNode) (*types.ReqNode, []*types.ReqNode) {
 
 // complFloorWordsRe matches wording that makes a narrower credit phrase a floor
 // on the one before it: "which includes".
-var complFloorWordsRe = regexp.MustCompile(`(?i)\bof\s+which\b|\binclud(?:ing|es?)\b|\bat\s+least\b|\bmust\s+be\b|\bno\s+more\s+than\b`)
+var complFloorWordsRe = regexp.MustCompile(`(?i)\bof\s+which\b|\binclud(?:ing|es?)\b|\b` + atLeastPat + `\b|\bmust\s+be\b|\b` + noMoreThanPat + `\b`)
 
 // splitFloors makes the floors the grammar puts beside an item's pool
 // constraints on the item, never an in-node and: "3.0 SOC credits, which
@@ -947,10 +942,10 @@ var (
 	// complAdditionalTotalRe matches "Additional <courses> to a total of N
 	// credits": "Additional HPS courses to a total of 4.0 credits". Groups: the
 	// courses, N, the total's designators and the rest.
-	complAdditionalTotalRe = regexp.MustCompile(`(?i)^(?:an?\s+)?additional\s+(.+?)\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+((?-i:[A-Z]{3})(?:\s*/\s*(?-i:[A-Z]{3}))*\s+)?credits?\b(.*)$`)
+	complAdditionalTotalRe = regexp.MustCompile(`(?i)^(?:an?\s+)?additional\s+(.+?)\s+to\s+a\s+total\s+of\s+` + amountPat + `\s+(` + desigPat + `(?:\s*/\s*` + desigPat + `)*\s+)?credits?\b(.*)$`)
 	// complAdditionalAmountRe matches an amount before the pool: "1.5 to 2.0
 	// credits from".
-	complAdditionalAmountRe = regexp.MustCompile(`(?i)^\d+(?:\.\d+)?(?:\s*(?:to|-|–)\s*\d+(?:\.\d+)?)?\s+credits?\s+from\s+`)
+	complAdditionalAmountRe = regexp.MustCompile(`(?i)^` + numPat + `(?:\s*(?:to|-|–)\s*` + numPat + `)?\s+credits?\s+from\s+`)
 	// complAdditionalExamplesRe matches examples inside the pool: "which may
 	// include courses from among CHM325H1".
 	complAdditionalExamplesRe = regexp.MustCompile(`(?i),?\s*which\s+may\s+include\s+courses\s+from\s+among\s+(.+)$`)
@@ -961,7 +956,7 @@ var (
 	complAdditionalAlsoRe       = regexp.MustCompile(`(?i)^\s*\.?\s*\(\s*note:\s*([^()]*?)\s+can\s+be\s+used\s+toward\s+this\s+requirement\s*\)`)
 	complAdditionalCountingRe   = regexp.MustCompile(`(?i)^\s*counting\s+for\s+the\s+program\b`)
 	complAdditionalConditionsRe = regexp.MustCompile(`(?i)^\s*,?\s*and\s+(?:meeting|fulfilling)\s+the\s+following\s+(?:\w+\s+)?(?:conditions?|requirements?)\s*:?\s*$`)
-	complAdditionalFloorRe      = regexp.MustCompile(`(?i)^\s*,\s*((?:with\s+at\s+least|including)\s+.+)$`)
+	complAdditionalFloorRe      = regexp.MustCompile(`(?i)^\s*,\s*((?:with\s+` + atLeastPat + `|including)\s+.+)$`)
 	// complAlsoCountsRe matches courses that also count: "CSB450H1 is also
 	// acceptable".
 	complAlsoCountsRe = regexp.MustCompile(`(?i)^((?:` + codePat + `(?:\s*,\s*|\s*,?\s+or\s+|\s*/\s*)?)+)\s+(?:is|are)\s+also\s+acceptable$|^((?:` + codePat + `(?:\s*,\s*|\s*,?\s+or\s+|\s*/\s*)?)+)\s+may\s+also\s+be\s+used\s+to\s+fulfil+\s+this\s+requirement$`)
@@ -1106,10 +1101,10 @@ var (
 	complAdditionalListRe = regexp.MustCompile(`(?i)\s+or\s+([A-Z][\w\s]*?)\s+courses\s+\(listed\s+below\)\s*$`)
 	// complAdditionalWeightRe matches a course weight inside the phrase: "0.5
 	// credit".
-	complAdditionalWeightRe = regexp.MustCompile(`(?i)\s+\d+(?:\.\d+)?\s+credits?\s+`)
+	complAdditionalWeightRe = regexp.MustCompile(`(?i)\s+` + numPat + `\s+credits?\s+`)
 	// complAdditionalListCapRe matches a cap on the named list: "No more than
 	// 1.0 credit from the Equivalent courses can contribute".
-	complAdditionalListCapRe = regexp.MustCompile(`(?i)^no\s+more\s+than\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+[\w\s]+?\s+courses\s+can\s+contribute\b`)
+	complAdditionalListCapRe = regexp.MustCompile(`(?i)^` + noMoreThanPat + `\s+` + amountPat + `\s+credits?\s+from\s+the\s+[\w\s]+?\s+courses\s+can\s+contribute\b`)
 )
 
 // routeSentences joins to a route (an approval or a widened pool) the plain
@@ -1149,7 +1144,7 @@ func mostlyCodes(s string) bool {
 		return true
 	}
 	codes := complAnyCodeRe.FindAllString(s, -1)
-	rest := strings.Fields(hdrWordRe.ReplaceAllStringFunc(complAnyCodeRe.ReplaceAllString(complTitleParenRe.ReplaceAllString(s, " "), " "), func(w string) string {
+	rest := strings.Fields(wordRe.ReplaceAllStringFunc(complAnyCodeRe.ReplaceAllString(complTitleParenRe.ReplaceAllString(s, " "), " "), func(w string) string {
 		if strings.EqualFold(w, "and") || strings.EqualFold(w, "or") {
 			return " "
 		}
@@ -1157,7 +1152,7 @@ func mostlyCodes(s string) bool {
 	}))
 	words := 0
 	for _, w := range rest {
-		if hdrWordRe.MatchString(w) {
+		if wordRe.MatchString(w) {
 			words++
 		}
 	}
@@ -1249,10 +1244,7 @@ func (a *compAssembler) about(b *compBlock, owner *compRow, list *compBlock) {
 		}
 		if m := complOrContinuationRe.FindStringSubmatch(strings.TrimSpace(a.clean(s))); m != nil && owner.r.Req != nil {
 			// more alternatives for the item: "(or one of ECO220Y1, PSY201H1)"
-			alts := []*types.ReqNode{owner.r.Req}
-			for _, c := range codeRe.FindAllString(m[1], -1) {
-				alts = append(alts, &types.ReqNode{Type: types.NodeCourse, Code: c})
-			}
+			alts := append([]*types.ReqNode{owner.r.Req}, courseNodes(codeRe.FindAllString(m[1], -1))...)
 			owner.r.Req = orNode(alts...)
 			owner.r.Raw += "\n" + strings.TrimSpace(s)
 			continue
@@ -1309,7 +1301,7 @@ func (a *compAssembler) prerequisiteMembers(b *compBlock, owner *compRow) bool {
 
 // complPoolAdditionRe matches a line under a pool that adds to it: "Any course
 // (0.5 credit) from Group I".
-var complPoolAdditionRe = regexp.MustCompile(`(?i)^(?:any\s+(?:(?-i:[A-Z]{3})\s+)?courses?\b|up\s+to\b)[^;]*?\bfrom\b`)
+var complPoolAdditionRe = regexp.MustCompile(`(?i)^(?:any\s+(?:` + desigPat + `\s+)?courses?\b|up\s+to\b)[^;]*?\bfrom\b`)
 
 // poolAddition reads a complPoolAdditionRe sentence about owner's pool and
 // reports whether it did: a cap on courses the pool counts is a limit; other

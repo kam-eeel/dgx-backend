@@ -16,7 +16,7 @@ import (
 var (
 	// complNotFulfilRe matches a note that an item doesn't count toward another:
 	// "this does not fulfil the 400-level requirement as described in #5 above".
-	complNotFulfilRe = regexp.MustCompile(`(?i)^this\s+does\s+not\s+fulfil+\s+the\s+[1-4]00-level\s+requirement\s+as\s+described\s+in\s+#(\d+)\s+above$`)
+	complNotFulfilRe = regexp.MustCompile(`(?i)^this\s+does\s+not\s+fulfil+\s+the\s+` + levelPat + `-level\s+requirement\s+as\s+described\s+in\s+#(\d+)\s+above$`)
 	// complCategoryNoteRe matches a bracketed category label after an item's
 	// pool: "History & Society courses".
 	complCategoryNoteRe = regexp.MustCompile(`^[A-Z][\w&,\s]*\bcourses$`)
@@ -27,7 +27,7 @@ var (
 	// complMayCountUpToRe matches a cap the line's next sentence restates:
 	// "Students may count up to 1.0 credits from a biochemistry research project
 	// course".
-	complMayCountUpToRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+up\s+to\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+an?\s+[\w\s-]+\s+course\b`)
+	complMayCountUpToRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+up\s+to\s+` + amountPat + `\s+credits?\s+from\s+an?\s+[\w\s-]+\s+course\b`)
 	// complHalfMarkRe matches what a list's half-credit mark means: "The HIS
 	// courses listed with (.50) indicate that they fulfill half of the Temporal
 	// Requirement". The group is the list's name.
@@ -38,17 +38,17 @@ var (
 	// complSeekApprovalRe matches an approval route for other courses: "Other
 	// 300+ level courses with American content may be allowed; students should
 	// seek early approval".
-	complSeekApprovalRe = regexp.MustCompile(`(?i)^other\s+[1-4]00\+\s+level\s+courses\s+with\s+.+\bmay\s+be\s+allowed;\s+students\s+should\s+seek\s+(?:early\s+)?approval\b`)
+	complSeekApprovalRe = regexp.MustCompile(`(?i)^other\s+` + levelPat + `\+\s+level\s+courses\s+with\s+.+\bmay\s+be\s+allowed;\s+students\s+should\s+seek\s+(?:early\s+)?approval\b`)
 	// complNotExhaustiveRe matches the Review alternative openLists gives a
 	// non-exhaustive list: "This list of eligible courses is not exhaustive".
 	complNotExhaustiveRe = regexp.MustCompile(`(?i)^this\s+list\s+of\s+eligible\s+courses\s+is\s+not\s+exhaustive\b`)
 	// complAlreadyChosenRe matches a distribution bullet for a third language
 	// credit: "An additional 1.0 credit in the single language already chosen, or
 	// 1.0 credit in non-language courses".
-	complAlreadyChosenRe = regexp.MustCompile(`(?i)^an\s+additional\s+(\d+(?:\.\d+)?)\s+credits?\s+in\s+the\s+single\s+language\s+already\s+chosen,\s+or\s+\d+(?:\.\d+)?\s+credits?\s+in\s+non-language\s+courses\b`)
+	complAlreadyChosenRe = regexp.MustCompile(`(?i)^an\s+additional\s+` + amountPat + `\s+credits?\s+in\s+the\s+single\s+language\s+already\s+chosen,\s+or\s+` + numPat + `\s+credits?\s+in\s+non-language\s+courses\b`)
 	// complRemainingListRe matches a distribution bullet for credits from a
 	// list: "The remaining 1.5 credits in elective courses chosen from a list".
-	complRemainingListRe = regexp.MustCompile(`(?i)^the\s+remaining\s+(\d+(?:\.\d+)?)\s+credits\s+in\s+elective\s+courses\s+chosen\s+from\s+a\s+list\b`)
+	complRemainingListRe = regexp.MustCompile(`(?i)^the\s+remaining\s+` + amountPat + `\s+credits\s+in\s+elective\s+courses\s+chosen\s+from\s+a\s+list\b`)
 	// complMistypedCodeRe matches a token shaped like a code, which may not be
 	// one: "CAR32H1".
 	complMistypedCodeRe = regexp.MustCompile(`\b[A-Z]{3}[0-9][0-9A-Z]{0,3}[HY][0-9]\b`)
@@ -209,10 +209,7 @@ func (a *compAssembler) listPool(d *compListDef, codes []string, stem, name stri
 // bracketed category label, or "this does not fulfil ... #5 above" when item
 // 5's pool holds none of the row's courses.
 func (a *compAssembler) restatedRowNotes(lists []*types.CourseList) {
-	byName := map[string]*types.CourseList{}
-	for _, l := range lists {
-		byName[l.Name] = l
-	}
+	byName := listsByName(lists)
 	// codes returns the courses n names, its pools' lists' too; all is false when
 	// a pool takes courses it doesn't name (a designator's, any courses).
 	codes := func(n *types.ReqNode) (out []string, all bool) {

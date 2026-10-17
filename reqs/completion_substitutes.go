@@ -15,7 +15,7 @@ import (
 var (
 	// complSubExemptedRe matches "exempted from ... must replace these with the
 	// equivalent number of credits of additional FSL or FRE courses".
-	complSubExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\b.*\b(?:must|may|can)\s+replace\s+(?:these|them|it)(?:\s+(?:courses|credits))?\s+with\s+the\s+equivalent\s+number\s+of\s+credits\s+of\s+additional\s+((?-i:[A-Z]{3})(?:\s+or\s+(?-i:[A-Z]{3}))*)\s+courses(?:\s+at\s+the\s+([1-4])00\+\s+level)?$`)
+	complSubExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\b.*\b(?:must|may|can)\s+replace\s+(?:these|them|it)(?:\s+(?:courses|credits))?\s+with\s+the\s+equivalent\s+number\s+of\s+credits\s+of\s+additional\s+(` + desigPat + `(?:\s+or\s+` + desigPat + `)*)\s+courses(?:\s+at\s+the\s+([1-4])00\+\s+level)?$`)
 	// complSubAlsoRe matches a named substitute: "A student who has completed
 	// CSC110Y1 also fulfills this program requirement".
 	complSubAlsoRe = regexp.MustCompile(`(?i)^an?\s+student\s+who\s+has\s+completed\s+(` + codePat + `)\s+also\s+fulfil+s\s+this\s+(?:program\s+)?requirement$`)
@@ -24,16 +24,16 @@ var (
 	complSubInsteadForRe = regexp.MustCompile(`(?i)\b(?:may|can)\s+use\s+(` + codePat + `)\s+instead\s+of\s+(` + codePat + `)\s+for\s+requirement\s+(\d{1,2})\b`)
 	// complSubInLieuRe matches "Students may count ECO210H1 towards the
 	// Specialist program in lieu of a 0.5 credit 300-level ECO elective".
-	complSubInLieuRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+((?:` + codePat + `)(?:\s*(?:/|,|or)\s*` + codePat + `)*)\s+towards?\s+the\s+[a-z ]+?\s+in\s+lieu\s+of\s+an?\s+(\d+(?:\.\d+)?)\s+credit\s+([1-4])00-level\s+((?-i:[A-Z]{3}))\s+(?:elective|course)$`)
+	complSubInLieuRe = regexp.MustCompile(`(?i)^students\s+may\s+count\s+((?:` + codePat + `)(?:\s*(?:/|,|or)\s*` + codePat + `)*)\s+towards?\s+the\s+[a-z ]+?\s+in\s+lieu\s+of\s+an?\s+` + amountPat + `\s+credit\s+([1-4])00-level\s+(` + desigPat + `)\s+(?:elective|course)$`)
 	// complSubPreparationRe matches "... Students taking one of these MAT courses
 	// can have it count in lieu of a 0.5 300-level ECO course ...".
-	complSubPreparationRe = regexp.MustCompile(`(?i)^((?:` + codePat + `)(?:\s*/\s*` + codePat + `)*)\s+(?:is|are)\s+recommended\s+as\s+preparation\s+for\s+` + codePat + `\.?\s+students\s+taking\s+one\s+of\s+these\s+(?-i:[A-Z]{3})\s+courses\s+can\s+have\s+it\s+count\s+in\s+lieu\s+of\s+an?\s+(\d+(?:\.\d+)?)\s+([1-4])00-level\s+((?-i:[A-Z]{3}))\s+course\s+required\s+for\s+this\s+program$`)
+	complSubPreparationRe = regexp.MustCompile(`(?i)^((?:` + codePat + `)(?:\s*/\s*` + codePat + `)*)\s+(?:is|are)\s+recommended\s+as\s+preparation\s+for\s+` + codePat + `\.?\s+students\s+taking\s+one\s+of\s+these\s+` + desigPat + `\s+courses\s+can\s+have\s+it\s+count\s+in\s+lieu\s+of\s+an?\s+` + amountPat + `\s+([1-4])00-level\s+(` + desigPat + `)\s+course\s+required\s+for\s+this\s+program$`)
 	// complSubEquivalentRe matches "The combination of ( STA220H1, STA255H1) is
 	// considered equivalent to ECO220Y1". Groups: the two courses, the course.
 	complSubEquivalentRe = regexp.MustCompile(`(?i)^\*?the\s+combination\s+of\s+\(\s*(` + codePat + `)\s*(?:,|and)\s*(` + codePat + `)\s*\)\s+is\s+considered\s+equivalent\s+to\s+(` + codePat + `)\b`)
 	// complSubSuchStudentsRe matches "Such students can instead substitute any
 	// 300-level MAT or APM course to meet the MAT246H1 requirement".
-	complSubSuchStudentsRe = regexp.MustCompile(`(?i)^such\s+students\s+can\s+instead\s+substitute\s+any\s+([1-4])00-level\s+((?-i:[A-Z]{3})(?:\s+or\s+(?-i:[A-Z]{3}))*)\s+course\s+to\s+meet\s+the\s+(` + codePat + `)\s+requirement$`)
+	complSubSuchStudentsRe = regexp.MustCompile(`(?i)^such\s+students\s+can\s+instead\s+substitute\s+any\s+([1-4])00-level\s+(` + desigPat + `(?:\s+or\s+` + desigPat + `)*)\s+course\s+to\s+meet\s+the\s+(` + codePat + `)\s+requirement$`)
 	// complSubNotCountedRe matches "ENG386H1, ..., and ENG498H1 may not be
 	// counted toward fulfilling the requirements for the Minor program".
 	complSubNotCountedRe = regexp.MustCompile(`(?i)^((?:` + codePat + `)(?:\s*(?:,|,?\s*and|/)\s*` + codePat + `)*)\s+may\s+not\s+be\s+counted\s+towards?\s+(?:fulfil+ing\s+)?the\s+requirements\s+(?:for|of)\s+the\s+.*\bprogram\b.*$`)
@@ -41,8 +41,8 @@ var (
 	complSubNotThisRe = regexp.MustCompile(`(?i)^((?:` + codePat + `)(?:\s*(?:,|,?\s*and|/|or)\s*` + codePat + `)*)\s+may\s+not\s+be\s+used\s+(?:for|towards?)\s+this\s+requirement$`)
 	// complSubFallbackRe and complSubNoneRe match "DTS300H1 or a 0.5 credit to
 	// satisfy ...", then "If none is available, a 0.5 credit from Breadth ...".
-	complSubFallbackRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+or\s+(an?\s+(\d+(?:\.\d+)?)\s+credit\s+to\s+satisfy\s+.+)$`)
-	complSubNoneRe     = regexp.MustCompile(`(?i)^(if\s+none\s+is\s+available),\s+an?\s+(\d+(?:\.\d+)?)\s+credit\s+from\s+breadth\s+requirement\s+category\s+#?([1-5])\b[^,]*,\s+or\s+(an?\s+\d+(?:\.\d+)?\s+credit\s+approved\s+by\s+the\s+.+)$`)
+	complSubFallbackRe = regexp.MustCompile(`(?i)^(` + codePat + `)\s+or\s+(an?\s+` + amountPat + `\s+credit\s+to\s+satisfy\s+.+)$`)
+	complSubNoneRe     = regexp.MustCompile(`(?i)^(if\s+none\s+is\s+available),\s+an?\s+` + amountPat + `\s+credit\s+from\s+breadth\s+requirement\s+category\s+#?([1-5])\b[^,]*,\s+or\s+(an?\s+` + numPat + `\s+credit\s+approved\s+by\s+the\s+.+)$`)
 )
 
 // substitutes encodes the substitutes, exemptions and exclusions the rows'
@@ -50,14 +50,9 @@ var (
 func (a *compAssembler) substitutes() {
 	roots := append(append(append([]*compRow{}, a.floors...), a.items...), a.program...)
 	var rows []*compRow
-	var walk func([]*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			rows = append(rows, r)
-			walk(r.children)
-		}
-	}
-	walk(roots)
+	walkRows(roots, func(r *compRow) {
+		rows = append(rows, r)
+	})
 	for _, r := range rows {
 		if r.r.Kind == types.RequirementAllocation && r.r.Req != nil {
 			r.r.Req = a.substituteNode(r, r.r.Req)

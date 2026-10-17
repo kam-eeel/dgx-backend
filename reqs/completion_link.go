@@ -295,7 +295,7 @@ var complOtherTopicsRe = regexp.MustCompile(`(?i)\bother\s+([A-Z]{3})\s+(?:speci
 // complTopicsRouteRe matches a designator's special-topics courses in a route:
 // "RSM special topics course". Not "RSM special topics and RSM Summer Abroad
 // courses": the catalogue doesn't mark summer-abroad courses.
-var complTopicsRouteRe = regexp.MustCompile(`(?i)\b((?-i:[A-Z]{3}))\s+(?:special\s+)?topics\s+courses?\b`)
+var complTopicsRouteRe = regexp.MustCompile(`(?i)\b(` + desigPat + `)\s+(?:special\s+)?topics\s+courses?\b`)
 
 // linkOtherTopics bounds a permission naming a designator's special-topics
 // courses by the courses the catalogue titles "Topics in": and(the pool plus
@@ -857,7 +857,7 @@ func (idx titleIndex) concurrentExclusions(c *types.Completion, self, selfArea s
 	}
 	for _, line := range strings.Split(c.Raw, "\n") {
 		for _, s := range splitComplSentences(line) {
-			t := complExclusionLeadRe.ReplaceAllString(complMarkerRe.ReplaceAllString(strings.TrimSuffix(strings.TrimSpace(s), "."), ""), "")
+			t := complExclusionLeadRe.ReplaceAllString(markerRe.ReplaceAllString(strings.TrimSuffix(strings.TrimSpace(s), "."), ""), "")
 			m := complConcurrentRe.FindStringSubmatch(t)
 			if m == nil {
 				continue

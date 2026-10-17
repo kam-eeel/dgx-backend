@@ -69,9 +69,8 @@ var (
 	// Year Course requirement)."
 	hdrAsideRe = regexp.MustCompile(`\s*(\([^()]*\))\.?$`)
 
-	hdrWordRe     = regexp.MustCompile(`[A-Za-z]+`)
-	hdrLevelTokRe = regexp.MustCompile(`[1-4]00\s*\+?`)
-	hdrDesigRe    = regexp.MustCompile(`^[A-Z]{3}$`)
+	wordRe        = regexp.MustCompile(`[A-Za-z]+`)
+	hdrLevelTokRe = regexp.MustCompile(levelPat + `\s*\+?`)
 	// hdrPossessiveRe matches a possessive: "the program’s completion"
 	hdrPossessiveRe = regexp.MustCompile(`['’]s\b`)
 	// hdrOfWhichRe matches a body that narrows the phrase before it: "credit of
@@ -220,7 +219,7 @@ func hdrTotalPool(body string, labelled bool, desigs []string) (pool *types.ReqN
 	if hdrFromRe.MatchString(body) || codeRe.MatchString(body) {
 		return nil, false, false // an item: "2.5 credits from the following list:"
 	}
-	words := hdrWordRe.FindAllString(body, -1)
+	words := wordRe.FindAllString(body, -1)
 	if len(words) > 0 && hdrIntroWords[strings.ToLower(words[len(words)-1])] {
 		return nil, false, false // "(7.0 credits, of which)"
 	}
@@ -296,7 +295,7 @@ func (c *hdrChain) read(phrases []*hdrPhrase) {
 	for _, p := range phrases {
 		k := len(c.phrases)
 		words := map[string]bool{}
-		for _, w := range hdrWordRe.FindAllString(strings.ToLower(p.intro), -1) {
+		for _, w := range wordRe.FindAllString(strings.ToLower(p.intro), -1) {
 			words[w] = true
 		}
 		p.cap = words["than"] || words["maximum"] || words["only"] || words["up"]
@@ -490,10 +489,10 @@ func hdrReadBody(body string) (n *types.ReqNode, unit, text bool) {
 	n.Levels = parseLevels(rest)
 	rest = hdrLevelTokRe.ReplaceAllString(rest, " ")
 	rest = hdrPossessiveRe.ReplaceAllString(rest, "")
-	for _, w := range hdrWordRe.FindAllString(rest, -1) {
+	for _, w := range wordRe.FindAllString(rest, -1) {
 		lw := strings.ToLower(w)
 		switch {
-		case hdrDesigRe.MatchString(w):
+		case designatorWordRe.MatchString(w):
 			n.Designators = append(n.Designators, w)
 		case hdrUnitWords[lw]:
 			unit = true

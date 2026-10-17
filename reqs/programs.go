@@ -42,7 +42,7 @@ var (
 	// marks an announced list ("... of the following programs:"), whose items may
 	// be separated by ";".
 	progLeadRe = regexp.MustCompile(`^` + progVerbPat +
-		`(?:(?i:any\s+one|at\s+least\s+one)\s+of\s+(?:(?i:the\s+following\s+programs?)\s*:\s*())?)?`)
+		`(?:(?i:any\s+one|` + atLeastPat + `\s+one)\s+of\s+(?:(?i:the\s+following\s+programs?)\s*:\s*())?)?`)
 	// progTypesInNameRe matches "Specialist or Major in Drama".
 	progTypesInNameRe = regexp.MustCompile(`^` + capTypesPat + `\s+in\s+(?:the\s+)?` + capNamePat)
 	// progNameTypesRe matches two or more types after a name: "Drama Major,
@@ -66,7 +66,7 @@ var (
 	progRestrictRe  = regexp.MustCompile(`^(?i:(?:enrol(?:l)?ment\s+(?:is\s+)?)?(?:open\s+only|only\s+open|limited|restricted)\s+to\s+students\s+(?:(?:enrol(?:l)?ed|registered)\s+)?in\s+)`)
 	progBareInRe    = regexp.MustCompile(`^(?i:in\s+)`)
 	progForRe       = regexp.MustCompile(`^(?i:for\s+)`)
-	progListRe      = regexp.MustCompile(`^(?i:(?:any\s+one|at\s+least\s+one)\s+of(?:\s+the\s+following(?:\s+programs?)?)?\s*:?\s*)`)
+	progListRe      = regexp.MustCompile(`^(?i:(?:any\s+one|` + atLeastPat + `\s+one)\s+of(?:\s+the\s+following(?:\s+programs?)?)?\s*:?\s*)`)
 	progArticleRe   = regexp.MustCompile(`^(?i:(?:the|a|an|any)\s+)`)
 	progAltSepRe    = regexp.MustCompile(`(?i)\s*,?\s+or\s+in\s+(?:(?:the|a|an|any)\s+)?`) // "the IR program or in a History major"
 	progSuffixRe    = regexp.MustCompile(`(?i)\s+(?:programs?|programmes?|posts?)(?:\s+of\s+study)?$`)

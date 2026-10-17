@@ -190,16 +190,7 @@ func applyRoutes(n *types.ReqNode, routes []route) *types.ReqNode {
 
 // replaceCourse replaces every course node for code in n with f(node).
 func replaceCourse(n *types.ReqNode, code string, f func(*types.ReqNode) *types.ReqNode) *types.ReqNode {
-	if n == nil {
-		return nil
-	}
-	if n.Type == types.NodeCourse && n.Code == code {
-		return f(n)
-	}
-	for i, it := range n.Items {
-		n.Items[i] = replaceCourse(it, code, f)
-	}
-	return n
+	return replaceNodes(n, func(c *types.ReqNode) bool { return c.Type == types.NodeCourse && c.Code == code }, f)
 }
 
 // cloneNode deep-copies n: its items, its slice fields (each nil stays nil)

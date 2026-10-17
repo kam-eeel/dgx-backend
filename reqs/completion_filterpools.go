@@ -25,7 +25,7 @@ func (a *compAssembler) filterPools(lists []*types.CourseList) []*types.CourseLi
 // complOtherSeriesRe matches a designator's series plus listed courses: "An
 // additional 1.0 credit at the 4th year level from the following list: any
 // other BCH 400-series course, BCB420H1".
-var complOtherSeriesRe = regexp.MustCompile(`(?i)^(?:an\s+)?additional\s+(\d+(?:\.\d+)?)\s+credits?\s+at\s+the\s+(\d)(?:st|nd|rd|th)\s+year\s+level\s+from\s+the\s+following\s+list:\s*any\s+other\s+((?-i:[A-Z]{3}))\s+(\d)00-series\s+courses?(?:\s+including\s+([^,(]+?))?(?:\s*\(\s*see\s+note\s+\d+\s*\))?\s*,\s*(.+)$`)
+var complOtherSeriesRe = regexp.MustCompile(`(?i)^(?:an\s+)?additional\s+` + amountPat + `\s+credits?\s+at\s+the\s+(\d)(?:st|nd|rd|th)\s+year\s+level\s+from\s+the\s+following\s+list:\s*any\s+other\s+(` + desigPat + `)\s+(\d)00-series\s+courses?(?:\s+including\s+([^,(]+?))?(?:\s*\(\s*see\s+note\s+\d+\s*\))?\s*,\s*(.+)$`)
 
 // otherSeries encodes a row matching complOtherSeriesRe as credits{amount,
 // designators, levels, courses}. "Other" is the claims rule; what the series
@@ -56,7 +56,7 @@ var (
 	// complElectiveKindsRe matches electives with a floor on one kind: "2.5
 	// credits from electives in composition, ..., of which at least 1.5 credits
 	// must be completed from composition courses: CMU113H1".
-	complElectiveKindsRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits\s+from\s+electives\s+in\s+.+?,\s+of\s+which\s+at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+must\s+be\s+completed\s+from\s+(.+?\s+courses):\s*(.+)$`)
+	complElectiveKindsRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits\s+from\s+electives\s+in\s+.+?,\s+of\s+which\s+` + atLeastPat + `\s+` + amountPat + `\s+credits?\s+must\s+be\s+completed\s+from\s+(.+?\s+courses):\s*(.+)$`)
 	// complLevelPlusMemberRe matches a member: "HMU200+ level courses".
 	complLevelPlusMemberRe = regexp.MustCompile(`^([A-Z]{3})\s*([1-4])00\+\s*level\s+courses$`)
 	// complKindCoursesRe matches a note listing one kind of courses: "Music

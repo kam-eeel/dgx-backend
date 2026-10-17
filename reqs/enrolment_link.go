@@ -213,13 +213,16 @@ func (idx titleIndex) narrowToParent(n *types.ReqNode, title string) *types.ReqN
 // Specialist": the focus's variants for those programs.
 var withinRe = regexp.MustCompile(`(?i)^(?:the\s+)?(focus\s+in\s+.+?)\s+within\s+the\s+.+?\s+((?:major|specialist)(?:\s+or\s+(?:major|specialist))?)(?:\s+programs?)?$`)
 
+// withinOrRe matches the "or" between programs: " or ".
+var withinOrRe = regexp.MustCompile(`(?i)\s+or\s+`)
+
 func (idx titleIndex) lookupWithin(phrase string) ([]string, bool) {
 	m := withinRe.FindStringSubmatch(strings.TrimSpace(phrase))
 	if m == nil {
 		return nil, false
 	}
 	var codes []string
-	for _, t := range regexp.MustCompile(`(?i)\s+or\s+`).Split(m[2], -1) {
+	for _, t := range withinOrRe.Split(m[2], -1) {
 		code := idx[normSubject(m[1]+" "+t)]
 		if code == "" {
 			return nil, false
@@ -464,7 +467,7 @@ func oneFocus(e *types.Enrolment, self string, programs []*types.Program) {
 
 // enrolCountTowardRe matches an average over courses completion counts: "A
 // minimum grade average of 77% in 3.0 credits that count toward the program".
-var enrolCountTowardRe = regexp.MustCompile(`(?i)^a\s+minimum\s+grade\s+average\s+of\s+(\d{2})\s*%\s+in\s+(\d+(?:\.\d+)?)\s+credits?\s+that\s+counts?\s+towards?\s+the\s+program$`)
+var enrolCountTowardRe = regexp.MustCompile(`(?i)^a\s+minimum\s+grade\s+average\s+of\s+(\d{2})\s*%\s+in\s+` + amountPat + `\s+credits?\s+that\s+counts?\s+towards?\s+the\s+program$`)
 
 // linkEnrolmentCompletion reads enrolCountTowardRe as a best-grades average
 // over the completion rows that claim courses. While such a row has open

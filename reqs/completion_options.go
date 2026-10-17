@@ -20,7 +20,7 @@ var (
 	complOptionsLeadRe = regexp.MustCompile(`(?i)^(?:choose|complete|select)\s+(?:one|1)\s+of\s+the\s+(?:following\s+)?options?\b[^:]*:?$`)
 	// complCountOptionsLeadRe matches a lead over option bullets: "At least two of
 	// the following four options:".
-	complCountOptionsLeadRe = regexp.MustCompile(`(?i)^(?:at\s+least\s+)?(one|two|three|four|[1-4])\s+of\s+the\s+following\s+(?:(two|three|four|five|six|[2-6])\s+)?options\s*:$`)
+	complCountOptionsLeadRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?(one|two|three|four|[1-4])\s+of\s+the\s+following\s+(?:(two|three|four|five|six|[2-6])\s+)?options\s*:$`)
 	// complAboveOptionsRe matches an option that includes others: "LMP305Y1 and
 	// one of the above four options".
 	complAboveOptionsRe = regexp.MustCompile(`(?i)^(.+?)\s+and\s+one\s+of\s+the\s+above(?:\s+(two|three|four|five|six|[2-6]))?\s+options$`)
@@ -28,37 +28,37 @@ var (
 	complEitherRe = regexp.MustCompile(`^(?:EITHER|Either)\s+`)
 	// complIfTakingRe matches an option that trades credits with another item's
 	// pool: "2.0 credits if taking 1.5 credits from CAR215H1, CAR220H1".
-	complIfTakingRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+if\s+taking\s+(\d+(?:\.\d+)?\s+credits?\s+from\s+.+)$`)
+	complIfTakingRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+if\s+taking\s+(` + numPat + `\s+credits?\s+from\s+.+)$`)
 	// complAmountSourceRe matches an option's amount and source: "2.5 credits from
 	// Group A or B".
-	complAmountSourceRe = regexp.MustCompile(`(?i)^\d+(?:\.\d+)?\s+credits?\s+(from\s+.+)$`)
+	complAmountSourceRe = regexp.MustCompile(`(?i)^` + numPat + `\s+credits?\s+(from\s+.+)$`)
 	// complInlineOrRe matches an upper-case " OR " between an item's options; a
 	// lower-case "or" is the grammar's.
 	complInlineOrRe = regexp.MustCompile(`\s*,?\s+OR\s+`)
 	// complOptionStartRe matches an option's start, an amount or a code: "1.0
 	// credit".
-	complOptionStartRe = regexp.MustCompile(`^(?:\d+(?:\.\d+)?\s+(?:additional\s+)?credits?\b|` + codePat + `)`)
+	complOptionStartRe = regexp.MustCompile(`^(?:` + numPat + `\s+(?:additional\s+)?credits?\b|` + codePat + `)`)
 	// complOrElseRe matches "Additional philosophy courses, to a total of 7.0
 	// credits, or else additional philosophy courses to a total of 6.5 credits,
 	// plus one 0.5 credit from Group 4 (Interdisciplinary)".
-	complOrElseRe = regexp.MustCompile(`(?i)^additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?,?\s+or\s+else\s+additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+(\d+(?:\.\d+)?)\s+credits?,?\s+(?:plus|and)\s+(?:one\s+)?(\d+(?:\.\d+)?)\s+credits?\s+from\s+(.+?)(?:\s*\([^()]*\))?\.?$`)
+	complOrElseRe = regexp.MustCompile(`(?i)^additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+` + amountPat + `\s+credits?,?\s+or\s+else\s+additional\s+(.+?),?\s+to\s+a\s+total\s+of\s+` + amountPat + `\s+credits?,?\s+(?:plus|and)\s+(?:one\s+)?` + amountPat + `\s+credits?\s+from\s+(.+?)(?:\s*\([^()]*\))?\.?$`)
 	// complCategoriesRe matches "1.0 to 1.5 credits in at least two of the three
 	// following categories: (1) ...".
-	complCategoriesRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)(?:\s+to\s+\d+(?:\.\d+)?)?\s+credits?\s+in\s+at\s+least\s+(one|two|three|four|[1-4])\s+of\s+the\s+(two|three|four|five|six|[2-6])\s+following\s+(?:categories|areas|groups)\s*:\s*(.+)$`)
+	complCategoriesRe = regexp.MustCompile(`(?i)^` + amountPat + `(?:\s+to\s+` + numPat + `)?\s+credits?\s+in\s+` + atLeastPat + `\s+(one|two|three|four|[1-4])\s+of\s+the\s+(two|three|four|five|six|[2-6])\s+following\s+(?:categories|areas|groups)\s*:\s*(.+)$`)
 	// complCategoryMarkRe matches a category's number: "; and/or (3)".
 	complCategoryMarkRe = regexp.MustCompile(`\s*;?\s*(?:and/or\s+|and\s+|or\s+)?\(\d\)\s*`)
 	// complCategoryRe matches a category: "one seminar (0.5 credit) from EEB491H1,
 	// EEB495H1".
-	complCategoryRe = regexp.MustCompile(`(?i)^(?:one|an?)\s+[\w\s-]+?\s+(\(\d+(?:\.\d+)?\s+credits?\)\s+from\s+.+)$`)
+	complCategoryRe = regexp.MustCompile(`(?i)^(?:one|an?)\s+[\w\s-]+?\s+(\(` + numPat + `\s+credits?\)\s+from\s+.+)$`)
 	// complWeightFromRe matches "(0.5 credit) from EEB401H1, EEB403H1".
-	complWeightFromRe = regexp.MustCompile(`(?i)^\((\d+(?:\.\d+)?)\s+credits?\)\s+from\s+(.+?)$`)
+	complWeightFromRe = regexp.MustCompile(`(?i)^\(` + amountPat + `\s+credits?\)\s+from\s+(.+?)$`)
 	// complChooseCoursesRe matches "Students should choose four of the following
 	// 400-level courses (2.0-2.5 credits): LMP405Y1, LMP410H1".
-	complChooseCoursesRe = regexp.MustCompile(`(?i)^(?:students\s+(?:should|must)\s+)?(?:choose|select|take)\s+(two|three|four|five|six|[2-6])\s+of\s+the\s+following\s+(?:([1-4]00)-level\s+)?courses\s*(?:\((\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s+credits\))?\s*:\s*(.+)$`)
+	complChooseCoursesRe = regexp.MustCompile(`(?i)^(?:students\s+(?:should|must)\s+)?(?:choose|select|take)\s+(two|three|four|five|six|[2-6])\s+of\s+the\s+following\s+(?:(` + levelPat + `)-level\s+)?courses\s*(?:\(` + amountPat + `\s*(?:-|–|to)\s*` + amountPat + `\s+credits\))?\s*:\s*(.+)$`)
 	// complChooseRestatedRe matches a note restating such a count: "If the research
 	// course LMP405Y1 is taken, an additional three 400-level courses from the list
 	// are still required".
-	complChooseRestatedRe = regexp.MustCompile(`(?i)^if\s+(?:the\s+)?[\w\s-]*?\b(` + codePat + `)\s+is\s+taken,\s+an\s+additional\s+(one|two|three|four|five|[1-5])\s+(?:[1-4]00-level\s+)?courses\s+from\s+the\s+list\s+are\s+still\s+required\b`)
+	complChooseRestatedRe = regexp.MustCompile(`(?i)^if\s+(?:the\s+)?[\w\s-]*?\b(` + codePat + `)\s+is\s+taken,\s+an\s+additional\s+(one|two|three|four|five|[1-5])\s+(?:` + levelPat + `-level\s+)?courses\s+from\s+the\s+list\s+are\s+still\s+required\b`)
 	// complIfNotCompletedRe matches an item restating another row's alternative:
 	// "If a student has not completed STA130H1 then an additional 0.5 credit ...
 	// that is not used towards any other program requirement must be completed".
@@ -72,7 +72,7 @@ var (
 	// complPerAreaRe matches an item over chosen areas: "4.0 credits of language
 	// coursework from each of the two chosen language areas (2.0 credits per
 	// area)".
-	complPerAreaRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+.+?\s+(?:from\s+each\s+of|corresponding\s+to)\s+the\s+(?:student.s\s+)?(two|three|[23])\s+chosen\s+(\w+)\s+areas\s*\((\d+(?:\.\d+)?)\s+credits?\s+per\s+area\)\s*[.:]?$`)
+	complPerAreaRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+.+?\s+(?:from\s+each\s+of|corresponding\s+to)\s+the\s+(?:student.s\s+)?(two|three|[23])\s+chosen\s+(\w+)\s+areas\s*\(` + amountPat + `\s+credits?\s+per\s+area\)\s*[.:]?$`)
 	// complChooseAreasRe matches the choice of areas: "Students must choose any two
 	// of the available language areas (Czech and Slovak, Estonian)".
 	complChooseAreasRe = regexp.MustCompile(`(?i)^students\s+must\s+choose\s+(?:any\s+)?(two|three|[23])\s+of\s+the\s+(?:available\s+)?(\w+)\s+areas\s*\(([^()]+)\)$`)
@@ -348,7 +348,7 @@ func (a *compAssembler) optionItem(row *compRow, text string) bool {
 
 // complEitherItemRe matches "Either GGR491Y1 or one of GGR416H1, GGR492H1 and
 // one additional 0.5 credit 400 level course from Group A (1.0 credit)".
-var complEitherItemRe = regexp.MustCompile(`(?i)^either\s+(.+?)\s+or\s+(.+?)\s+and\s+(?:one\s+|an\s+)?additional\s+(\d+(?:\.\d+)?\s+credits?\s+.+?)\s*\((\d+(?:\.\d+)?)\s+credits?\)$`)
+var complEitherItemRe = regexp.MustCompile(`(?i)^either\s+(.+?)\s+or\s+(.+?)\s+and\s+(?:one\s+|an\s+)?additional\s+(` + numPat + `\s+credits?\s+.+?)\s*\(` + amountPat + `\s+credits?\)$`)
 
 // eitherItem reads "Either X or Y and one additional Z (N credits)" as a choice
 // of X or a group of Y and Z, each N credits. Later approval or alternative
@@ -399,7 +399,7 @@ func (a *compAssembler) eitherItem(row *compRow, text string) bool {
 
 // complAmountLeadRe matches the amount an item's text starts with: "0.5 credit
 // 400 level course".
-var complAmountLeadRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\b`)
+var complAmountLeadRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\b`)
 
 // restatedOr drops a line under a list that restates an item's alternative,
 // joining it to that item's raw.
@@ -662,14 +662,9 @@ func (a *compAssembler) choiceRow(row *compRow) bool {
 // not completed STA130H1 then ...", "If the research course LMP405Y1 is taken".
 func (a *compAssembler) restatedItems() {
 	var all []*compRow
-	var walk func(rs []*compRow)
-	walk = func(rs []*compRow) {
-		for _, r := range rs {
-			all = append(all, r)
-			walk(r.children)
-		}
-	}
-	walk(a.items)
+	walkRows(a.items, func(r *compRow) {
+		all = append(all, r)
+	})
 	target := func(row *compRow) *compRow {
 		if row.r.Req == nil || row.r.Req.Type != types.NodeText || len(row.children) > 0 {
 			return nil

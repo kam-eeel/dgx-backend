@@ -522,7 +522,7 @@ func TestEnrolBoiler(t *testing.T) {
 		"Credit for higher-level SOC courses will not waive these requirements",
 		"The interview is held annually in April-May",
 	} {
-		if !isEnrolBoiler(s) {
+		if !matchAny(enrolBoilerRes, s) {
 			t.Errorf("not boilerplate: %q", s)
 		}
 	}
@@ -533,7 +533,7 @@ func TestEnrolBoiler(t *testing.T) {
 		"Student must be enrolled in the Criminology and Sociolegal Studies Major (ASMAJ0826)",
 		"To ensure that students admitted to the program will be successful, applicants with a final grade lower than 70% will not be considered for admission",
 	} {
-		if isEnrolBoiler(s) {
+		if matchAny(enrolBoilerRes, s) {
 			t.Errorf("binding sentence is boilerplate: %q", s)
 		}
 	}

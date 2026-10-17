@@ -25,13 +25,13 @@ var (
 	complAreaOrLineRe = regexp.MustCompile(`^[A-Z][A-Za-z&' ]{1,60}:\s*(` + codePat + `),?\s+or\s+` + codePat + `\b.*$`)
 	// complNamedCoursesLeadRe matches a lead naming the courses under it: "1.0
 	// credit from the SDS Foundational Courses:".
-	complNamedCoursesLeadRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+(?-i:[A-Z])[\w&' -]*?\s+courses\s*:$`)
+	complNamedCoursesLeadRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from\s+the\s+(?-i:[A-Z])[\w&' -]*?\s+courses\s*:$`)
 	// complCoursesSumLeadRe matches a lead naming courses and their total: "SDS
 	// Foundational Courses (1.5 credits):".
-	complCoursesSumLeadRe = regexp.MustCompile(`(?i)^(?-i:[A-Z])[\w&' -]*?\s+courses\s+\((\d+(?:\.\d+)?)\s+credits?\)\s*:$`)
+	complCoursesSumLeadRe = regexp.MustCompile(`(?i)^(?-i:[A-Z])[\w&' -]*?\s+courses\s+\(` + amountPat + `\s+credits?\)\s*:$`)
 	// complFollowingListLeadRe matches a lead over one line of courses: "(a
 	// minimum of one 0.5 credit from the following list):".
-	complFollowingListLeadRe = regexp.MustCompile(`(?i)\((?:a\s+minimum\s+of\s+)?(?:one\s+)?(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+following\s+list\)\s*:$`)
+	complFollowingListLeadRe = regexp.MustCompile(`(?i)\((?:a\s+minimum\s+of\s+)?(?:one\s+)?` + amountPat + `\s+credits?\s+from\s+the\s+following\s+list\)\s*:$`)
 	// complAllCoursesLineRe matches that line: "All 400-level SDS and JNS
 	// courses.".
 	complAllCoursesLineRe = regexp.MustCompile(`^All\s+(.+?\s+courses)\.?$`)
@@ -155,72 +155,68 @@ var (
 	// complExemptAnyRe matches an exemption replaced by any course of some
 	// designators: "Students exempted from FSL220H1/ FSL222H1 may replace it with
 	// any FRE 200+ or FSL 300+ level course".
-	complExemptAnyRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+` + complRelaxCodesPat + `\s+may\s+replace\s+(?:it|them)\s+with\s+any\s+((?-i:[A-Z]{3})(?:\s+[1-4]00\+)?(?:\s+or\s+(?-i:[A-Z]{3})(?:\s+[1-4]00\+)?)*)(?:\s+level)?\s+course$`)
+	complExemptAnyRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+` + complRelaxCodesPat + `\s+may\s+replace\s+(?:it|them)\s+with\s+any\s+(` + desigPat + `(?:\s+` + levelPat + `\+)?(?:\s+or\s+` + desigPat + `(?:\s+` + levelPat + `\+)?)*)(?:\s+level)?\s+course$`)
 	// complExemptCombinationRe matches an exemption replaced by a requirement's
 	// pool or a filter: "Students exempted from any of FSL220H1/ ... must replace
 	// these credits with any combination of the following two options: ...".
-	complExemptCombinationRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+any\s+of\s+` + complRelaxCodesPat + `\s+must\s+replace\s+these\s+credits\s+with\s+any\s+combination\s+of\s+the\s+following\s+two\s+options:\s*(?:\(a\)\s*)?any\s+additional\s+credit\(s\)\s+from\s+category\s+\((\d{1,2})\)\s+above,?\s+or\s+(?:\(b\)\s*)?any\s+((?-i:[A-Z]{3}))\s+credit\(s\)\s+at\s+the\s+([1-4]00(?:/[1-4]00)*)\s+level$`)
+	complExemptCombinationRe = regexp.MustCompile(`(?i)^students\s+exempted\s+from\s+any\s+of\s+` + complRelaxCodesPat + `\s+must\s+replace\s+these\s+credits\s+with\s+any\s+combination\s+of\s+the\s+following\s+two\s+options:\s*(?:\(a\)\s*)?any\s+additional\s+credit\(s\)\s+from\s+category\s+\((\d{1,2})\)\s+above,?\s+or\s+(?:\(b\)\s*)?any\s+(` + desigPat + `)\s+credit\(s\)\s+at\s+the\s+(` + levelPat + `(?:/` + levelPat + `)*)\s+level$`)
 	// complExemptFilterRe matches one filter of complExemptAnyRe: "FRE 200+".
 	complExemptFilterRe = regexp.MustCompile(`([A-Z]{3})(?:\s+([1-4])00\+)?`)
 	// complPairAdditionalRe matches a course and more credits, or a full course:
 	// "( FSL420H1, 0.5 additional credit of FRE at the 200+ level)/ FSL421Y1".
 	// The groups are the course, the amount, the filters, the full course.
-	complPairAdditionalRe = regexp.MustCompile(`(?i)^\(\s*(` + codePat + `),\s*(\d+(?:\.\d+)?)\s+additional\s+credits?\s+of\s+((?-i:[A-Z]{3})\s+at\s+the\s+[1-4]00\+\s+level(?:\s+or\s+(?-i:[A-Z]{3})\s+at\s+the\s+[1-4]00\+\s+level)*)\s*\)\s*/\s*(` + codePat + `)$`)
+	complPairAdditionalRe = regexp.MustCompile(`(?i)^\(\s*(` + codePat + `),\s*` + amountPat + `\s+additional\s+credits?\s+of\s+(` + desigPat + `\s+at\s+the\s+` + levelPat + `\+\s+level(?:\s+or\s+` + desigPat + `\s+at\s+the\s+` + levelPat + `\+\s+level)*)\s*\)\s*/\s*(` + codePat + `)$`)
 	// complLevelFilterRe matches one filter of complPairAdditionalRe: "FSL at
 	// the 300+ level".
 	complLevelFilterRe = regexp.MustCompile(`([A-Z]{3})\s+at\s+the\s+([1-4])00\+\s+level`)
 	// complCountFloorRe matches a count of courses with a floor from a list: "Any
 	// 2 (1.0 credit) 400-level GGR courses, at least one of which must be from
 	// Group E". The groups are the amount, the level, the designator, the list.
-	complCountFloorRe = regexp.MustCompile(`(?i)^any\s+(?:\d+|two|three|four)\s+\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\)\s+([1-4])00-level\s+((?-i:[A-Z]{3}))\s+courses,\s+at\s+least\s+one\s+of\s+which\s+must\s+be\s+from\s+(group\s+[A-Z])$`)
+	complCountFloorRe = regexp.MustCompile(`(?i)^any\s+(?:\d+|two|three|four)\s+\(\s*` + amountPat + `\s+credits?\s*\)\s+([1-4])00-level\s+(` + desigPat + `)\s+courses,\s+` + atLeastPat + `\s+one\s+of\s+which\s+must\s+be\s+from\s+(group\s+[A-Z])$`)
 )
 
 // leftoverPools reads, once the lists are known, the text pools that need a
 // list of their own or a list by name: pairAdditional, optionsPool,
 // countFloor, jointDesignators and listAlternative.
 func (a *compAssembler) leftoverPools(ls compListRefs) {
-	var walk func(rows []*compRow)
-	walk = func(rows []*compRow) {
-		for _, r := range rows {
-			walk(r.children)
-			if r.r.Kind != types.RequirementAllocation || r.r.Req == nil {
-				continue
-			}
-			r.r.Req = listAlternatives(r.r.Req, ls)
-			n := r.r.Req
-			text := n
-			if n.Type == types.NodeOr && len(n.Items) > 1 && n.Items[0].Type == types.NodeText &&
-				!slices.ContainsFunc(n.Items[1:], func(it *types.ReqNode) bool { return it.Type != types.NodeText || it.Kind != types.TextPermission }) {
-				text = n.Items[0] // or(text, routes)
-			}
-			if text.Type != types.NodeText || text.Kind != types.TextOther {
-				continue
-			}
-			body := a.pairAdditional(r, text.Text, ls)
-			if body == nil {
-				body = a.optionsPool(r, text.Text, ls)
-			}
-			if body == nil {
-				body = countFloor(text.Text, ls)
-			}
-			if body == nil {
-				body = jointDesignators(text.Text)
-			}
-			if body == nil {
-				body = listAlternative(text.Text, ls)
-			}
-			if body == nil {
-				continue
-			}
-			if text == n {
-				r.r.Req = body
-			} else {
-				n.Items[0] = body
-			}
+	visit := func(r *compRow) {
+		if r.r.Kind != types.RequirementAllocation || r.r.Req == nil {
+			return
+		}
+		r.r.Req = listAlternatives(r.r.Req, ls)
+		n := r.r.Req
+		text := n
+		if n.Type == types.NodeOr && len(n.Items) > 1 && n.Items[0].Type == types.NodeText &&
+			!slices.ContainsFunc(n.Items[1:], func(it *types.ReqNode) bool { return it.Type != types.NodeText || it.Kind != types.TextPermission }) {
+			text = n.Items[0] // or(text, routes)
+		}
+		if text.Type != types.NodeText || text.Kind != types.TextOther {
+			return
+		}
+		body := a.pairAdditional(r, text.Text, ls)
+		if body == nil {
+			body = a.optionsPool(r, text.Text, ls)
+		}
+		if body == nil {
+			body = countFloor(text.Text, ls)
+		}
+		if body == nil {
+			body = jointDesignators(text.Text)
+		}
+		if body == nil {
+			body = listAlternative(text.Text, ls)
+		}
+		if body == nil {
+			return
+		}
+		if text == n {
+			r.r.Req = body
+		} else {
+			n.Items[0] = body
 		}
 	}
-	walk(a.items)
-	walk(a.program)
+	walkRowsPost(a.items, visit)
+	walkRowsPost(a.program, visit)
 }
 
 // exemptReplacements reads the exemptions replaced by any course of some
@@ -239,29 +235,20 @@ func (a *compAssembler) exemptReplacements(lists []*types.CourseList) []*types.C
 		lists = append(lists, &types.CourseList{Name: name, Items: items})
 		return name, true
 	}
-	var walk func(rows []*compRow)
-	walk = func(rows []*compRow) {
-		for _, r := range rows {
-			walk(r.children)
-			if r.r.Kind == types.RequirementAllocation && r.r.Req != nil {
-				r.r.Req = exemptAny(r, r.r.Req, union)
-			}
+	visit := func(r *compRow) {
+		if r.r.Kind == types.RequirementAllocation && r.r.Req != nil {
+			r.r.Req = exemptAny(r, r.r.Req, union)
 		}
 	}
-	walk(a.items)
-	walk(a.program)
+	walkRowsPost(a.items, visit)
+	walkRowsPost(a.program, visit)
 	// one union per sentence: the first row's
 	made := map[string]string{}
-	var combine func(rows []*compRow)
-	combine = func(rows []*compRow) {
-		for _, r := range rows {
-			combine(r.children)
-			if r.r.Kind == types.RequirementAllocation && r.r.Req != nil {
-				r.r.Req = a.exemptCombination(r, r.r.Req, union, made)
-			}
+	walkRowsPost(a.items, func(r *compRow) {
+		if r.r.Kind == types.RequirementAllocation && r.r.Req != nil {
+			r.r.Req = a.exemptCombination(r, r.r.Req, union, made)
 		}
-	}
-	combine(a.items)
+	})
 	return lists
 }
 
@@ -440,14 +427,14 @@ func countFloor(t string, ls compListRefs) *types.ReqNode {
 var (
 	// complOptionsPoolRe matches an amount from options separated by ";": "1.0
 	// credit from the following options: MCS329H1/ MCS329Y1; ...".
-	complOptionsPoolRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+following\s+options:\s*(.+)$`)
+	complOptionsPoolRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from\s+the\s+following\s+options:\s*(.+)$`)
 	// complNotTakenRefRe matches another requirement's courses not used there:
 	// "courses listed in requirement 3 not already taken".
 	complNotTakenRefRe = regexp.MustCompile(`(?i)^courses\s+listed\s+in\s+requirement\s+(\d{1,2})\s+not\s+already\s+taken$`)
 	// complRelatedOptionsRe matches options ending in a course the topic decides:
 	// "1.0 credit from: EDS356H1, ..., or a course related to Education and
 	// Society at the 300+ level ...". Group 4 is that course's level.
-	complRelatedOptionsRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+from:\s*(.+?),\s+or\s+(an?\s+course\s+related\s+to\s+.+?\s+at\s+the\s+([1-4])00\+\s+level\b.*)$`)
+	complRelatedOptionsRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from:\s*(.+?),\s+or\s+(an?\s+course\s+related\s+to\s+.+?\s+at\s+the\s+([1-4])00\+\s+level\b.*)$`)
 	// complListBelowRe matches a list by name: "cognate courses listed below".
 	complListBelowRe = regexp.MustCompile(`(?i)^(\w+\s+courses)\s+listed\s+below$`)
 )
@@ -524,14 +511,14 @@ func (a *compAssembler) optionsPool(r *compRow, t string, ls compListRefs) *type
 var (
 	// complLanguageListAltRe matches a list of language courses: "1.0 credit at
 	// any level of an Asian language (see Accepted Language Courses below)".
-	complLanguageListAltRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+at\s+any\s+level\s+(?:of|in)\s+an?\s+\w+\s+language\s+\(see\s+(.+?)\s+below\)$`)
+	complLanguageListAltRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+at\s+any\s+level\s+(?:of|in)\s+an?\s+\w+\s+language\s+\(see\s+(.+?)\s+below\)$`)
 	// complGroupCourseAltRe matches a course from a group: "0.5 credit in a
 	// quantitative or qualitative methods course from Group C".
-	complGroupCourseAltRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+in\s+an?\s+[\w ]+?\s+course\s+from\s+(group\s+[A-Z])(?:\s+to\s+fulfil+\s+the\s+[\w ]+)?$`)
+	complGroupCourseAltRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+in\s+an?\s+[\w ]+?\s+course\s+from\s+(group\s+[A-Z])(?:\s+to\s+fulfil+\s+the\s+[\w ]+)?$`)
 	// complJointDesignatorsRe matches a level's courses of a designator and its
 	// joint ones: "1.0 credit in 300-level CAS courses (including JHA, JPA, and
 	// SAS)". Group 4 is an optional second level.
-	complJointDesignatorsRe = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s+credits?\s+(?:in|from)\s+([1-4])00-level\s+([A-Z]{3})\s+courses(?:\s+and/or\s+([1-4])00-level\s+courses)?\s+\(including\s+([A-Z]{3}(?:,\s*[A-Z]{3})*,?\s+and\s+[A-Z]{3})\)$`)
+	complJointDesignatorsRe = regexp.MustCompile(`^` + amountPat + `\s+credits?\s+(?:in|from)\s+([1-4])00-level\s+([A-Z]{3})\s+courses(?:\s+and/or\s+([1-4])00-level\s+courses)?\s+\(including\s+([A-Z]{3}(?:,\s*[A-Z]{3})*,?\s+and\s+[A-Z]{3})\)$`)
 )
 
 // listAlternatives reads the text alternatives of n's or nodes that draw on a
@@ -590,7 +577,8 @@ func jointDesignators(t string) *types.ReqNode {
 	if m[4] == "" {
 		return pool
 	}
-	pool.Levels = dedupeInts(append(pool.Levels, int(m[4][0]-'0')*100))
+	pool.Levels = dedupe(append(pool.Levels, int(m[4][0]-'0')*100))
+	slices.Sort(pool.Levels)
 	return orNode(pool, textNode(types.TextAmbiguity, t))
 }
 
@@ -602,11 +590,11 @@ var (
 	// complInsteadExtraRe matches the alternative such a note gives: "to meet
 	// requirement 1 or can instead complete an additional 0.5 credit from the list
 	// of courses in requirement 7, for a total of 1.5 credits for requirement 7".
-	complInsteadExtraRe = regexp.MustCompile(`(?i)\bto\s+meet\s+requirement\s+(\d{1,2})\s+or\s+can\s+instead\s+complete\s+an\s+additional\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+list\s+of\s+courses\s+in\s+requirement\s+(\d{1,2}),\s+for\s+a\s+total\s+of\s+\d+(?:\.\d+)?\s+credits?\s+for\s+requirement\s+(\d{1,2})$`)
+	complInsteadExtraRe = regexp.MustCompile(`(?i)\bto\s+meet\s+requirement\s+(\d{1,2})\s+or\s+can\s+instead\s+complete\s+an\s+additional\s+` + amountPat + `\s+credits?\s+from\s+the\s+list\s+of\s+courses\s+in\s+requirement\s+(\d{1,2}),\s+for\s+a\s+total\s+of\s+` + numPat + `\s+credits?\s+for\s+requirement\s+(\d{1,2})$`)
 	// complCoursesThenRouteRe matches listed courses ending in an approval
 	// route: "At least 1.0 credit from the following courses: BCB410H1/ ... with
 	// prior approval from the Associate Chair".
-	complCoursesThenRouteRe = regexp.MustCompile(`(?i)^at\s+least\s+(\d+(?:\.\d+)?)\s+credits?\s+from\s+the\s+following\s+courses:\s*((?:` + codePat + `\s*/\s*)+)(\d+(?:\.\d+)?\s+or\s+\d+(?:\.\d+)?\s+credits?\s+from\s+.+\bwith\s+prior\s+approval\s+from\b.+)$`)
+	complCoursesThenRouteRe = regexp.MustCompile(`(?i)^` + atLeastPat + `\s+` + amountPat + `\s+credits?\s+from\s+the\s+following\s+courses:\s*((?:` + codePat + `\s*/\s*)+)(` + numPat + `\s+or\s+` + numPat + `\s+credits?\s+from\s+.+\bwith\s+prior\s+approval\s+from\b.+)$`)
 )
 
 // exclusionAlternatives turns complExclusionNoteRe rows into notes and gives

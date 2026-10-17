@@ -12,6 +12,20 @@ import (
 // codePat matches a course code: CSC148H1, MATA22H3, MAT223H5.
 const codePat = `[A-Z]{3}[A-Z0-9]\d{2}[HY]\d`
 
+// Fragments the phrase regexes share.
+const (
+	// numPat matches an amount: "1.5".
+	numPat = `\d+(?:\.\d+)?`
+	// amountPat captures an amount: "1.5".
+	amountPat = `(` + numPat + `)`
+	// desigPat matches a designator, case-sensitive under (?i): "CSC".
+	desigPat = `(?-i:[A-Z]{3})`
+	// levelPat matches a level: "300".
+	levelPat      = `[1-4]00`
+	atLeastPat    = `at\s+least`
+	noMoreThanPat = `no\s+more\s+than`
+)
+
 var (
 	codeRe = regexp.MustCompile(codePat)
 
@@ -29,12 +43,12 @@ var (
 	completionRe  = regexp.MustCompile(`(?i)\b(?:successful\s+)?completion\s+of\s+(\(|` + codePat + `)`) // "Completion of SOC201H1"
 	requiredToRe  = regexp.MustCompile(`(?i)\bstudents\s+are\s+(?:also\s+)?required\s+to\s+(?:complete|take|have\s+completed)\s+`)
 	combinationRe = regexp.MustCompile(`(?i)\bthe\s+combination\s+of\s+(` + codePat + `)\s+and\s+(` + codePat + `)`)
-	beforeRe      = regexp.MustCompile(`(?i)\s*completed\s+before\s+` + codePat + `\s+is\s+taken`)               // "completed before MUN368H1 is taken"
-	ifCompleteRe  = regexp.MustCompile(`(?i)\s+if\s+(` + codePat + `)\s+(?:is|has\s+been)\s+completed?\b`)       // "X if DRM220Y1 is complete"
-	includesRe    = regexp.MustCompile(`(?i)\bwhich\s+includes?\b`)                                              // "7.5 credits which include …"
-	atLeastInRe   = regexp.MustCompile(`(?i),?\s*\bwith\s+at\s+least\s+(\d+(?:\.\d+)?)\s+(?:credits?\s+)?in\s+`) // "with at least 1.5 in PHL"
-	exampleRe     = regexp.MustCompile(`\(\s*(?i:e\.g\.),?\s*([^()]*)\)`)                                        // "(e.g. PSY201H1, SOC202H1)"
-	rangeRe       = regexp.MustCompile(`\b([A-Z]{3})(\d{3})([HY]\d)\s*-\s*([A-Z]{3})(\d{3})([HY]\d)\b`)          // PHL344H1 - PHL349H1
+	beforeRe      = regexp.MustCompile(`(?i)\s*completed\s+before\s+` + codePat + `\s+is\s+taken`)                         // "completed before MUN368H1 is taken"
+	ifCompleteRe  = regexp.MustCompile(`(?i)\s+if\s+(` + codePat + `)\s+(?:is|has\s+been)\s+completed?\b`)                 // "X if DRM220Y1 is complete"
+	includesRe    = regexp.MustCompile(`(?i)\bwhich\s+includes?\b`)                                                        // "7.5 credits which include …"
+	atLeastInRe   = regexp.MustCompile(`(?i),?\s*\bwith\s+` + atLeastPat + `\s+` + amountPat + `\s+(?:credits?\s+)?in\s+`) // "with at least 1.5 in PHL"
+	exampleRe     = regexp.MustCompile(`\(\s*(?i:e\.g\.),?\s*([^()]*)\)`)                                                  // "(e.g. PSY201H1, SOC202H1)"
+	rangeRe       = regexp.MustCompile(`\b([A-Z]{3})(\d{3})([HY]\d)\s*-\s*([A-Z]{3})(\d{3})([HY]\d)\b`)                    // PHL344H1 - PHL349H1
 	altPathRe     = regexp.MustCompile(`(?i)\b([A-Z][A-Za-z]*)\s+students\s+who\s+have\s+(?:completed|taken)\s+(.+?)\s+(?:will\s+be|are)\s+permitted\s+to\s+(?:enrol|enroll|register)(?:\s+in\s+` + codePat + `)?`)
 	engineeringRe = regexp.MustCompile(`(?i)\bPrerequisites?\s+for\s+(?:the\s+)?(?:Faculty\s+of\s+)?Applied\s+Science\s+and\s+Engineering\s+students:`)
 	enumStartRe   = regexp.MustCompile(`\(\s*1\s*\)`)
@@ -80,10 +94,10 @@ func normalize(s string) (out string, notes []string) {
 }
 
 var (
-	doubledRe     = regexp.MustCompile(`\b([A-Z]{3}[A-Z0-9]\d{2}[HY])(\d)(\d)\b`)                                       // HIS322H11 (source typo)
-	sessionCodeRe = regexp.MustCompile(`\b(` + codePat + `)[FSY]\b`)                                                    // BMS301H1S, WGS160Y1Y: ACORN session letter
-	noCampusRe    = regexp.MustCompile(`\b([A-Z]{3}\d{3}[HY])\b`)                                                       // MAT148H, LAS200Y (source typo)
-	seriesRe      = regexp.MustCompile(`(?:\b(?i:an?|any|one)\s+)?\b([A-Z]{3})([1-4]00)-series\b(\s+(?i:courses?)\b)?`) // MAT100-series
+	doubledRe     = regexp.MustCompile(`\b([A-Z]{3}[A-Z0-9]\d{2}[HY])(\d)(\d)\b`)                                                // HIS322H11 (source typo)
+	sessionCodeRe = regexp.MustCompile(`\b(` + codePat + `)[FSY]\b`)                                                             // BMS301H1S, WGS160Y1Y: ACORN session letter
+	noCampusRe    = regexp.MustCompile(`\b([A-Z]{3}\d{3}[HY])\b`)                                                                // MAT148H, LAS200Y (source typo)
+	seriesRe      = regexp.MustCompile(`(?:\b(?i:an?|any|one)\s+)?\b([A-Z]{3})(` + levelPat + `)-series\b(\s+(?i:courses?)\b)?`) // MAT100-series
 )
 
 // repairCodes fixes misprinted codes where the repair is certain: a doubled or

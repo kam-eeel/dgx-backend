@@ -26,7 +26,7 @@ var completionMatchers = append([]phraseMatcher{
 var (
 	// complAmountRangeRe matches a range of amounts before a pool or a credit
 	// phrase: "2.0 to 2.5 credits".
-	complAmountRangeRe = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*(?:-|–|(?i:to|or)\b)\s*(\d+(?:\.\d+)?)\s`)
+	complAmountRangeRe = regexp.MustCompile(`^` + amountPat + `\s*(?:-|–|(?i:to|or)\b)\s*` + amountPat + `\s`)
 
 	// eitherRe matches "either" before alternatives: "Either GGR491Y1 or ...".
 	eitherRe     = regexp.MustCompile(`^(?i:either)\b(?:\s*:)?`)
@@ -34,7 +34,7 @@ var (
 
 	// complWithAtLeastRe matches a floor read as "including": ", with at least
 	// a 0.5 credit".
-	complWithAtLeastRe = regexp.MustCompile(`(?i),\s*with\s+at\s+least\s+(?:an?\s+)?(\d+(?:\.\d+)?)\s+credits?\b`)
+	complWithAtLeastRe = regexp.MustCompile(`(?i),\s*with\s+` + atLeastPat + `\s+(?:an?\s+)?` + amountPat + `\s+credits?\b`)
 	// complDoubledFromRe matches "from from" (sic); complFurtherRe matches
 	// "credits further from".
 	complDoubledFromRe = regexp.MustCompile(`(?i)\bfrom\s+from\b`)
@@ -43,26 +43,26 @@ var (
 	complCodePairRe = regexp.MustCompile(`(` + codePat + `|\b[A-Z]{3}\d{4}[HY]\d?)\s+(` + codePat + `|[A-Z]{3}\d{4}[HY]\d?\b)`)
 	// complAmountAndRe matches an amount over courses joined by "and": "1.0
 	// credit from GGR217H1 and JGI346H1/ JGU346H1".
-	complAmountAndRe = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s+credits?\s+(?:(?:of|in)\s+[^:]*:|from:?|[^:]*:)\s*((?:` + codePat + `\s*/\s*)*` + codePat + `)\s+and\s+((?:` + codePat + `\s*/\s*)*` + codePat + `)\.?$`)
+	complAmountAndRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+(?:(?:of|in)\s+[^:]*:|from:?|[^:]*:)\s*((?:` + codePat + `\s*/\s*)*` + codePat + `)\s+and\s+((?:` + codePat + `\s*/\s*)*` + codePat + `)\.?$`)
 	// complTitledAmountRe matches a titled amount over a list, the title dropped:
 	// "A set of mandatory courses (3.5 credits): ".
-	complTitledAmountRe = regexp.MustCompile(`^(?:[A-Z][^:()]{0,60}?)\s*\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\)\s*:\s*`)
+	complTitledAmountRe = regexp.MustCompile(`^(?:[A-Z][^:()]{0,60}?)\s*\(\s*` + amountPat + `\s+credits?\s*\)\s*:\s*`)
 	// complCodedCoursesRe matches "PCJ-coded courses", read "PCJ courses".
 	complCodedCoursesRe = regexp.MustCompile(`\b([A-Z]{3})-coded\s+courses\b`)
 	// complDescParenRe matches a lowercase description of the course before it:
 	// "EEB240H1 (plant or animal form and function/environmental biology)".
 	complDescParenRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*[a-z][a-z ,/&-]*\)`)
 	// complOneCreditRe matches "including one credit", read "1.0 credit".
-	complOneCreditRe = regexp.MustCompile(`(?i)(\b(?:including|of\s+which|with)\s+(?:at\s+least\s+)?)one\s+credit\b`)
+	complOneCreditRe = regexp.MustCompile(`(?i)(\b(?:including|of\s+which|with)\s+(?:` + atLeastPat + `\s+)?)one\s+credit\b`)
 	// complAtCampusRe matches a campus the code already says: "ANT418H5 at UTM".
 	complAtCampusRe = regexp.MustCompile(`(` + codePat + `)\s*(?:\(\s*)?(?:at|from)\s+(?:UTM|UTSC)\b\)?`)
 	// complOnTheLevelRe matches "on the 300-level", read "at the 300-level".
-	complOnTheLevelRe = regexp.MustCompile(`(?i)\bon\s+the\s+([1-4]00)[-\s]level\b`)
+	complOnTheLevelRe = regexp.MustCompile(`(?i)\bon\s+the\s+(` + levelPat + `)[-\s]level\b`)
 	// complOneOrBothRe matches either course: "one or both of ( MGY481H1 and
 	// MGY482H1)".
 	complOneOrBothRe = regexp.MustCompile(`(?i)\bone\s+or\s+both\s+of\s+\(\s*(` + codePat + `)\s+and\s+(` + codePat + `)\s*\)`)
 	// complGradeParenRe matches a grade after a course: "(minimum grade of 63%)".
-	complGradeParenRe = regexp.MustCompile(`(?i)\(\s*(?:a\s+)?(?:minimum|min\.?)\s+(?:final\s+)?(?:grade|mark)\s+of\s+(?:at\s+least\s+)?(\d{2})\s*%\s*\)`)
+	complGradeParenRe = regexp.MustCompile(`(?i)\(\s*(?:a\s+)?(?:minimum|min\.?)\s+(?:final\s+)?(?:grade|mark)\s+of\s+(?:` + atLeastPat + `\s+)?(\d{2})\s*%\s*\)`)
 	// complCodeParenCodeRe matches the course or the one in brackets: "CHM136H1
 	// ( CHM138H1)".
 	complCodeParenCodeRe = regexp.MustCompile(`(` + codePat + `)\s*\(\s*(` + codePat + `)\s*\)`)
@@ -82,9 +82,7 @@ var (
 	complInAdditionRe = regexp.MustCompile(`(?i)\s*\(\s*in\s+addition\s+to\s+((?:` + codePat + `(?:\s*(?:,|and|/)\s*)?)+)\s*\)`)
 	// complCapDesigRe matches a cap on designators: "no more than 0.5 credit can
 	// be IRE/IRW".
-	complCapDesigRe = regexp.MustCompile(`(?i)(no\s+more\s+than\s+\d+(?:\.\d+)?)\s+credits?\s+(?:can|may)\s+be\s+(?:in\s+)?((?-i:[A-Z]{3})(?:\s*/\s*(?-i:[A-Z]{3}))*)\b`)
-	// complAtAnyLevelRe matches ", at any level": no level filter.
-	complAtAnyLevelRe = regexp.MustCompile(`(?i),?\s*at\s+any\s+level\b`)
+	complCapDesigRe = regexp.MustCompile(`(?i)(` + noMoreThanPat + `\s+` + numPat + `)\s+credits?\s+(?:can|may)\s+be\s+(?:in\s+)?(` + desigPat + `(?:\s*/\s*` + desigPat + `)*)\b`)
 	// complNormallyTakenRe matches timing, a note: ", normally taken in the first
 	// year".
 	complNormallyTakenRe = regexp.MustCompile(`(?i),\s*((?:normally|usually|typically|(?:(?:highly|strongly)\s+)?recommended\s+to\s+be)\s+taken\s+in\s+(?:the\s+)?(?:first|second|third|fourth)\s+year)\s*[;.]?\s*$`)
@@ -115,17 +113,17 @@ var (
 
 	// poolAnyCoursesRe matches "Any 2 courses (1.0 credit) from": the credits in
 	// brackets are the pool's amount.
-	poolAnyCoursesRe = regexp.MustCompile(`^(?i:any\s+(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+)?courses?\s*\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\)\s+(?:from|of)\b(?:\s+the\s+following)?)(?:\s*:)?`)
+	poolAnyCoursesRe = regexp.MustCompile(`^(?i:any\s+(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+)?courses?\s*\(\s*` + amountPat + `\s+credits?\s*\)\s+(?:from|of)\b(?:\s+the\s+following)?)(?:\s*:)?`)
 	// poolDescRe matches a pool whose description has commas, unlike poolFromRe:
 	// "2.5 credits from electives in music history, culture, and theory:".
 	// Digits and brackets would be conditions.
-	poolDescRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:credits?\s+(?:from|in)\b)[^:;.()\d]{1,150}:`)
+	poolDescRe = regexp.MustCompile(`^(?i:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?i:credits?\s+(?:from|in)\b)[^:;.()\d]{1,150}:`)
 	// poolLevelRe matches a pool whose level narrows every member: "0.5 credit
 	// at the 400-level from".
-	poolLevelRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:credits?\s+at\s+(?:the\s+)?)([1-4]00(?:\s*\+)?(?:\s*-?\s*(?i:level))?(?:\s+(?i:or\s+(?:higher|above)))?)\s+(?i:from)\b(?:\s*:)?`)
+	poolLevelRe = regexp.MustCompile(`^(?i:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?i:credits?\s+at\s+(?:the\s+)?)(` + levelPat + `(?:\s*\+)?(?:\s*-?\s*(?i:level))?(?:\s+(?i:or\s+(?:higher|above)))?)\s+(?i:from)\b(?:\s*:)?`)
 	// complPoolDescribedRe matches a pool whose list follows a description of
 	// it: "2.5 credits of core courses:".
-	complPoolDescribedRe = regexp.MustCompile(`^(?i:at\s+least\s+)?(\d+\.\d+)\s+(?i:credits?)\b([^:;.()]{0,100}?)(?:\s+(?i:selected|chosen))?(?:\s+(?i:from|among)\b(?:\s+(?i:the\s+following(?:\s+list)?))?\s*:?|(\s*:))`)
+	complPoolDescribedRe = regexp.MustCompile(`^(?i:` + atLeastPat + `\s+)?(\d+\.\d+)\s+(?i:credits?)\b([^:;.()]{0,100}?)(?:\s+(?i:selected|chosen))?(?:\s+(?i:from|among)\b(?:\s+(?i:the\s+following(?:\s+list)?))?\s*:?|(\s*:))`)
 	// complPoolOfCodesRe matches a pool when codes follow: "1.0 credit of ".
 	complPoolOfCodesRe = regexp.MustCompile(`^(\d+\.\d+)\s+(?i:credits?\s+of)\s+`)
 	// complPoolDescStopRe matches words that make a description a condition,
@@ -138,7 +136,7 @@ var (
 
 	// wildRe matches a pool member named by designator and level:
 	// "PSL400-series courses".
-	wildRe = regexp.MustCompile(`^((?i:any\s+)?)([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\s?([1-4]00(?:\s*\+)?)((?:\s*-?\s*(?i:series|level))*)(\s+(?i:courses?)\b)?`)
+	wildRe = regexp.MustCompile(`^((?i:any\s+)?)([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\s?(` + levelPat + `(?:\s*\+)?)((?:\s*-?\s*(?i:series|level))*)(\s+(?i:courses?)\b)?`)
 	// wildDesigRe matches a bare designator as a pool member: "EEB".
 	wildDesigRe   = regexp.MustCompile(`^([A-Z]{3}(?:\s*/\s*[A-Z]{3})*)\b(\s+(?i:courses?)\b)?`)
 	wildEndRe     = regexp.MustCompile(`^\s*(?:$|[;,/()]|(?i:or|and)\b)`)
@@ -168,7 +166,7 @@ var (
 	// replaces the H pair before it: "( MAT148H1, MAT149H1/ MAT137Y1)", where the
 	// calendar may never close the bracket. In a longer list "/" binds tighter.
 	complPairYBracketRe = regexp.MustCompile(`\(\s*(` + codePat + `)\s*(?:,|(?i:and))\s*(` + codePat + `)\s*/\s*(` + codePat + `)\s*(\)|;|$)`)
-	complPairYWholeRe   = regexp.MustCompile(`^((?i:\d+(?:\.\d+)?\s+credits?\s+from:?\s+)?)(` + codePat + `)\s*,\s*(` + codePat + `)\s*/\s*(` + codePat + `)$`)
+	complPairYWholeRe   = regexp.MustCompile(`^((?i:` + numPat + `\s+credits?\s+from:?\s+)?)(` + codePat + `)\s*,\s*(` + codePat + `)\s*/\s*(` + codePat + `)$`)
 	footnoteNoteRe      = regexp.MustCompile(`\s*\(\s*\*+\s*([^()]*)\)`) // "(* if not taken for the requirement immediately above)"
 	// complAfterCodeParenRe matches brackets after a course that may only name
 	// it, point to a note or say when to take it: "HIS389H1 (Hungarian History)".
@@ -183,7 +181,7 @@ var (
 	complRecommendedSlashRe = regexp.MustCompile(`(` + codePat + `)\s+(?i:(?:strongly|highly)\s+)?(?i:recommended)\s*/`)
 	// complListCreditsRe matches the credits a list adds up to: "TMU240Y1 (1.5
 	// credits)".
-	complListCreditsRe = regexp.MustCompile(`(` + codePat + `|\))\s*\(\s*\d+(?:\.\d+)?\s+credits?\s*\)`)
+	complListCreditsRe = regexp.MustCompile(`(` + codePat + `|\))\s*\(\s*` + numPat + `\s+credits?\s*\)`)
 )
 
 // matchRange reads a range of amounts before a pool or a credit phrase. The
@@ -502,7 +500,7 @@ func rewriteCompletion(text string) (string, []string) {
 	text = complSubjectDesigRe.ReplaceAllString(text, "$1 $2")
 	text = complOrDesigParenRe.ReplaceAllString(text, "$1/$2")
 	text = complInAdditionRe.ReplaceAllString(text, ", excluding $1")
-	text = complAtAnyLevelRe.ReplaceAllString(complCapDesigRe.ReplaceAllString(text, "$1 $2 credits"), "")
+	text = anyLevelRe.ReplaceAllString(complCapDesigRe.ReplaceAllString(text, "$1 $2 credits"), "")
 	text = joinCodePairs(text)
 	text = complWithAtLeastRe.ReplaceAllString(text, ", including at least $1 credit")
 	text = complWholeAmountRe.ReplaceAllString(text, "$1$2.0$3")
@@ -545,7 +543,7 @@ func amountAndCodes(text string) string {
 
 // complAllAmountOfRe matches "All (2.0 credits) of GGR270H1, GGR272H1,
 // GGR273H1, GGR373H1".
-var complAllAmountOfRe = regexp.MustCompile(`(?i)^all\s*\(\s*(\d+(?:\.\d+)?)\s+credits?\s*\)\s+of:?\s+((?:` + codePat + `\s*,?\s*(?:and\s+)?)+)\.?$`)
+var complAllAmountOfRe = regexp.MustCompile(`(?i)^all\s*\(\s*` + amountPat + `\s+credits?\s*\)\s+of:?\s+((?:` + codePat + `\s*,?\s*(?:and\s+)?)+)\.?$`)
 
 // allAmountOf reads "All (N credits) of A, B, ..." as "All of A, B, ..."
 // when the courses weigh N.
@@ -591,8 +589,7 @@ var (
 	orStartRe = regexp.MustCompile(`(?i)^or\b`)
 )
 
-// matchingOpen returns the index of the "(" that the ")" at close closes, or
-// -1.
+// matchingOpen returns the index of the "(" that the ")" at close closes, or -1.
 func matchingOpen(s string, close int) int {
 	depth := 0
 	for i := close; i >= 0; i-- {

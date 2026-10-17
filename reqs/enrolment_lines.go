@@ -25,7 +25,7 @@ type enrolLine struct {
 
 var (
 	bulletRe = regexp.MustCompile(`^_?[-•]\s+`)                 // "- ", "• ", "_• " (a bullet glued to italics)
-	numberRe = regexp.MustCompile(`^(?:\d{1,2}|[a-zA-Z])\.\s+`) // "1. ", "a. ", "A. "
+	markerRe = regexp.MustCompile(`^(?:\d{1,2}|[a-zA-Z])\.\s+`) // "1. ", "a. ", "A. "
 	// wholeEmphRe matches a heading: a whole line in one emphasis, with an
 	// optional colon: "**Notes**:".
 	wholeEmphRe = regexp.MustCompile(`^(?:\*\*|_)+.*(?:\*\*|_)+\s*:?$`)
@@ -68,9 +68,9 @@ func classifyLine(raw string) enrolLine {
 	case bulletRe.MatchString(t):
 		l.kind, l.marker = lineItem, "-"
 		t = bulletRe.ReplaceAllString(t, "")
-	case numberRe.MatchString(t):
+	case markerRe.MatchString(t):
 		l.kind, l.marker = lineItem, "#"
-		t = numberRe.ReplaceAllString(t, "")
+		t = markerRe.ReplaceAllString(t, "")
 	}
 	emph := wholeEmphRe.MatchString(t)
 	l.text = stripEmphasis(t)
