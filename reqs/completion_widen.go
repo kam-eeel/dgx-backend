@@ -13,6 +13,22 @@ import (
 // Passes that read sentences wherever the program's text has them and encode
 // them in the rows they concern: widenings, designator aliases, electives.
 
+// lineSentences returns line i's sentences with their emphasis stripped,
+// split once for the whole text. Callers must not change them.
+func (a *compAssembler) lineSentences(i int) []string {
+	if a.lineSents == nil {
+		a.lineSents = make([][]string, len(a.lines))
+		for k, l := range a.lines {
+			a.lineSents[k] = splitComplSentences(stripEmphasis(strings.TrimSpace(l)))
+		}
+	}
+	return a.lineSents[i]
+}
+
+// complWidenNamedListRe matches a capped share from a list named below:
+// "Students may take up to a 0.5 credit from the Equivalent Courses list below".
+var complWidenNamedListRe = regexp.MustCompile(`(?i)^students\s+may\s+take\s+up\s+to\s+(?:a\s+)?` + amountPat + `\s+credits?\s+from\s+the\s+(.+?)\s+list\s+below$`)
+
 var (
 	// complWidenOtherDeptsRe matches "Up to 1.0 credit may be from other
 	// departments".

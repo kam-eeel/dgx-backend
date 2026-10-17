@@ -11,6 +11,100 @@ import (
 
 // Cross-references between requirements, and rules that tie rows together.
 
+// overlap reads "Some courses may contribute to both ... (in requirements 4
+// and 6)" into an overlap of the two rows, and reports whether it named two
+// items.
+func (a *compAssembler) overlap(s string) bool {
+	rows := a.referenced(s)
+	if len(rows) != 2 || rows[0] == rows[1] || !slices.Contains(a.items, rows[0]) || !slices.Contains(a.items, rows[1]) {
+		return false // overlaps join allocations under one parent: two items
+	}
+	a.overlaps = append(a.overlaps, [2]*compRow{rows[0], rows[1]})
+	addRaw(rows[0], s)
+	addRaw(rows[1], s)
+	return true
+}
+
+var (
+	// complRefRe matches references to numbered requirements: "requirements (4)
+	// and (5)".
+	complRefRe    = regexp.MustCompile(`(?i)\brequirements?\s+\(?\d{1,2}[a-z]?\)?(?:\s*(?:,|and|or)\s*\(?\d{1,2}[a-z]?\)?)*`)
+	complRefNumRe = regexp.MustCompile(`\d{1,2}[a-z]?`)
+)
+
+// referenced returns the items a sentence names by number ("may also count
+// towards requirement 2"), or nil when a number names no item or several.
+func (a *compAssembler) referenced(s string) []*compRow {
+	var out []*compRow
+	for _, num := range complRefNumRe.FindAllString(complRefRe.FindString(s), -1) {
+		var found *compRow
+		for _, r := range a.items {
+			if r.r.Label != num && !strings.HasSuffix(r.r.Label, " "+num) {
+				continue
+			}
+			if found != nil {
+				return nil
+			}
+			found = r
+		}
+		if found == nil {
+			return nil
+		}
+		out = append(out, found)
+	}
+	return out
+}
+
+// complSatisfiesCountsRe matches a course that meets one requirement and
+// counts part of its credit toward another: "PHY479Y1 ... satisfies
+// Requirement 3 ... and counts as a 0.5 credit ... for Requirement 4 ...".
+var complSatisfiesCountsRe = regexp.MustCompile(`(?i)^(` + codePat + `)(?:\s*\([^()]*\))?\s+satisfies\s+(requirement\s+\d{1,2}[a-z]?(?:\s+in\s+.+?)?)\s+and\s+counts\s+as\s+an?\s+` + amountPat + `\s+credit\b.*?\bfor\s+(requirement\s+\d{1,2}[a-z]?(?:\s+in\s+.+?)?)\.?$`)
+
+// satisfiesAndCounts splits a complSatisfiesCountsRe course's credit: the
+// rest is an alternative on the first requirement, and the second takes the
+// sentence as or(strict, text), since a pool can't count part of one course.
+func (a *compAssembler) satisfiesAndCounts(s string) bool {
+	m := complSatisfiesCountsRe.FindStringSubmatch(strings.TrimSpace(a.clean(s)))
+	if m == nil {
+		return false
+	}
+	meets, counts := a.referencedIn(m[2]), a.referencedIn(m[4])
+	v, _ := strconv.ParseFloat(m[3], 64)
+	rest := courseWeight(m[1]) - v
+	if meets == nil || counts == nil || meets == counts || meets.r.Req == nil || counts.r.Req == nil || rest <= 0 {
+		return false
+	}
+	meets.r.Req = orNode(meets.r.Req, &types.ReqNode{Type: types.NodeCredits, Amount: rest, Courses: []string{m[1]}, Weight: rest})
+	addRaw(meets, s)
+	a.wrapRoute(counts, nil, textNode(types.TextOther, s))
+	addRaw(counts, s)
+	return true
+}
+
+// referencedIn returns the one item a phrase names by number ("Requirement 3
+// in Third or Fourth Year"), narrowed by the section after "in" when several
+// share it; nil when none or several remain.
+func (a *compAssembler) referencedIn(phrase string) *compRow {
+	num := complRefNumRe.FindString(phrase)
+	sec := ""
+	if i := strings.Index(strings.ToLower(phrase), " in "); i >= 0 {
+		sec = strings.ToLower(strings.TrimSpace(phrase[i+4:]))
+	}
+	var found []*compRow
+	for _, r := range a.items {
+		if r.r.Label == num || strings.HasSuffix(r.r.Label, " "+num) {
+			found = append(found, r)
+		}
+	}
+	if len(found) > 1 && sec != "" {
+		found = slices.DeleteFunc(found, func(r *compRow) bool { return strings.ToLower(r.r.Section) != sec })
+	}
+	if len(found) != 1 {
+		return nil
+	}
+	return found[0]
+}
+
 var (
 	// complReqRefRe matches a pool drawn from other requirements' pools: "from
 	// Requirements 1, 3, 4, 5, or 6".
@@ -705,22 +799,6 @@ func (a *compAssembler) additionalLists(row *compRow, text string, alts []*types
 	a.total.r.Raw += "\n" + row.r.Raw
 	a.total.r.Notes = append(a.total.r.Notes, row.r.Notes...)
 	return true
-}
-
-// omitAsCourse reports whether n names code only as a course node, never among
-// a pool's courses. In a pool, or(course, not(course)) would let the pool be
-// met with nothing.
-func omitAsCourse(n *types.ReqNode, code string) bool {
-	course, pool := false, false
-	walkReq(n, func(x *types.ReqNode) {
-		course = course || x.Type == types.NodeCourse && x.Code == code
-		pool = pool || slices.Contains(x.Courses, code)
-	})
-	return course && !pool
-}
-
-func notCourse(code string) *types.ReqNode {
-	return &types.ReqNode{Type: types.NodeNot, Items: []*types.ReqNode{{Type: types.NodeCourse, Code: code}}}
 }
 
 // followingCodes returns the courses of the list definitions that are all of

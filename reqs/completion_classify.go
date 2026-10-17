@@ -964,3 +964,65 @@ func egLevelRoute(r *types.Requirement) {
 		n.Items[1] = andNode(&less, text)
 	}
 }
+
+// isApproval reports whether s is an approval route: "Other introductory
+// language classes may be approved by the Director".
+func (a *compAssembler) isApproval(s string) bool {
+	return a.cue(s).approval
+}
+
+// complAlternativeRe matches a sentence offering another way to meet a
+// requirement: "CSB450H1 is also acceptable".
+var complAlternativeRe = regexp.MustCompile(`(?i)\balso\s+(?:be\s+)?(?:used|count(?:s|ed)?|accepted|acceptable|eligible|qualif\w*|fulfil\w*|satisf\w*|meet|complete)\b|\b(?:is|are)\s+also\s+acceptable\b|\bsubstitute\b|\bqualif(?:y|ies)\b|\b(?:meet|fulfil+|satisfy)\s+(?:this|the)\s+(?:[\w-]+\s+){0,3}requirement\b|\bcounts?\s+towards?\b|\bbe\s+counted\s+towards?\b|\bin\s+lieu\b|\b(?:can|may)\s+be\s+used\b|\bwill\s+be\s+accepted\b|\bacceptable\b`)
+
+// isAlternative reports whether s offers another way to meet a requirement,
+// or widens its pool with a cap.
+func (a *compAssembler) isAlternative(s string) bool {
+	return a.cue(s).alternative
+}
+
+// sentenceCues is what the assembler asks about a sentence besides its role.
+type sentenceCues struct{ approval, alternative bool }
+
+// cue reads s's cues once.
+func (a *compAssembler) cue(s string) sentenceCues {
+	c, ok := a.cues[s]
+	if !ok {
+		t := a.clean(s)
+		c.approval = matchAny(complApprovalRes, t) || complCountQueryRe.MatchString(t)
+		c.alternative = !complNegationRe.MatchString(complNotListedRe.ReplaceAllString(t, "")) && complAlternativeRe.MatchString(t) || complWidenRe.MatchString(t)
+		a.cues[s] = c
+	}
+	return c
+}
+
+// complNegationRe matches a sentence that refuses an alternative: "cannot".
+var complNegationRe = regexp.MustCompile(`(?i)\bnot\b|\bcannot\b|n['’]t\b`)
+
+// complRestatedRes match sentences that restate what the rows say, or are
+// advice, though a binding word or a code is in them. Unlike complAsideRes,
+// "must" doesn't veto them: each is one wording.
+var complRestatedRes = []*regexp.Regexp{
+	// a course's overlap with others, which their exclusions encode: "MGT100H1
+	// have considerable overlap with RSM100H1"
+	regexp.MustCompile(`^` + codePat + `(?:,\s*` + codePat + `)*\s+have\s+considerable\s+overlap\s+with\b`),
+	// the claims rule restated: "The course taken in lieu of STA130H1 cannot be
+	// one that is already being used to satisfy Requirement 9"
+	regexp.MustCompile(`(?i)\b(?:taken\s+in\s+lieu\s+of|used\s+to\s+replace)\s+` + codePat + `\s+cannot\s+be\s+(?:one|a\s+course)\s+that\s+is\s+already\s+being\s+used\s+to\s+(?:satisfy|meet)\b|^students\s+admitted\s+to\s+the\s+program\s+with\s+[^:]+:\s+the\s+course\s+will\s+be\s+applied\s+to\s+requirement\b`),
+	// a pointer to the note an alternative comes from: "If you are unable to
+	// complete STA130H1 in first year, see Note A below for ..."
+	regexp.MustCompile(`(?i)^if\s+you\s+are\s+unable\s+to\s+complete\s+` + codePat + `\b[^.]*,\s+see\s+note\s+[A-Z]\s+below\s+for\b`),
+	// a course's prerequisites, which the list leaves out: "(note that both
+	// require BIO130H1 and BIO230H1/ BIO255H1)"
+	regexp.MustCompile(`(?i)\bprerequisites\s+for\s+these\s+courses\s+cannot\s+be\s+used\s+towards\b|^note\s+that\s+(?:both|these(?:\s+courses)?|this\s+course|they|it)\s+requires?\s|^` + codePat + `\s+may\s+be\s+taken\s+without\s+` + codePat + `\s+for\s+students\s+who\b`),
+	// amounts the rows encode: "Sub-total = 8.5 credits"
+	regexp.MustCompile(`(?i)^if\s+taking\s+` + codePat + `,\s+the\s+extra\s+` + numPat + `\s+credit\s+can\s+go\s+to\b|^or\s+any\s+of\s+the\s+following:\s*` + codePat + `(?:\s*[/,]\s*` + codePat + `)*$|^sub-?total\s*=\s*` + numPat + `(?:\s+or\s+` + numPat + `)?\s+credits?(?:\s*\([^)]*\))?$|^in\s+addition\s+to\s+the\s+above\s+core\s+courses,\s+you\s+need\s+to\s+take\s+` + numPat + `\s+credits?\s+of\s+electives$|^plus\s+a\s+disciplinary\s+focus\s+requiring\s+` + numPat + `\s*-\s*` + numPat + `\s+credits$`),
+	// a focus's own requirements, which focusChoices reads: "Health Studies
+	// (ASFOC2270A): (2.0 credits) HMB342H1, ..."
+	regexp.MustCompile(`(?i)^[^:()]{1,80}\((?-i:[A-Z]{2}FOC\d{4}[A-Z])\):\s*\(` + numPat + `(?:\s+or\s+` + numPat + `)?\s+credits\)`),
+	// a designator definition, which aliasDesignators applies
+	complAliasPrefixesRe,
+	// enrolment in courses, not what counts: "... may request to enroll in the
+	// following RSM courses"
+	regexp.MustCompile(`(?i)\bmay\s+request\s+to\s+enrol+\s+in\s+the\s+following\b`),
+}

@@ -12,6 +12,100 @@ import (
 // Relaxations: sentences that let a student meet a requirement without a
 // course it names, placed as or(course, the other way) on each row needing it.
 
+// complExemptedRe matches "Students exempted from FSL220H1/ FSL222H1 may
+// replace it".
+var complExemptedRe = regexp.MustCompile(`(?i)\bexempted\s+from\s+((?:` + codePat + `[\s,/]*(?:and|or)?\s*)+)`)
+
+// relaxedRows returns the rows a loose sentence relaxes and the codes it
+// stands in for: rows holding the codes it replaces, the requirement it names,
+// or the only item naming one of its codes.
+func (a *compAssembler) relaxedRows(s string) ([]*compRow, []string) {
+	t := a.clean(s)
+	for _, re := range []*regexp.Regexp{complReplacedRe, complExemptedRe} {
+		if m := re.FindStringSubmatch(t); m != nil {
+			replaced := codeRe.FindAllString(m[1], -1)
+			if out := rowsHolding(a.routeRows(), replaced); out != nil {
+				return out, replaced
+			}
+		}
+	}
+	if m := complEquivalentsRe.FindStringSubmatch(t); m != nil {
+		// "... RSM course equivalents ... (e.g. RSM100H1 ... equivalent to
+		// MGT100H1)": every row requiring a course of the example's designator
+		var out []*compRow
+		var replaced []string
+		for _, r := range a.routeRows() {
+			has := false
+			walkReq(r.r.Req, func(x *types.ReqNode) {
+				if x.Type == types.NodeCourse && strings.HasPrefix(x.Code, m[1][:3]) {
+					has = true
+					replaced = append(replaced, x.Code)
+				}
+			})
+			if has {
+				out = append(out, r)
+			}
+		}
+		if out != nil {
+			return out, dedupe(replaced)
+		}
+	}
+	if rs := a.referencedRows(s); rs != nil {
+		return rs, nil
+	}
+	if rs := a.referenced(s); rs != nil {
+		return rs, nil
+	}
+	if r := a.itemNaming(s); r != nil {
+		return []*compRow{r}, nil
+	}
+	return nil, nil
+}
+
+// complEquivalentsRe matches another unit's courses accepted as equivalents,
+// with an example: "any completed RSM course equivalents ... deemed equivalent
+// to MGT100H1".
+var complEquivalentsRe = regexp.MustCompile(`(?i)\bany\s+(?:completed\s+)?` + desigPat + `\s+course\s+equivalents\b.*\bdeemed\s+equivalent\s+to\s+(` + codePat + `)`)
+
+// complOmitRe matches "may omit CSC108H1".
+var complOmitRe = regexp.MustCompile(`(?i)\bmay\s+omit\s+(` + codePat + `)\b`)
+
+// omitCovered reports whether the item naming the course a sentence lets
+// students omit already offers a route without it. If so, the sentence joins
+// that item's raw: the item encodes it.
+func (a *compAssembler) omitCovered(s string) bool {
+	code := complOmitRe.FindStringSubmatch(s)[1]
+	r := a.itemNaming(code)
+	if r == nil || r.r.Req == nil || r.r.Req.Type != types.NodeOr {
+		return false
+	}
+	without := slices.ContainsFunc(r.r.Req.Items, func(it *types.ReqNode) bool {
+		has := false
+		walkReq(it, func(x *types.ReqNode) { has = has || x.Code == code || slices.Contains(x.Courses, code) })
+		return !has && it.Type != types.NodeText
+	})
+	if without {
+		addRaw(r, s)
+	}
+	return without
+}
+
+// omitAsCourse reports whether n names code only as a course node, never among
+// a pool's courses. In a pool, or(course, not(course)) would let the pool be
+// met with nothing.
+func omitAsCourse(n *types.ReqNode, code string) bool {
+	course, pool := false, false
+	walkReq(n, func(x *types.ReqNode) {
+		course = course || x.Type == types.NodeCourse && x.Code == code
+		pool = pool || slices.Contains(x.Courses, code)
+	})
+	return course && !pool
+}
+
+func notCourse(code string) *types.ReqNode {
+	return &types.ReqNode{Type: types.NodeNot, Items: []*types.ReqNode{{Type: types.NodeCourse, Code: code}}}
+}
+
 var (
 	complRelaxCodesPat = `((?:` + codePat + `)(?:\s*(?:/|,|or|and)\s*` + codePat + `)*)`
 	// complRelaxWaivedRe matches "CSC108H1 is waived for students who complete

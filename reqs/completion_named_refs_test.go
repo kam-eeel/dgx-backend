@@ -2,8 +2,9 @@ package reqs
 
 import "testing"
 
-// TestCompletionRuleLeftovers checks the leftover readings.
-func TestCompletionRuleLeftovers(t *testing.T) {
+// TestCompletionListRefs checks rows of text that draw on lists by name, read
+// again as pools, unions and allocations over the lists.
+func TestCompletionListRefs(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"a lead naming the courses on lines of one course and its title: their pool; one line of all courses at a level: that pool (ASMAJ1240, shortened)",
 			"(1.5 credits)\n2. 1.0 credit from the SDS Foundational Courses:\n- SDS255H1: Histories of Sexuality\n- SDS256H1: Methods in Sexual Diversity Studies\n- SDS355H1: Theories of Sexuality\n4. Capstone requirement (a minimum of one 0.5 credit from the following list):\nAll 400-level SDS and JNS courses.",

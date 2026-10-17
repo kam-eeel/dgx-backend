@@ -484,7 +484,7 @@ func rewriteCompletion(text string) (string, []string) {
 	// the grade covers the slash list, as in enrolment; complGradeParenRe first:
 	// slashGradeRe reads only the short form "(63%)"
 	text = slashGradeRe.ReplaceAllStringFunc(complGradeParenRe.ReplaceAllString(text, "($1%)"), spreadSlashGrade)
-	text = rewriteOneOffs(text)
+	text = rewriteOneOffWordings(text)
 	text = complCodedCoursesRe.ReplaceAllString(text, "$1 courses")
 	text = complDescParenRe.ReplaceAllString(text, "$1")
 	text = complOnTheLevelRe.ReplaceAllString(text, "at the $1-level")

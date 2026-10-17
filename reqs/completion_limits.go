@@ -10,8 +10,181 @@ import (
 	"degree-explorer/types"
 )
 
-// Limits the limit grammar doesn't read on its own: transfer and CR/NCR rules,
-// profile facts, audiences and caps counted in courses.
+// Limits beyond floors and caps: transfer and CR/NCR rules, the campus rule,
+// profile facts, audiences, program caps and caps counted in courses.
+
+// campusRule puts a sentence restating the campus rule (filters match St.
+// George courses only) in Req 1's raw, whose designator pool encodes it. It
+// reports false when Req 1 has no such pool.
+func (a *compAssembler) campusRule(s string) bool {
+	if a.total == nil || a.total.r.Req.Type != types.NodeCredits || a.total.r.Req.Designators == nil || a.total.r.Req.Courses != nil {
+		return false
+	}
+	a.total.r.Raw += "\n" + s
+	return true
+}
+
+var (
+	// complTransferCapRe matches "No more than 1.0 transfer credit(s) will be
+	// eligible for consideration in the Certificate".
+	complTransferCapRe = regexp.MustCompile(`(?i)^(?:` + noMoreThanPat + `|a\s+maximum\s+of|up\s+to)\s+(?:a\s+)?` + amountPat + `\s+(?:credits?\s+in\s+)?transfer\s+credits?\s+(?:will\s+be\s+eligible\s+for\s+consideration|may\s+be\s+(?:counted|applied|used)\s+(?:to(?:wards?)?|for))\s+(?:in\s+)?the\s+(?:certificate|program|minor|major|specialist|focus)$`)
+	// complTransferComprisesRe matches "Transfer credits cannot comprise more
+	// than 0.5 credit at the 300-/400-level".
+	complTransferComprisesRe = regexp.MustCompile(`(?i)^transfer\s+credits\s+cannot\s+comprise\s+more\s+than\s+(?:a\s+)?` + amountPat + `\s+credits?(?:\s+at\s+the\s+(` + levelPat + `[-/\s\d+]*-?\s*levels?))?$`)
+)
+
+// transfer reads a cap on transfer credit into a limit row under target.
+func (a *compAssembler) transfer(target *compRow, s string) {
+	t := strings.TrimSpace(strings.TrimSuffix(s, "."))
+	if r, text, ok := transferRows(t); ok {
+		// with the exchange exception
+		r.Raw = s
+		a.rowUnder(target, r)
+		if text {
+			a.textRow(target, s)
+		}
+		return
+	}
+	n := &types.ReqNode{Type: types.NodeCredits, Transfer: true}
+	if m := complTransferCapRe.FindStringSubmatch(t); m != nil {
+		v, _ := strconv.ParseFloat(m[1], 64)
+		n.MaxAmount = maxAmount(v)
+	} else if m := complTransferComprisesRe.FindStringSubmatch(t); m != nil {
+		v, _ := strconv.ParseFloat(m[1], 64)
+		n.MaxAmount = maxAmount(v)
+		n.Levels = parseLevels(m[2])
+	} else {
+		a.textRow(target, s)
+		return
+	}
+	a.rowUnder(target, &types.Requirement{Kind: types.RequirementLimit, Req: n, Raw: s})
+}
+
+// complCrNcrBanRe matches a rule that courses taken CR/NCR don't count: "We
+// do not accept any CR/NCR courses toward our program".
+var complCrNcrBanRe = regexp.MustCompile(`(?i)^(?:courses\s+(?:that\s+have\s+been\s+taken\s+as|with\s+a)\s+(?:credit\s*/\s*no\s+credit|CR\s*/\s*NCR)(?:\s+status)?\s+(?:cannot|may\s+not)\s+be\s+used\s+to\s+(?:fulfill|satisfy)\s+(?:the\s+)?(?:certificate|program)\s+requirements|we\s+do\s+not\s+accept\s+any\s+CR\s*/\s*NCR\s+courses\s+toward\s+our\s+programs?)$`)
+
+// complCrNcrMayRe matches CR/NCR allowed: "may use".
+var complCrNcrMayRe = regexp.MustCompile(`(?i)\b(?:may|can)\s+(?:use|take)\b`)
+
+// crNcr reads a rule on CR/NCR courses into a limit row under target.
+func (a *compAssembler) crNcr(target *compRow, s string) {
+	if a.crNcrOutside(target, s) {
+		// CR/NCR or other coursework, one share
+		return
+	}
+	if rows, text := crNcrRows(a.clean(s)); rows != nil {
+		// codes beside the CR/NCR courses, other wordings, a share
+		for _, r := range rows {
+			r.Raw = s
+			a.rowUnder(target, r)
+		}
+		if text {
+			a.textRow(target, s)
+		}
+		return
+	}
+	if !complCrNcrBanRe.MatchString(strings.TrimSpace(strings.TrimSuffix(s, "."))) {
+		if t := a.clean(s); complCrNcrMayRe.MatchString(t) && !complNegationRe.MatchString(t) && !complBindingWordRe.MatchString(t) {
+			// "Students may use CR/NCR on the course ...": a permission, a note
+			a.notesTo(a.noteTarget(target), []string{cleanNote(s)})
+			return
+		}
+		a.textRow(target, s)
+		return
+	}
+	a.rowUnder(target, &types.Requirement{Kind: types.RequirementLimit, Raw: s,
+		Req: &types.ReqNode{Type: types.NodeCredits, CrNcr: true, MaxAmount: maxAmount(0)}})
+}
+
+// designatorRules encodes the program rules written with excluded designators:
+// the in-and-outside floors (complNonDesigRe) as a transcript constraint, and
+// the other-units rule as a limit of 0.
+func (a *compAssembler) designatorRules() {
+	for _, r := range a.allRows() {
+		n := r.r.Req
+		if r.r.Kind != types.RequirementConstraint || n == nil || n.Type != types.NodeText || n.Kind != types.TextOther || len(r.children) > 0 {
+			continue
+		}
+		t := strings.TrimSuffix(strings.TrimSpace(n.Text), ".")
+		if m := complNonDesigRe.FindStringSubmatch(t); m != nil && m[2] == m[4] {
+			in, _ := strconv.ParseFloat(m[1], 64)
+			out, _ := strconv.ParseFloat(m[3], 64)
+			yes := &types.ReqNode{Type: types.NodeCredits, Amount: in, Designators: []string{m[2]}}
+			no := &types.ReqNode{Type: types.NodeCredits, Amount: out, ExcludeDesignators: []string{m[2]}}
+			a.notes = slices.DeleteFunc(a.notes, func(note string) bool {
+				x := complCountsAsDesigRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(note), "."))
+				if x == nil || x[2] != m[2] || x[1][:3] == m[2] {
+					return false
+				}
+				yes.Courses = append(yes.Courses, x[1])
+				no.Exclude = append(no.Exclude, x[1])
+				addRaw(r, note)
+				return true
+			})
+			r.r.Req = andNode(yes, no)
+			// the two amounts exceed the program's total, so the transcript
+			r.r.Scope = types.ScopeTranscript
+			a.transcriptCrNcr(m[1], yes)
+			continue
+		}
+		if complOtherUnitsRe.MatchString(t) {
+			if lim := a.ownUnitsLimit(); lim != nil {
+				r.r.Kind, r.r.Req = types.RequirementLimit, lim
+			}
+		}
+	}
+}
+
+// transcriptCrNcr adds, after a CR/NCR limit of 0 that also names the
+// designator's transcript constraint, the same limit over the transcript on
+// pool's courses.
+func (a *compAssembler) transcriptCrNcr(amount string, pool *types.ReqNode) {
+	for i, r := range a.program {
+		n := r.r.Req
+		if r.r.Kind != types.RequirementLimit || n == nil || n.Type != types.NodeCredits || !n.CrNcr || n.MaxAmount == nil || *n.MaxAmount != 0 || len(n.Designators) > 0 || len(n.Courses) > 0 {
+			continue
+		}
+		m := complCrNcrTranscriptRe.FindStringSubmatch(strings.TrimSuffix(strings.TrimSpace(r.r.Raw), "."))
+		if m == nil || m[1] != amount || m[2] != pool.Designators[0] {
+			continue
+		}
+		k := &compRow{r: &types.Requirement{Kind: types.RequirementLimit, Section: r.r.Section, Scope: types.ScopeTranscript, Raw: r.r.Raw,
+			Req: &types.ReqNode{Type: types.NodeCredits, Designators: slices.Clone(pool.Designators), Courses: slices.Clone(pool.Courses), CrNcr: true, MaxAmount: maxAmount(0)}}}
+		a.program = slices.Insert(a.program, i+1, k)
+		return
+	}
+}
+
+// ownUnitsLimit returns the limit of 0 on courses outside the designators the
+// allocations draw on, except courses the text names. Nil when no allocation
+// draws on a designator.
+func (a *compAssembler) ownUnitsLimit() *types.ReqNode {
+	var own []string
+	for _, r := range a.allRows() {
+		if r.r.Kind != types.RequirementAllocation {
+			continue
+		}
+		walkReq(r.r.Req, func(n *types.ReqNode) {
+			if n.Type == types.NodeCredits {
+				own = append(own, n.Designators...)
+			}
+		})
+	}
+	if own = dedupe(own); own == nil {
+		return nil
+	}
+	var named []string
+	for _, code := range codeRe.FindAllString(a.raw, -1) {
+		if !slices.Contains(own, code[:3]) {
+			named = append(named, code)
+		}
+	}
+	lim := &types.ReqNode{Type: types.NodeCredits, MaxAmount: maxAmount(0)}
+	lim.ExcludeDesignators = own
+	lim.Exclude = dedupe(named)
+	return lim
+}
 
 var (
 	// complCrNcrCodesBanRe matches "We do not accept ENG100H1, ENG102H1, or any
@@ -206,43 +379,6 @@ func (a *compAssembler) rowUnion(row *compRow, items []*types.ReqNode) *types.Co
 	l := &types.CourseList{Name: fmt.Sprintf("\x00row union %d", len(a.rowUnions)), Items: items}
 	a.rowUnions = append(a.rowUnions, compRowUnion{row: row, list: l})
 	return l
-}
-
-// nameRowUnions names each rowUnion list by its row's number, "Requirement 4
-// courses", renames its uses under roots and in lists, and adds it to lists.
-func (a *compAssembler) nameRowUnions(roots []*compRow, lists []*types.CourseList) []*types.CourseList {
-	if a.rowUnions == nil {
-		return lists
-	}
-	names := map[string]string{}
-	for _, u := range a.rowUnions {
-		base := fmt.Sprintf("Requirement %d courses", u.row.r.Number)
-		name := base
-		for k := 2; slices.ContainsFunc(lists, func(l *types.CourseList) bool { return l.Name == name }); k++ {
-			name = base + " (" + strconv.Itoa(k) + ")"
-		}
-		names[u.list.Name] = name
-		u.list.Name = name
-		lists = append(lists, u.list)
-	}
-	rename := func(n *types.ReqNode) {
-		walkReq(n, func(n *types.ReqNode) {
-			for i, x := range n.Lists {
-				if y, ok := names[x]; ok {
-					n.Lists[i] = y
-				}
-			}
-		})
-	}
-	walkRows(roots, func(r *compRow) {
-		rename(r.r.Req)
-	})
-	for _, l := range lists {
-		for _, it := range l.Items {
-			rename(it)
-		}
-	}
-	return lists
 }
 
 // crNcrRows reads a CR/NCR rule the ban grammar misses into limit rows, and
@@ -454,21 +590,6 @@ func courseCountCap(t string) *types.Requirement {
 	return &types.Requirement{Kind: types.RequirementLimit, Req: &types.ReqNode{Type: types.NodeCredits, Courses: codes, MaxAmount: maxAmount(v)}}
 }
 
-// boundListRoutes bounds, as boundRoutes does, the approval routes on a row
-// whose strict pool is lists of listed courses only. Lists with filters stay
-// bare: their union with the designator would need a list of its own.
-func (a *compAssembler) boundListRoutes(lists []*types.CourseList) {
-	byName := listsByName(lists)
-	a.boundOrRoutes(func(strict *types.ReqNode) *types.ReqNode {
-		if onlyLists(strict) {
-			if codes, ok := a.listCodes(strict.Lists, byName); ok {
-				return &types.ReqNode{Type: types.NodeCredits, Amount: strict.Amount, Courses: codes}
-			}
-		}
-		return nil
-	})
-}
-
 // complOpenListRe matches a note that the program's lists leave courses out:
 // "This list of eligible courses is not exhaustive".
 var complOpenListRe = regexp.MustCompile(`(?i)\blists?\s+of\s+(?:[\w-]+\s+){0,2}courses\s+(?:is|are)\s+not\s+(?:an?\s+)?(?:exhaustive|complete)\b`)
@@ -591,17 +712,6 @@ func listedCourses(n *types.ReqNode) (codes []string, ok bool) {
 // group of courses: "Fourth Year Courses".
 var complYearCoursesRe = regexp.MustCompile(`(?i)^\s*courses\s*$`)
 
-// sectionLabel reports whether label starts a section and also names the item:
-// the year phrase followed by "Courses".
-func sectionLabel(label string) bool {
-	p := blkYearPrefix(label)
-	if p == "" {
-		return false
-	}
-	rest := strings.TrimSpace(blkOutsideParens(label))
-	return strings.HasPrefix(strings.ToLower(rest), strings.ToLower(p)) && complYearCoursesRe.MatchString(rest[len(p):])
-}
-
 var (
 	// complPairPoolRe matches a pool of single courses and pairs: "1.0 credit
 	// from JMB170Y1/ ( MAT148H1, MAT149H1)/ MAT137Y1".
@@ -613,42 +723,6 @@ var (
 	complPairAfterSlashRe = regexp.MustCompile(`\s*/\s*\(\s*` + codePat + `\s*(?:,|and)\s*` + codePat + `\s*\)`)
 	complPairOutRe        = regexp.MustCompile(`\(\s*` + codePat + `\s*(?:,|and)\s*` + codePat + `\s*\)\s*[/,]?\s*`)
 )
-
-// pairPool reads a pool of singles and pairs the item grammar leaves as text,
-// each pair making the amount alone: or(the singles' pool, and(pair)...), a
-// pair counting as a unit. ok is false when s isn't such a pool.
-func (a *compAssembler) pairPool(s string) (body *types.ReqNode, rows []*types.Requirement, notes []string, ok bool) {
-	t := strings.TrimSuffix(complClean(s), ".")
-	m := complPairPoolRe.FindStringSubmatch(t)
-	if a.inPairPool || m == nil || !complPairRe.MatchString(m[2]) {
-		return nil, nil, nil, false
-	}
-	a.inPairPool = true
-	body, rows, notes = a.itemBody(s)
-	defer func() { a.inPairPool = false }()
-	if !hasText(body) {
-		// The item grammar reads it: "( PHL205H1, PHL206H1)/ PHL210Y1".
-		return body, rows, notes, true
-	}
-	amount, _ := strconv.ParseFloat(m[1], 64)
-	var pairs []*types.ReqNode
-	for _, p := range complPairRe.FindAllStringSubmatch(m[2], -1) {
-		if courseWeight(p[1])+courseWeight(p[2]) != amount {
-			return body, rows, notes, true
-		}
-		pairs = append(pairs, andNode(&types.ReqNode{Type: types.NodeCourse, Code: p[1]}, &types.ReqNode{Type: types.NodeCourse, Code: p[2]}))
-	}
-	rest := strings.Trim(complPairOutRe.ReplaceAllString(complPairAfterSlashRe.ReplaceAllString(m[2], ""), ""), ", /")
-	if strings.ContainsAny(rest, "()[]") || !codeRe.MatchString(rest) {
-		return body, rows, notes, true
-	}
-	singles, srows, snotes := a.itemBody(m[1] + " credit from " + rest)
-	// The singles' "/" groups are caps beside the pool, capping singles only.
-	if pool, _ := poolCaps(singles); hasText(singles) || !isPool(pool) || pool.Designators != nil {
-		return body, rows, notes, true
-	}
-	return orNode(append([]*types.ReqNode{singles}, pairs...)...), srows, snotes, true
-}
 
 var (
 	// complOnlyTotalFromRe matches "Only 1.0 credit total from Computer Science

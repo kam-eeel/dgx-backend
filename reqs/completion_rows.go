@@ -3,7 +3,6 @@ package reqs
 import (
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"degree-explorer/types"
@@ -167,73 +166,6 @@ func (a *compAssembler) block(b *compBlock, ctx compCtx, list *compBlock) {
 	a.item(b, ctx, list)
 }
 
-// complAdviceHeadingRe matches a heading that names advice: "Suggested Related
-// Courses".
-var complAdviceHeadingRe = regexp.MustCompile(`(?i)\b(?:recommended|suggested|suggestions?)\b`)
-
-// adviceHeading reports whether heading h is advice: it says so and the
-// classifier rates it advisory. A notes heading is not: notes hold rules too.
-func (a *compAssembler) adviceHeading(h *compBlock) bool {
-	return h.kind == blockHeading && !h.isNotes() && complAdviceHeadingRe.MatchString(h.text) && a.role(h.text) == roleAdvisory
-}
-
-// underAdviceHeading reports whether a heading over b, at any depth, is advice.
-func (a *compAssembler) underAdviceHeading(b *compBlock) bool {
-	for h := b.heading; h != nil; h = h.heading {
-		if a.adviceHeading(h) {
-			return true
-		}
-	}
-	return false
-}
-
-// adviceLabel reports a labelled line whose label is advice: "Other courses
-// which might of interest: ESS391H1, ...".
-func (a *compAssembler) adviceLabel(b *compBlock) bool {
-	return b.kind == blockLabelled && !blkNoteLabelRe.MatchString(b.label) && complAdviceLabelRe.MatchString(b.label) && a.role(b.label) == roleAdvisory
-}
-
-// complAdviceLabelRe matches a label that names advice: "might be of interest".
-var complAdviceLabelRe = regexp.MustCompile(`(?i)\b(?:recommended|suggested|might\s+(?:be\s+)?of\s+interest)\b`)
-
-// adviceBlock reads an advice block and the blocks under it: its sentences are
-// one note, prefixed with the heading they are under. An approval route, an
-// exclusion or a cap among them is still read as one.
-func (a *compAssembler) adviceBlock(b *compBlock, ctx compCtx) {
-	var keep []string
-	for _, s := range splitComplSentences(blockLine(b)) {
-		switch role := a.role(s); {
-		case role == roleExclusion:
-			a.exclusion(s)
-		case role == roleRequirement && a.isApproval(s):
-			a.approval(ctx.owner, s)
-		default:
-			// a cap in advice is still a cap
-			parts := splitTop(s, ';')
-			var advice []string
-			for i, p := range parts {
-				p = strings.TrimSpace(p)
-				if r := capRow(p); i > 0 && r != nil && complCapLeadRe.MatchString(p) {
-					a.rowUnder(ctx.owner, r)
-					continue
-				}
-				advice = append(advice, p)
-			}
-			keep = append(keep, strings.TrimSuffix(cleanNote(strings.Join(advice, "; ")), "."))
-		}
-	}
-	if keep != nil {
-		note := strings.Join(keep, ". ")
-		if h := b.heading; h != nil && h.section != "" && b.label != h.section {
-			note = h.section + ": " + note
-		}
-		a.notesTo(ctx.owner, []string{note})
-	}
-	for _, c := range b.children {
-		a.adviceBlock(c, ctx)
-	}
-}
-
 // blockLine is a block's text with its label: "Ecology: EEB255H1, ...". A
 // note's label ("Note:") is left out.
 func blockLine(b *compBlock) string {
@@ -241,64 +173,6 @@ func blockLine(b *compBlock) string {
 		return b.label + ": " + b.text
 	}
 	return b.text
-}
-
-// complAdviceLeadEndRe matches the end of a lead into what follows: "are as
-// follows."
-var complAdviceLeadEndRe = regexp.MustCompile(`(?i)(?::|\bas\s+follows\s*[.:]?|\(as\s+listed\s+below\)\.?)\s*$`)
-
-// complNotRequirementLeadRe matches a lead saying that what follows is no
-// requirement, which points forward whatever its end: "streams are not an
-// official program requirement".
-var complNotRequirementLeadRe = regexp.MustCompile(`(?i)\bare\s+not\s+an?\s+official\s+(?:program\s+)?requirement\b`)
-
-// complAdviceForwardRe matches advice pointing at what follows: "we suggest you
-// consider the following courses".
-var complAdviceForwardRe = regexp.MustCompile(`(?i)\bthe\s+following\b|\bas\s+follows\b|\bbelow\b|:\s*$`)
-
-// adviceZone returns how many blocks after bs[0] are the lines of advice bs[0]
-// leads into, or 0: bs[0] ends in ":" or "as follows", with advice pointing
-// forward and no rule, and the lines are labelled lines, bullets and codes.
-func (a *compAssembler) adviceZone(bs []*compBlock) int {
-	b := bs[0]
-	notRequired := complNotRequirementLeadRe.MatchString(b.text)
-	if b.kind != blockProse && !(b.kind == blockLabelled && blkNoteLabelRe.MatchString(b.label)) || len(b.children) > 0 ||
-		!complAdviceLeadEndRe.MatchString(strings.TrimSpace(b.text)) && !notRequired {
-		return 0
-	}
-	forward := notRequired
-	for _, s := range splitComplSentences(b.text) {
-		switch role := a.role(s); {
-		case role == roleAdvisory:
-			forward = forward || complAdviceForwardRe.MatchString(s)
-		case role == roleRequirement && !a.isApproval(s) && !a.isAlternative(s):
-		default:
-			return 0
-		}
-	}
-	if !forward {
-		return 0
-	}
-	n := 0
-	for _, c := range bs[1:] {
-		if c.kind == blockHeading && !c.isNotes() && !blkAmountRe.MatchString(c.text) && len(c.children) == 0 {
-			// a heading naming who the advice is for
-			n++
-			continue
-		}
-		// a line whose emphasis kept its label from being one is a member too
-		_, after, colon := strings.Cut(c.text, ": ")
-		member := c.kind == blockLabelled && !blkNoteLabelRe.MatchString(c.label) || c.kind == blockBullet || isCodeListLine(c) ||
-			c.kind == blockProse && len(c.children) == 0 && colon && mostlyCodes(after)
-		if !member || blkNumbered(c) || !codeRe.MatchString(c.text) && !complAmountRe.MatchString(c.text) {
-			break
-		}
-		n++
-	}
-	for n > 0 && bs[n].kind == blockHeading {
-		n-- // a heading the zone ends on belongs to what follows
-	}
-	return n
 }
 
 // fociHeading returns the heading over b that names the program's focuses
@@ -436,81 +310,10 @@ func (a *compAssembler) requiredSoFar() map[string]bool {
 	return seen
 }
 
-var (
-	// complTotalPoolLeadRe matches a line giving the total its pool (group 2)
-	// and leading into conditions on it: "At least 6.0 FAH credits fulfilling
-	// the following distribution requirements:".
-	complTotalPoolLeadRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?` + amountPat + `\s+(?:\(` + numPat + `\)\s+)?(` + desigPat + `(?:\s*(?:/|,|or|and/or)\s*` + desigPat + `)*)\s+credits?\s+(?:fulfilling|meeting|that\s+meet|satisfying)\s+the\s+following\b[^.]*:?$`)
-	// complConditionFloorRe matches an item that is a floor on the total's
-	// pool: "3.0 credits at the 300+ level".
-	complConditionFloorRe = regexp.MustCompile(`(?i)^(?:` + atLeastPat + `\s+)?(?:one\s+|an?\s+)?` + numPat + `\s+credits?\s+at\s+the\b`)
-)
-
-// totalPoolLead reads a complTotalPoolLeadRe line into the total's pool, and
-// reports whether it did: the items after it that are floors are the pool's
-// conditions.
-func (a *compAssembler) totalPoolLead(b *compBlock) bool {
-	m := complTotalPoolLeadRe.FindStringSubmatch(strings.TrimSpace(b.text))
-	t := a.total
-	if m == nil || t == nil || t.r.Req.Type != types.NodeCredits || t.r.Req.Designators != nil || t.r.Req.Courses != nil {
-		return false
-	}
-	t.r.Req.Designators = desigRe.FindAllString(m[2], -1)
-	t.r.Raw += "\n" + a.line(b)
-	a.poolConditions = true
-	return true
-}
-
-// poolCondition makes an item that is a floor on the total's pool a constraint
-// under the total with the pool's designators, after a lead into the pool's
-// conditions. It reports whether it did.
-func (a *compAssembler) poolCondition(row *compRow, text string) bool {
-	if !a.poolConditions || a.total == nil {
-		return false
-	}
-	splitFloors(row, text) // "At least 2.0 credits at the 300+ level, 0.5 of which ..."
-	n := row.r.Req
-	t := a.total
-	if !a.poolConditions || t == nil || n == nil || n.Type != types.NodeCredits || n.Levels == nil || n.Designators != nil ||
-		n.Courses != nil || n.Items != nil || !complConditionFloorRe.MatchString(strings.TrimSpace(text)) {
-		return false
-	}
-	n.Designators = slices.Clone(t.r.Req.Designators)
-	row.r.Kind = types.RequirementConstraint
-	row.r.Label, row.r.Section = "", ""
-	a.floors = append(a.floors, row)
-	for _, k := range row.children {
-		if k.r.Kind == types.RequirementConstraint && k.r.Req != nil && k.r.Req.Type == types.NodeCredits && k.r.Req.Designators == nil {
-			k.r.Req.Designators = slices.Clone(t.r.Req.Designators)
-		}
-		a.floors = append(a.floors, k)
-	}
-	row.children = nil
-	return true
-}
-
 // complRemainingLeadRe matches a lead whose group is the line of codes after
 // it: "Other Electives (1.5-2.5 credits): Remaining credits from the SDS
 // Electives Group".
 var complRemainingLeadRe = regexp.MustCompile(`(?i)^[^:(]*\(` + amountPat + `(?:\s*[-–]\s*` + numPat + `)?\s+credits?\)\s*:\s*remaining\s+credits\s+(?:selected\s+)?from\s+the\s+[^.]+?\bgroup\.?$`)
-
-// complHeadingFloorRe matches a floor in a heading's brackets: "Fourth Year:
-// (at least 2.0 credits at 400-level)".
-var complHeadingFloorRe = regexp.MustCompile(`(?i)\(\s*(?:[^()]*?,\s*)?(` + atLeastPat + `\s+[^()]+?)\s*\)`)
-
-// headingFloors keeps a floor stated in a heading as a constraint on the
-// program (or the item the heading is in): the heading is for display only, but
-// its floor is a rule.
-func (a *compAssembler) headingFloors(b *compBlock, ctx compCtx) {
-	m := complHeadingFloorRe.FindStringSubmatch(b.text)
-	if m == nil {
-		return
-	}
-	for _, r := range a.floorRows(m[1]) {
-		r.Raw = a.line(b)
-		a.rowUnder(ctx.owner, r)
-	}
-}
 
 // header reads a header line into Req 1 and its floors and reports whether b
 // was one. A line restating the total ("Students complete 10.0 credits,
@@ -752,134 +555,6 @@ func (a *compAssembler) item(b *compBlock, ctx compCtx, list *compBlock) {
 	a.splitShared(row)
 }
 
-// splitCaps makes the caps the grammar puts beside an item's pool (from a group
-// of alternatives flattened into it) limit rows on the item.
-func splitCaps(row *compRow) {
-	var caps []*compRow
-	var strip func(n *types.ReqNode) *types.ReqNode
-	strip = func(n *types.ReqNode) *types.ReqNode {
-		if n == nil || n.Type != types.NodeAnd && n.Type != types.NodeOr {
-			return n
-		}
-		var keep []*types.ReqNode
-		for _, it := range n.Items {
-			if n.Type == types.NodeAnd && isCourseCap(it) {
-				caps = append(caps, &compRow{r: &types.Requirement{Kind: types.RequirementLimit, Req: it, Raw: row.r.Raw}})
-				continue
-			}
-			keep = append(keep, strip(it))
-		}
-		if n.Type == types.NodeAnd {
-			return andNode(keep...)
-		}
-		return orNode(keep...)
-	}
-	row.r.Req = strip(row.r.Req)
-	row.children = append(row.children, caps...)
-}
-
-// isCourseCap reports a cap on listed courses: credits{courses, max_amount}.
-func isCourseCap(n *types.ReqNode) bool {
-	return n.Type == types.NodeCredits && n.MaxAmount != nil && n.Amount == 0 && n.Courses != nil && n.Items == nil &&
-		n.Designators == nil && n.Levels == nil
-}
-
-// poolCaps splits and(pool, caps...) into the pool and its caps; anything else
-// is returned whole.
-func poolCaps(n *types.ReqNode) (*types.ReqNode, []*types.ReqNode) {
-	if n == nil || n.Type != types.NodeAnd || len(n.Items) < 2 || !isPool(n.Items[0]) ||
-		slices.ContainsFunc(n.Items[1:], func(x *types.ReqNode) bool { return !isCourseCap(x) }) {
-		return n, nil
-	}
-	return n.Items[0], n.Items[1:]
-}
-
-// complFloorWordsRe matches wording that makes a narrower credit phrase a floor
-// on the one before it: "which includes".
-var complFloorWordsRe = regexp.MustCompile(`(?i)\bof\s+which\b|\binclud(?:ing|es?)\b|\b` + atLeastPat + `\b|\bmust\s+be\b|\b` + noMoreThanPat + `\b`)
-
-// splitFloors makes the floors the grammar puts beside an item's pool
-// constraints on the item, never an in-node and: "3.0 SOC credits, which
-// includes at least 1.0 SOC credit at the 300-level" is two rows.
-func splitFloors(row *compRow, text string) {
-	n := row.r.Req
-	if n != nil && n.Type == types.NodeOr && len(n.Items) > 1 && n.Items[0].Type == types.NodeAnd &&
-		!slices.ContainsFunc(n.Items[1:], func(x *types.ReqNode) bool { return x.Type != types.NodeText }) {
-		// or(and(pool, floor), route text): the floors are the item's.
-		inner := &compRow{r: &types.Requirement{Req: n.Items[0], Raw: row.r.Raw}}
-		splitFloors(inner, text)
-		n.Items[0] = inner.r.Req
-		row.children = append(inner.children, row.children...)
-		return
-	}
-	if n == nil || n.Type != types.NodeAnd || !complFloorWordsRe.MatchString(text) {
-		return
-	}
-	var main *types.ReqNode
-	for _, it := range n.Items {
-		if it.Type == types.NodeCredits && it.Items == nil && it.MaxAmount == nil && it.Amount > 0 && (main == nil || it.Amount > main.Amount) {
-			main = it
-		}
-	}
-	if main == nil {
-		return
-	}
-	var keep []*types.ReqNode
-	var floors []*compRow
-	for _, it := range n.Items {
-		switch {
-		case it != main && narrowsPool(main, it):
-			// a copy: the floor shares its filters with the pool
-			floors = append(floors, &compRow{r: &types.Requirement{Kind: types.RequirementConstraint, Req: cloneNode(it), Raw: row.r.Raw}})
-		case it.Type == types.NodeCredits && it.MaxAmount != nil && it.Amount == 0 && it.Items == nil:
-			// a cap on the item: "of which no more than 0.5 credit can be ..."
-			floors = append(floors, &compRow{r: &types.Requirement{Kind: types.RequirementLimit, Req: cloneNode(it), Raw: row.r.Raw}})
-		default:
-			keep = append(keep, it)
-		}
-	}
-	if floors == nil {
-		return
-	}
-	row.r.Req = andNode(keep...)
-	row.children = append(floors, row.children...)
-}
-
-// narrowsPool reports whether credits node c is a share of pool p: a smaller
-// amount of the courses p counts, narrowed by a level, designator or
-// breadth.
-func narrowsPool(p, c *types.ReqNode) bool {
-	if codes := courseChoice(c); codes != nil {
-		// a course the pool must include: "including CLA160H1/ CLA170H1"
-		return !slices.ContainsFunc(codes, func(code string) bool { return !inPool(p, code) })
-	}
-	if c.Type != types.NodeCredits || c.Items != nil || c.MaxAmount != nil || c.Amount <= 0 || c.Amount >= p.Amount {
-		return false
-	}
-	if isAnyCredits(p) {
-		return true // "2.5 credits at least 1.5 credits from PCL courses: ..."
-	}
-	if c.Courses != nil {
-		return !slices.ContainsFunc(c.Courses, func(code string) bool { return !inPool(p, code) })
-	}
-	return (c.Designators == nil || p.Designators == nil || isSubset(c.Designators, p.Designators)) &&
-		(c.Levels != nil || c.Breadth != nil || c.Designators != nil && p.Designators == nil || len(c.Designators) < len(p.Designators))
-}
-
-// courseChoice returns the codes of a course or of an "or" of courses
-// (courseChoiceCodes), else nil.
-func courseChoice(n *types.ReqNode) []string {
-	if n.Type == types.NodeCourse {
-		return []string{n.Code}
-	}
-	return courseChoiceCodes(n)
-}
-
-// inPool reports whether pool p counts course code.
-func inPool(p *types.ReqNode, code string) bool {
-	return slices.Contains(p.Courses, code) || (p.Designators != nil || p.Levels != nil) && filterMatches(p, code)
-}
-
 func isAllocation(k *compRow) bool { return k.r.Kind == types.RequirementAllocation }
 
 // dissolve removes a lead-in that turned out to have no parts: its rows and
@@ -895,217 +570,6 @@ func (a *compAssembler) dissolve(row, owner *compRow) {
 	}
 	a.notesTo(owner, row.r.Notes)
 }
-
-// adviceNote joins advice with the lines under it that only list or
-// describe courses, and returns the note and the lines that are rules.
-func (a *compAssembler) adviceNote(lead string, kids []*compBlock) (string, []*compBlock) {
-	// the lead ends in ":" to lead into its list in one sentence
-	note := strings.TrimSuffix(cleanNote(lead), ":") + ":"
-	var rest []*compBlock
-	var walk func(bs []*compBlock)
-	walk = func(bs []*compBlock) {
-		for _, c := range bs {
-			if !a.listsOnly(c.text) {
-				rest = append(rest, c)
-				continue
-			}
-			if c.kind == blockHeading {
-				note += " " + strings.TrimSuffix(cleanNote(c.text), ":") + ":"
-				continue
-			}
-			note += " " + cleanNote(blockLine(c))
-			walk(c.children)
-		}
-	}
-	walk(kids)
-	return note, rest
-}
-
-// listsOnly reports whether every sentence of s is advice, a list or a plain
-// requirement: no rule, approval or exclusion.
-func (a *compAssembler) listsOnly(s string) bool {
-	for _, sent := range splitComplSentences(s) {
-		switch a.role(sent) {
-		case roleAdvisory, roleListDef:
-		case roleRequirement:
-			if a.isApproval(sent) {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-var (
-	// complAdditionalTotalRe matches "Additional <courses> to a total of N
-	// credits": "Additional HPS courses to a total of 4.0 credits". Groups: the
-	// courses, N, the total's designators and the rest.
-	complAdditionalTotalRe = regexp.MustCompile(`(?i)^(?:an?\s+)?additional\s+(.+?)\s+to\s+a\s+total\s+of\s+` + amountPat + `\s+(` + desigPat + `(?:\s*/\s*` + desigPat + `)*\s+)?credits?\b(.*)$`)
-	// complAdditionalAmountRe matches an amount before the pool: "1.5 to 2.0
-	// credits from".
-	complAdditionalAmountRe = regexp.MustCompile(`(?i)^` + numPat + `(?:\s*(?:to|-|–)\s*` + numPat + `)?\s+credits?\s+from\s+`)
-	// complAdditionalExamplesRe matches examples inside the pool: "which may
-	// include courses from among CHM325H1".
-	complAdditionalExamplesRe = regexp.MustCompile(`(?i),?\s*which\s+may\s+include\s+courses\s+from\s+among\s+(.+)$`)
-	// What may follow the total: "( CHM299H1 excluded)", "(Note: CHM395Y1 can
-	// be used ...)", "counting for the program", "and meeting the following two
-	// conditions:", ", with at least 1.0 credit at the 300+level".
-	complAdditionalExcludedRe   = regexp.MustCompile(`(?i)^\s*\(([^()]*?)\s+excluded\)`)
-	complAdditionalAlsoRe       = regexp.MustCompile(`(?i)^\s*\.?\s*\(\s*note:\s*([^()]*?)\s+can\s+be\s+used\s+toward\s+this\s+requirement\s*\)`)
-	complAdditionalCountingRe   = regexp.MustCompile(`(?i)^\s*counting\s+for\s+the\s+program\b`)
-	complAdditionalConditionsRe = regexp.MustCompile(`(?i)^\s*,?\s*and\s+(?:meeting|fulfilling)\s+the\s+following\s+(?:\w+\s+)?(?:conditions?|requirements?)\s*:?\s*$`)
-	complAdditionalFloorRe      = regexp.MustCompile(`(?i)^\s*,\s*((?:with\s+` + atLeastPat + `|including)\s+.+)$`)
-	// complAlsoCountsRe matches courses that also count: "CSB450H1 is also
-	// acceptable".
-	complAlsoCountsRe = regexp.MustCompile(`(?i)^((?:` + codePat + `(?:\s*,\s*|\s*,?\s+or\s+|\s*/\s*)?)+)\s+(?:is|are)\s+also\s+acceptable$|^((?:` + codePat + `(?:\s*,\s*|\s*,?\s+or\s+|\s*/\s*)?)+)\s+may\s+also\s+be\s+used\s+to\s+fulfil+\s+this\s+requirement$`)
-)
-
-// additional reads "Additional <courses> to a total of N credits" into Req 1's
-// pool, and an N other than the total into a constraint under Req 1. It reports
-// false, reading nothing, if Req 1 has a pool or the wording is unknown.
-func (a *compAssembler) additional(text, raw string) bool {
-	if a.total == nil {
-		return false
-	}
-	pool := a.total.r.Req
-	sents := splitComplSentences(text)
-	first := complAdditionalAndRe.ReplaceAllString(strings.TrimSuffix(a.clean(sents[0]), "."), "")
-	m := complAdditionalTotalRe.FindStringSubmatch(first)
-	if m == nil || pool.Type != types.NodeCredits || pool.Designators != nil || pool.Levels != nil || pool.Courses != nil {
-		return false
-	}
-	phrase := strings.TrimSuffix(strings.TrimSpace(complAdditionalAmountRe.ReplaceAllString(m[1], "")), ",")
-	var also []string
-	if e := complAdditionalExamplesRe.FindStringSubmatchIndex(phrase); e != nil {
-		also = codeRe.FindAllString(phrase[e[2]:e[3]], -1)
-		phrase = phrase[:e[0]]
-	}
-	// "or Equivalent courses (listed below)": the named list joins the pool
-	var listed []string
-	if e := complAdditionalListRe.FindStringSubmatchIndex(phrase); e != nil {
-		listed = a.namedListCodes(phrase[e[2]:e[3]])
-		if listed == nil {
-			return false
-		}
-		phrase = phrase[:e[0]] + " courses"
-	}
-	// a subject is its designator; "0.5 credit courses" are half courses only
-	half := false
-	if w := complAdditionalWeightRe.FindString(phrase); w != "" {
-		half = strings.Fields(w)[0] == "0.5"
-	}
-	phrase = complAdditionalWeightRe.ReplaceAllString(phrase, " ")
-	phrase = complSubjectWordCIRe.ReplaceAllStringFunc(phrase, func(w string) string { return subjectDesignators[strings.ToLower(w)] })
-	n, _, cond := hdrReadBody(phrase)
-	if cond || n.Designators == nil && n.Levels == nil || n.Courses != nil {
-		return false
-	}
-	tail := m[4]
-	var excl []string
-	var floors, rest []string
-	var aside string
-	for strings.TrimSpace(tail) != "" {
-		switch {
-		case complAdditionalExcludedRe.MatchString(tail):
-			g := complAdditionalExcludedRe.FindStringSubmatch(tail)
-			excl = append(excl, codeRe.FindAllString(g[1], -1)...)
-			tail = tail[len(g[0]):]
-		case complAdditionalAlsoRe.MatchString(tail):
-			g := complAdditionalAlsoRe.FindStringSubmatch(tail)
-			also = append(also, codeRe.FindAllString(g[1], -1)...)
-			aside = strings.Trim(g[0], " .()")
-			tail = tail[len(g[0]):]
-		case complAdditionalCountingRe.MatchString(tail):
-			tail = tail[len(complAdditionalCountingRe.FindString(tail)):]
-		case complAdditionalConditionsRe.MatchString(tail):
-			// "and meeting the following two conditions:": the items after it
-			// are floors on the pool
-			a.poolConditions = true
-			tail = ""
-		case complAdditionalFloorRe.MatchString(tail):
-			floors = append(floors, complAdditionalFloorRe.FindStringSubmatch(tail)[1])
-			tail = ""
-		case strings.Trim(tail, " .") == "":
-			tail = ""
-		default:
-			return false
-		}
-	}
-	for _, sent := range sents[1:] {
-		c := strings.TrimSuffix(a.clean(sent), ".")
-		if g := complAlsoCountsRe.FindStringSubmatch(c); g != nil {
-			also = append(also, codeRe.FindAllString(g[1]+g[2], -1)...)
-			continue
-		}
-		rest = append(rest, sent) // read as the program's rules below
-	}
-	// a listed course the pool's levels or exclusions drop can't join it: the
-	// note is the total's alternative, for Review
-	var outside []string
-	also = slices.DeleteFunc(dedupe(also), func(c string) bool {
-		if !levelMatches(n.Levels, c) || slices.Contains(excl, c) {
-			outside = append(outside, c)
-			return true
-		}
-		return false
-	})
-	total, _ := strconv.ParseFloat(m[2], 64)
-	pool.Designators, pool.Levels = slices.Clone(n.Designators), slices.Clone(n.Levels)
-	if half {
-		pool.MaxCourseAmount = 0.5
-	}
-	pool.Exclude, pool.Courses = dedupe(excl), dedupe(append(also, listed...))
-	a.total.r.Raw += "\n" + raw
-	if outside != nil && aside != "" {
-		a.total.r.Req = orNode(pool, textNode(types.TextOther, aside))
-	}
-	if total != pool.Amount {
-		// a sub-total counts its own designators, else the pool's at every
-		// level (the level words describe the additional courses), else the
-		// pool as is
-		sub := &types.ReqNode{Type: types.NodeCredits, Amount: total, Designators: desigRe.FindAllString(m[3], -1)}
-		switch {
-		case sub.Designators != nil:
-		case pool.Designators != nil:
-			sub.Designators, sub.Courses = slices.Clone(pool.Designators), slices.Clone(pool.Courses)
-		default:
-			sub.Levels, sub.Exclude, sub.Courses = slices.Clone(pool.Levels), slices.Clone(pool.Exclude), slices.Clone(pool.Courses)
-		}
-		a.program = append(a.program, &compRow{r: &types.Requirement{Kind: types.RequirementConstraint, Req: sub, Raw: raw}})
-	}
-	for _, f := range floors {
-		for _, r := range a.floorRows(f) {
-			a.program = append(a.program, &compRow{r: r})
-		}
-	}
-	for _, s := range rest {
-		// a cap on the named list's courses
-		if listed != nil && complAdditionalListCapRe.MatchString(a.clean(s)) {
-			v, _ := strconv.ParseFloat(complAdditionalListCapRe.FindStringSubmatch(a.clean(s))[1], 64)
-			a.program = append(a.program, &compRow{r: &types.Requirement{Kind: types.RequirementLimit, Raw: s,
-				Req: &types.ReqNode{Type: types.NodeCredits, Courses: slices.Clone(listed), MaxAmount: maxAmount(v)}}})
-			continue
-		}
-		a.notesTo(nil, a.sentence(s, nil, compCtx{}))
-	}
-	return true
-}
-
-var (
-	// complAdditionalAndRe matches a conjunction with the next item: "; and".
-	complAdditionalAndRe = regexp.MustCompile(`(?i)\s*;\s*and$`)
-	// complAdditionalListRe matches a named list below: "or Equivalent courses
-	// (listed below)".
-	complAdditionalListRe = regexp.MustCompile(`(?i)\s+or\s+([A-Z][\w\s]*?)\s+courses\s+\(listed\s+below\)\s*$`)
-	// complAdditionalWeightRe matches a course weight inside the phrase: "0.5
-	// credit".
-	complAdditionalWeightRe = regexp.MustCompile(`(?i)\s+` + numPat + `\s+credits?\s+`)
-	// complAdditionalListCapRe matches a cap on the named list: "No more than
-	// 1.0 credit from the Equivalent courses can contribute".
-	complAdditionalListCapRe = regexp.MustCompile(`(?i)^` + noMoreThanPat + `\s+` + amountPat + `\s+credits?\s+from\s+the\s+[\w\s]+?\s+courses\s+can\s+contribute\b`)
-)
 
 // routeSentences joins to a route (an approval or a widened pool) the plain
 // sentences after it that say what it lets count. A route pointing back at
@@ -1332,65 +796,6 @@ var complTitleCodeAdviceRe = regexp.MustCompile(`^([^:]*?\b((?:` + codePat + `\s
 // it: "(or one of ECO220Y1, PSY201H1)".
 var complOrContinuationRe = regexp.MustCompile(`(?i)^\(?\s*or\s+(?:one\s+of\s+)?((?:` + codePat + `\s*(?:,|/|or)?\s*)+)\)?\.?$`)
 
-// complOfTheseLeadRe matches a lead into floors on the total: "Of these:".
-var complOfTheseLeadRe = regexp.MustCompile(`(?i)^of\s+these\s*:?$`)
-
-// programFloors reads a line under "Of these:": its floors and caps are the
-// total's, numbered with the floors stated with it; other sentences are read as
-// usual.
-func (a *compAssembler) programFloors(b *compBlock) {
-	for _, s := range splitComplSentences(b.text) {
-		switch a.role(s) {
-		case roleRequirement, roleConstraint:
-			if rows, _, ok := parseHeaderFloors(s); ok && len(rows) == 1 && rows[0].Kind == types.RequirementLimit {
-				rows[0].Raw = s
-				a.totalFloor(rows[0])
-				continue
-			}
-			for _, r := range a.floorRows(s) {
-				a.totalFloor(r)
-			}
-		case roleLimit:
-			if r := capRow(s); r != nil {
-				a.totalFloor(r) // "No more than 1.0 credit of 100-level courses may be used ..."
-				continue
-			}
-			a.notesTo(nil, a.sentence(s, nil, compCtx{}))
-		default:
-			a.notesTo(nil, a.sentence(s, nil, compCtx{}))
-		}
-	}
-	for _, c := range b.children {
-		a.programFloors(c)
-	}
-}
-
-// totalFloor adds a floor or cap on the total: with Req 1's own floors, or a
-// program row when there is no total.
-func (a *compAssembler) totalFloor(r *types.Requirement) {
-	if a.total == nil {
-		a.rowUnder(nil, r)
-		return
-	}
-	a.floors = append(a.floors, &compRow{r: r})
-}
-
-// floorBlock reads a block under a lead into floors ("including:"): each
-// requirement sentence is a constraint on row.
-func (a *compAssembler) floorBlock(b *compBlock, row *compRow) {
-	for _, s := range splitComplSentences(b.text) {
-		switch a.role(s) {
-		case roleRequirement, roleConstraint:
-			a.constraint(row, s)
-		default:
-			a.sentence(s, row, compCtx{owner: row})
-		}
-	}
-	for _, c := range b.children {
-		a.floorBlock(c, row)
-	}
-}
-
 // parts gives an item with no body its parts' requirement: a choose under a
 // count lead, an or of alternatives, an and of parts that share no course;
 // parts that can share stay child allocations, so no course counts for two.
@@ -1462,4 +867,93 @@ func (a *compAssembler) splitShared(row *compRow) {
 	}
 	row.r.Req = nil
 	row.children = append(parts, row.children...)
+}
+
+// itemLabel is the calendar's label for an item: its number ("Higher Years
+// 2") or a labelled line's name; not a year, which is the section, nor a
+// note's label.
+func itemLabel(b *compBlock) string {
+	switch {
+	case b.kind == blockItem:
+		return b.label
+	case b.kind == blockLabelled && !blkStartsSection(b) && !blkNoteLabelRe.MatchString(b.label):
+		return b.label
+	case b.kind == blockLabelled && sectionLabel(b.label):
+		// "Fourth Year Courses: Any 2 courses ...": the label names its section
+		return b.label
+	}
+	return ""
+}
+
+// claimable reports whether n only needs courses: courses, credit amounts and
+// their and, or and choose. No text, cap or average.
+func claimable(n *types.ReqNode) bool {
+	return structureOnly(n, func(x *types.ReqNode) bool {
+		return x.Type == types.NodeChoose ||
+			x.Type == types.NodeCredits && x.Amount > 0 && x.MaxAmount == nil && !isAnyCredits(x)
+	})
+}
+
+// sharesCourses reports whether a course could count toward both x and y.
+// Text doesn't count: it is Review whatever courses it is given.
+func sharesCourses(x, y *types.ReqNode) bool {
+	cx, fx := poolParts(x)
+	cy, fy := poolParts(y)
+	for _, c := range cx {
+		if slices.Contains(cy, c) || slices.ContainsFunc(fy, func(f *types.ReqNode) bool { return filterMatches(f, c) }) {
+			return true
+		}
+	}
+	for _, c := range cy {
+		if slices.ContainsFunc(fx, func(f *types.ReqNode) bool { return filterMatches(f, c) }) {
+			return true
+		}
+	}
+	for _, f := range fx {
+		for _, g := range fy {
+			if filtersMeet(f, g) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// poolParts collects the codes and the filters (credits nodes matching by
+// designator, level or breadth, or any course) in n.
+func poolParts(n *types.ReqNode) (codes []string, filters []*types.ReqNode) {
+	walkReq(n, func(x *types.ReqNode) {
+		switch x.Type {
+		case types.NodeCourse:
+			codes = append(codes, x.Code)
+		case types.NodeCredits, types.NodeAverage:
+			codes = append(codes, x.Courses...)
+			if x.Designators != nil || x.Levels != nil || x.Breadth != nil || x.Courses == nil {
+				filters = append(filters, x)
+			}
+		}
+	})
+	return codes, filters
+}
+
+// filtersMeet reports whether some course could match both filters.
+func filtersMeet(f, g *types.ReqNode) bool {
+	if f.Designators != nil && g.Designators != nil && !slices.ContainsFunc(f.Designators, func(d string) bool { return slices.Contains(g.Designators, d) }) {
+		return false
+	}
+	if f.Levels != nil && g.Levels != nil && !slices.ContainsFunc(f.Levels, func(l int) bool { return slices.Contains(g.Levels, l) }) {
+		return false
+	}
+	return true
+}
+
+// sectionLabel reports whether label starts a section and also names the item:
+// the year phrase followed by "Courses".
+func sectionLabel(label string) bool {
+	p := blkYearPrefix(label)
+	if p == "" {
+		return false
+	}
+	rest := strings.TrimSpace(blkOutsideParens(label))
+	return strings.HasPrefix(strings.ToLower(rest), strings.ToLower(p)) && complYearCoursesRe.MatchString(rest[len(p):])
 }

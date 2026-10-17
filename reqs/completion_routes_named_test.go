@@ -2,9 +2,9 @@ package reqs
 
 import "testing"
 
-// TestCompletionIntegrationG checks rules on snippets of real programs (and one
-// built from a real one to show a guard).
-func TestCompletionIntegrationG(t *testing.T) {
+// TestCompletionBoundRoutes checks bounded routes and the pools beside them on
+// snippets of real programs (and one built from a real one to show a guard).
+func TestCompletionBoundRoutes(t *testing.T) {
 	runComplRuleCases(t, []complRuleCase{
 		{"approved courses of other programs for part of a designator's floor: the floor or that much less of it, as permission (ASSPE0908, shortened)",
 			"(11.0 credits)\nAt least 9.0 FAH credits, and 2.0 credits in one or more languages including at least one German, French, or Italian, though an acceptable alternative modern language such as Dutch or Russian (or Chinese and/or another Asian language) may be acceptable.\nFirst Year:\nFAH101H1/ FAH102H1\nHigher Years:\n6. Approved courses in other programs may be substituted for up to 2.0 FAH credits. See Department website for details.",

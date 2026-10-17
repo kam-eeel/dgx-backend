@@ -9,8 +9,8 @@ import (
 	"degree-explorer/types"
 )
 
-// Cognate caps: a program's courses from other units, capped, read as a union
-// pool with a limit on the other units' share.
+// Cognate and share pools: cognate caps and refusals, substituted shares, list
+// caps, and a group's or a program's share of a pool.
 
 // cognates reads the cognate caps and returns lists with the lists they add.
 func (a *compAssembler) cognates(lists []*types.CourseList) []*types.CourseList {

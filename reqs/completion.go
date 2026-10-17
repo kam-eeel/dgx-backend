@@ -135,7 +135,10 @@ func (a *compAssembler) finish() *types.Completion {
 			add(k, r.r.Number)
 		}
 	}
-	// Pass order matters; a comment gives a pass's constraint, if any.
+	// Pass order matters. The passes run in stages, each headed by a comment
+	// after a blank line; a comment above a pass gives its constraint, if any.
+
+	// rows, lists and choices
 	// first: floor-worded items become constraints, which routeRows skips
 	a.floorItems()
 	// after floorItems
@@ -149,6 +152,8 @@ func (a *compAssembler) finish() *types.Completion {
 	a.levelReadings()
 	// after floorItems; adds an item the passes below see
 	a.additionalElectives()
+
+	// widen and relax
 	// before widen, whose widenTarget finds the pools this makes
 	a.aliasDesignators()
 	// before placeProgramRoutes: drops the sentences it encodes from the routes
@@ -157,6 +162,8 @@ func (a *compAssembler) finish() *types.Completion {
 	a.relax()
 	// after relax: an item may restate its alternatives
 	a.restatedItems()
+
+	// routes
 	// after widen, which prunes the routes it encodes; before placeProgramRoutes
 	a.listRoutes()
 	a.placeProgramRoutes()
@@ -169,20 +176,26 @@ func (a *compAssembler) finish() *types.Completion {
 	// after boundListRoutes: pools a note calls not exhaustive keep a Review
 	// alternative
 	a.openLists(lists)
+
+	// substitutes
 	// after the routes and relaxations; before splitYAlternatives
 	a.substitutes()
 	// after substitutes
 	lists = a.pairSubstitutes(lists)
 	lists = a.exemptReplacements(lists)
 	a.exclusionAlternatives()
+
+	// one-offs and pools
 	// after placeProgramRoutes; keep the passes below in this order
-	a.oneOffs()
+	a.oneOffsBeforePools()
 	a.streamPools()
 	lists = a.cognates(lists)
 	lists = a.filterPools(lists)
-	lists = a.moreOneOffs(lists)
+	lists = a.oneOffsAfterPools(lists)
 	// before the routes below, which read its pools
-	lists = a.remarkRows(lists)
+	lists = a.neighbourRows(lists)
+
+	// routes over the pools
 	a.widenOutsideShares()
 	a.titledLimits()
 	a.topicContentRoutes()
@@ -195,13 +208,19 @@ func (a *compAssembler) finish() *types.Completion {
 	a.graduateAtLevel()
 	a.otherProgramsFloors()
 	a.exemptAtLevel()
+
+	// caps and limits
 	a.permittedCaps()
 	a.programCaps()
 	a.cognateShares()
 	a.countNoMore()
 	a.transferUnderItem()
+
+	// notes
 	// after the routes, caps and lists are placed
-	lists = a.bindingNotes(lists)
+	lists = a.encodeBindingNotes(lists)
+
+	// alternatives and checks
 	// after relax and placeProgramRoutes: reads the final or nodes
 	splitYAlternatives(a.items)
 	// after the routes and relaxations, whose text alternatives may count other
@@ -211,6 +230,8 @@ func (a *compAssembler) finish() *types.Completion {
 	a.campusFloors()
 	// last on the bodies: marks a body still a bare amount of any credits
 	a.checkItemPools(a.items)
+
+	// audiences and limits over all rows
 	// after the routes and alternatives are placed
 	rest := append(append(append([]*compRow{}, a.floors...), a.items...), a.program...)
 	a.audiences(rest)
@@ -224,6 +245,8 @@ func (a *compAssembler) finish() *types.Completion {
 	// after dedupeLimits
 	a.unreachableCaps(roots, lists)
 	a.separatorCaps(roots, lists)
+
+	// numbering and markers
 	for _, r := range roots {
 		add(r, 0)
 	}
@@ -501,5 +524,120 @@ func (a *compAssembler) levelReadings() {
 			wide.Levels = append(wide.Levels, l)
 		}
 		f.r.Req = orNode(n, andNode(wide, textNode(types.TextAmbiguity, `"at the `+lv+`-level" may mean the `+lv+`+ level, as the program's items say`)))
+	}
+}
+
+// isAnyCredits reports whether n is an amount of any credits, with no filter.
+func isAnyCredits(n *types.ReqNode) bool {
+	return n.Type == types.NodeCredits && n.Amount > 0 && n.Courses == nil && n.Designators == nil && n.Levels == nil &&
+		n.Breadth == nil && n.Lists == nil && n.Requirements == nil && !n.Transfer && !n.CrNcr && n.ExcludeDesignators == nil && n.MaxCourseAmount == 0
+}
+
+// notesTo adds notes to row, or to the program when row is nil.
+func (a *compAssembler) notesTo(row *compRow, notes []string) {
+	if row != nil {
+		row.r.Notes = append(row.r.Notes, notes...)
+	} else {
+		a.notes = append(a.notes, notes...)
+	}
+}
+
+// rowUnder adds a rule row under target, or under the program when target is
+// nil.
+func (a *compAssembler) rowUnder(target *compRow, r *types.Requirement) {
+	if target != nil {
+		target.children = append(target.children, &compRow{r: r})
+	} else {
+		a.program = append(a.program, &compRow{r: r})
+	}
+}
+
+// clean is complClean(s), read once per string.
+func (a *compAssembler) clean(s string) string {
+	t, ok := a.cleaned[s]
+	if !ok {
+		if a.cleaned == nil {
+			a.cleaned = map[string]string{}
+		}
+		t = complClean(s)
+		a.cleaned[s] = t
+	}
+	return t
+}
+
+// addRaw adds sentence s to row's raw unless it is there already: a row's raw
+// holds every sentence encoded in it.
+func addRaw(row *compRow, s string) {
+	s = strings.TrimSpace(s)
+	if !strings.Contains(rawWords(row.r.Raw), rawWords(s)) {
+		row.r.Raw += "\n" + s
+	}
+}
+
+// rawWords is s without emphasis, extra spaces and a final period, to
+// compare raws.
+func rawWords(s string) string {
+	s = strings.NewReplacer("**", "", "_", "").Replace(s)
+	return strings.TrimSuffix(strings.Join(strings.Fields(s), " "), ".")
+}
+
+// structureOnly reports whether n is courses and their and/or, plus nodes
+// leaf accepts.
+func structureOnly(n *types.ReqNode, leaf func(*types.ReqNode) bool) bool {
+	ok := true
+	walkReq(n, func(x *types.ReqNode) {
+		switch x.Type {
+		case types.NodeAnd, types.NodeOr, types.NodeCourse:
+		default:
+			ok = ok && leaf(x)
+		}
+	})
+	return ok
+}
+
+// isPool reports whether n is a credits node with an amount and a source.
+func isPool(n *types.ReqNode) bool {
+	return n != nil && n.Type == types.NodeCredits && n.Amount > 0 && n.Items == nil && (n.Courses != nil || n.Designators != nil)
+}
+
+func hasText(n *types.ReqNode) bool {
+	found := false
+	walkReq(n, func(x *types.ReqNode) { found = found || x.Type == types.NodeText })
+	return found
+}
+
+func textNode(kind types.TextKind, s string) *types.ReqNode {
+	return &types.ReqNode{Type: types.NodeText, Kind: kind, Text: cleanNote(s)}
+}
+
+func sameNode(x, y *types.ReqNode) bool {
+	return len(dedupeNodes([]*types.ReqNode{x, y})) == 1
+}
+
+// fmtAmount writes a credit amount as the calendar does: "0.5".
+func fmtAmount(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
+
+// weightOf returns the credits of codes together.
+func weightOf(codes []string) float64 {
+	sum := 0.0
+	for _, c := range dedupe(slices.Clone(codes)) {
+		sum += courseWeight(c)
+	}
+	return sum
+}
+
+// walkRows calls f on every row of rs and their children.
+func walkRows(rs []*compRow, f func(r *compRow)) {
+	for _, r := range rs {
+		f(r)
+		walkRows(r.children, f)
+	}
+}
+
+// walkRowsPost calls f on every row of rs, after their children.
+func walkRowsPost(rs []*compRow, f func(r *compRow)) {
+	for _, r := range rs {
+		walkRowsPost(r.children, f)
+		f(r)
 	}
 }

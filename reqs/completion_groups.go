@@ -9,8 +9,8 @@ import (
 	"degree-explorer/types"
 )
 
-// Pools of groups of alternatives that aren't pairs, a remainder pool to the
-// program's total, and one-off pools over lists.
+// Groups of alternatives: pools of groups that aren't pairs, items split into
+// groups, unions of groups and a remainder pool to the program's total.
 
 var (
 	// complGroupedPoolRe matches an amount or range from bracketed groups: "2.5
@@ -613,4 +613,55 @@ func (a *compAssembler) groupsOrTitled(r *compRow, s string, ls compListRefs) (*
 	g, l := cloneNode(groups), cloneNode(lang)
 	g.Amount, l.Amount = v, v
 	return orNode(g, l, andNode(&types.ReqNode{Type: types.NodeCredits, Amount: v, Lists: []string{name}}, textNode(types.TextAmbiguity, s))), nil, true
+}
+
+var (
+	// complPlusRe matches the "plus" between an item's parts.
+	complPlusRe = regexp.MustCompile(`,?\s+plus\s+`)
+	// complPlusPoolRe matches a pool part: "1.0 credit of ( PHL325H1/
+	// PHL331H1)".
+	complPlusPoolRe = regexp.MustCompile(`(?i)^(\d+\.\d+\s+credits?)\s+of\s+\(([^()]+)\)$`)
+	// complPlusRestRe matches a designator's credits with a floor on a list:
+	// "2.0 additional PHL credits, at least 0.5 credit of which must be from
+	// Course Group 2 - Value Theory".
+	complPlusRestRe = regexp.MustCompile(`^(\d+\.\d+)\s+additional\s+([A-Z]{3})\s+credits,\s+` + atLeastPat + `\s+(\d+\.\d+)\s+credits?\s+of\s+which\s+must\s+be\s+from\s+(?:Course\s+)?(Group\s+\w+)(?:\s+-\s+[A-Z][\w ]*)?$`)
+)
+
+// plusParts splits an item of three parts joined by "plus" into a group of two
+// allocations, since the parts share courses: the courses and pool, and the
+// designator's credits with the list floor under it. Runs before namedLists
+// marks the lists used.
+func (a *compAssembler) plusParts(ls compListRefs) {
+	for _, row := range a.allRows() {
+		n := row.r.Req
+		if row.r.Kind != types.RequirementAllocation || n == nil || n.Type != types.NodeText || n.Kind != types.TextOther || len(row.children) > 0 {
+			continue
+		}
+		parts := complPlusRe.Split(strings.TrimSuffix(strings.TrimSpace(n.Text), "."), -1)
+		if len(parts) != 3 {
+			continue
+		}
+		fixed, _ := parseCompletionText(parts[0])
+		pm := complPlusPoolRe.FindStringSubmatch(strings.TrimSpace(parts[1]))
+		rm := complPlusRestRe.FindStringSubmatch(strings.TrimSpace(parts[2]))
+		if fixed == nil || !onlyCourses(fixed) || pm == nil || rm == nil {
+			continue
+		}
+		pool, _ := parseCompletionText(pm[1] + " from: " + pm[2])
+		names := ls.resolve(listRefNames(rm[4]))
+		if pool == nil || pool.Type != types.NodeCredits || len(pool.Courses) == 0 || len(names) != 1 || sharesCourses(fixed, pool) {
+			continue
+		}
+		amount, _ := strconv.ParseFloat(rm[1], 64)
+		floor, _ := strconv.ParseFloat(rm[3], 64)
+		rest := &compRow{r: &types.Requirement{Kind: types.RequirementAllocation, Raw: row.r.Raw,
+			Req: &types.ReqNode{Type: types.NodeCredits, Amount: amount, Designators: []string{rm[2]}}}}
+		rest.children = []*compRow{{r: &types.Requirement{Kind: types.RequirementConstraint, Raw: strings.TrimSpace(parts[2]),
+			Req: &types.ReqNode{Type: types.NodeCredits, Amount: floor, Lists: names}}}}
+		row.r.Req = nil
+		row.children = []*compRow{
+			{r: &types.Requirement{Kind: types.RequirementAllocation, Raw: row.r.Raw, Req: andNode(fixed, pool)}},
+			rest,
+		}
+	}
 }

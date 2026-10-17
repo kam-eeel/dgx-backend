@@ -10,8 +10,8 @@ import (
 	"degree-explorer/types"
 )
 
-// List lines: lines that set out the courses items draw on, rather than
-// requirements. They are recorded as list definitions, which namedLists resolves.
+// List lines: lines that set out the courses items draw on, kept as list
+// definitions, and leads that read the lines under them as one item.
 
 var (
 	// complCodeLineLeadRe matches a lead over a line of codes: "2.5 credits
@@ -494,10 +494,6 @@ func (a *compAssembler) namedListCodes(name string) []string {
 	return nil
 }
 
-// complWidenNamedListRe matches a capped share from a list named below:
-// "Students may take up to a 0.5 credit from the Equivalent Courses list below".
-var complWidenNamedListRe = regexp.MustCompile(`(?i)^students\s+may\s+take\s+up\s+to\s+(?:a\s+)?` + amountPat + `\s+credits?\s+from\s+the\s+(.+?)\s+list\s+below$`)
-
 // complItemListRe matches a sentence listing the courses of the requirement
 // before it: "The following courses fulfill the Diversity and Identity
 // requirement: ...".
@@ -564,4 +560,133 @@ func listMemberAlt(n *types.ReqNode) *types.ReqNode {
 		return n
 	}
 	return andNode(append([]*types.ReqNode{orNode(n.Items[0], text)}, caps...)...)
+}
+
+var (
+	// complCodeTitleLineRe matches a course and its title: "SDS255H1:
+	// Histories of Sexuality".
+	complCodeTitleLineRe = regexp.MustCompile(`^(` + codePat + `)\s*:\s*[A-Za-z][^\d;/]*$`)
+	// complAreaLineRe matches an area and its courses: "Statistics: STA302H1,
+	// STA313H1;". The groups are the area and the codes.
+	complAreaLineRe = regexp.MustCompile(`^([A-Z][A-Za-z&' ]{1,60}):\s*(` + codePat + `(?:\s*,\s*` + codePat + `)*)\s*[;.]?$`)
+	// complAreaOrLineRe matches an area line with a rule of its own: "Astronomy:
+	// AST430H1, or AST425Y1 (0.5 credit from point 1 above).".
+	complAreaOrLineRe = regexp.MustCompile(`^[A-Z][A-Za-z&' ]{1,60}:\s*(` + codePat + `),?\s+or\s+` + codePat + `\b.*$`)
+	// complNamedCoursesLeadRe matches a lead naming the courses under it: "1.0
+	// credit from the SDS Foundational Courses:".
+	complNamedCoursesLeadRe = regexp.MustCompile(`(?i)^` + amountPat + `\s+credits?\s+from\s+the\s+(?-i:[A-Z])[\w&' -]*?\s+courses\s*:$`)
+	// complCoursesSumLeadRe matches a lead naming courses and their total: "SDS
+	// Foundational Courses (1.5 credits):".
+	complCoursesSumLeadRe = regexp.MustCompile(`(?i)^(?-i:[A-Z])[\w&' -]*?\s+courses\s+\(` + amountPat + `\s+credits?\)\s*:$`)
+	// complFollowingListLeadRe matches a lead over one line of courses: "(a
+	// minimum of one 0.5 credit from the following list):".
+	complFollowingListLeadRe = regexp.MustCompile(`(?i)\((?:a\s+minimum\s+of\s+)?(?:one\s+)?` + amountPat + `\s+credits?\s+from\s+the\s+following\s+list\)\s*:$`)
+	// complAllCoursesLineRe matches that line: "All 400-level SDS and JNS
+	// courses.".
+	complAllCoursesLineRe = regexp.MustCompile(`^All\s+(.+?\s+courses)\.?$`)
+)
+
+// leadLines reads an item whose lead names the courses on the lines under it,
+// when they have too few codes for listLead: a pool of them, all of them, an
+// or of a pool per area, or one line's pool. row is the item's allocation, not
+// yet added. It reports whether it read the item.
+func (a *compAssembler) leadLines(b *compBlock, row *compRow, ctx compCtx) bool {
+	lead := strings.TrimSpace(b.text)
+	kids := b.children
+	if len(kids) == 0 || !strings.HasSuffix(lead, ":") {
+		return false
+	}
+	plain := func(c *compBlock) bool {
+		return c.kind != blockHeading && len(c.children) == 0 && !complAmountRe.MatchString(c.text)
+	}
+	// text is a line as written, with its label: "Statistics: STA302H1, ..."
+	text := func(c *compBlock) string {
+		if c.kind == blockLabelled && c.label != "" {
+			return c.label + ": " + strings.TrimSpace(c.text)
+		}
+		return strings.TrimSpace(c.text)
+	}
+	run := func(re *regexp.Regexp) int {
+		n := 0
+		for n < len(kids) && plain(kids[n]) && re.MatchString(text(kids[n])) {
+			n++
+		}
+		return n
+	}
+	var body *types.ReqNode
+	n := 0
+	switch {
+	case complNamedCoursesLeadRe.MatchString(lead):
+		amount, _ := strconv.ParseFloat(complNamedCoursesLeadRe.FindStringSubmatch(lead)[1], 64)
+		if n = run(complCodeTitleLineRe); n < 2 || n < len(kids) && complCodeTitleLineRe.MatchString(text(kids[n])) {
+			return false
+		}
+		var codes []string
+		for _, c := range kids[:n] {
+			codes = append(codes, complCodeTitleLineRe.FindStringSubmatch(text(c))[1])
+		}
+		if weightOf(codes) < amount-1e-9 {
+			return false
+		}
+		body = &types.ReqNode{Type: types.NodeCredits, Amount: amount, Courses: dedupe(codes)}
+	case complCoursesSumLeadRe.MatchString(lead):
+		amount, _ := strconv.ParseFloat(complCoursesSumLeadRe.FindStringSubmatch(lead)[1], 64)
+		if n = run(complCodeTitleLineRe); n < 2 || n < len(kids) && complCodeTitleLineRe.MatchString(text(kids[n])) {
+			return false
+		}
+		var codes []string
+		for _, c := range kids[:n] {
+			codes = append(codes, complCodeTitleLineRe.FindStringSubmatch(text(c))[1])
+		}
+		if math.Abs(weightOf(codes)-amount) > 1e-9 {
+			return false // all of them, so they must add up to the amount
+		}
+		body = andNode(courseNodes(dedupe(codes))...)
+	case complOneOfLeadRe.MatchString(lead) && complAmountRe.MatchString(lead):
+		amount, err := strconv.ParseFloat(strings.Fields(complAmountRe.FindString(lead))[0], 64)
+		if n = run(complAreaLineRe); err != nil || n < 2 {
+			return false
+		}
+		var opts []*types.ReqNode
+		for _, c := range kids[:n] {
+			codes := codeRe.FindAllString(complAreaLineRe.FindStringSubmatch(text(c))[2], -1)
+			switch w := weightOf(codes); {
+			case len(codes) == 1 && math.Abs(w-amount) < 1e-9:
+				opts = append(opts, &types.ReqNode{Type: types.NodeCourse, Code: codes[0]})
+			case w >= amount-1e-9:
+				opts = append(opts, &types.ReqNode{Type: types.NodeCredits, Amount: amount, Courses: dedupe(codes)})
+			default:
+				return false // an area that can't make the amount
+			}
+		}
+		if c := kids[min(n, len(kids)-1)]; n < len(kids) && c.kind != blockHeading && len(c.children) == 0 {
+			// an area with a rule of its own: its first course, and the line
+			if m := complAreaOrLineRe.FindStringSubmatch(text(c)); m != nil {
+				if math.Abs(courseWeight(m[1])-amount) < 1e-9 {
+					opts = append(opts, &types.ReqNode{Type: types.NodeCourse, Code: m[1]})
+				}
+				opts = append(opts, textNode(types.TextOther, cleanNote(text(c))))
+				n++
+			}
+		}
+		body = orNode(opts...)
+	case complFollowingListLeadRe.MatchString(lead) && len(kids) >= 1 && plain(kids[0]) && complAllCoursesLineRe.MatchString(text(kids[0])):
+		m := complFollowingListLeadRe.FindStringSubmatch(lead)
+		p, _ := parseCompletionText(m[1] + " credit from " + complAllCoursesLineRe.FindStringSubmatch(text(kids[0]))[1])
+		if !isPool(p) || p.Courses != nil || p.Designators == nil || hasText(p) {
+			return false
+		}
+		body, n = p, 1
+	default:
+		return false
+	}
+	row.r.Req = body
+	for _, c := range kids[:n] {
+		row.r.Raw += "\n" + a.line(c)
+	}
+	a.add(row, ctx.owner)
+	a.leadRows[b] = row
+	a.leadRows[kids[n-1]] = row
+	a.children(kids[n:], b.text, ctx, row)
+	return true
 }
