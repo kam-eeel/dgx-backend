@@ -5,7 +5,6 @@ import (
 	"degree-explorer/store"
 	"degree-explorer/utils"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -48,9 +47,9 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /course/{id} -> JSON
-func courseHandler(ctx context.Context, db *store.Store) http.HandlerFunc {
+func courseHandler(db *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		searchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		searchCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		c_id := r.PathValue("id")
 		course, err := db.GetCourse(searchCtx, c_id)
@@ -63,9 +62,9 @@ func courseHandler(ctx context.Context, db *store.Store) http.HandlerFunc {
 }
 
 // GET /program/{id} -> JSON
-func programHandler(ctx context.Context, db *store.Store) http.HandlerFunc {
+func programHandler(db *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		searchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		searchCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		p_id := r.PathValue("id")
 		course, err := db.GetProgram(searchCtx, p_id)
@@ -78,10 +77,10 @@ func programHandler(ctx context.Context, db *store.Store) http.HandlerFunc {
 }
 
 // GET /db -> file download
-func dbHandler(dbPath string) http.HandlerFunc {
+func dbHandler(snapshotPath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, dbPath))
-		http.ServeFile(w, r, dbPath)
+		w.Header().Set("Content-Disposition", `attachment; filename="dgx.db"`)
+		http.ServeFile(w, r, snapshotPath)
 	}
 }
 
@@ -92,9 +91,9 @@ func Serve(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /course/{id}", courseHandler(ctx, db))
-	mux.HandleFunc("GET /program/{id}", programHandler(ctx, db))
-	mux.HandleFunc("GET /db", dbHandler(cfg.DBPath))
+	mux.HandleFunc("GET /course/{id}", courseHandler(db))
+	mux.HandleFunc("GET /program/{id}", programHandler(db))
+	mux.HandleFunc("GET /db", dbHandler(cfg.SnapshotPath))
 
 	// initialize rate limiter at 5 req/s per IP, bursts up to 5
 	limiter := newRateLimiter(ctx, 5, 5)

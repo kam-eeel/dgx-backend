@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"bytes"
+	"context"
 	"degree-explorer/utils"
 	"errors"
 	"fmt"
@@ -35,8 +36,15 @@ const (
 
 var ErrNoEntries = errors.New("no entries found on the page")
 
-func pageHasEntries(url string) ([]byte, error) {
-	page, err := utils.GetPage(url)
+func sleep(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
+func pageHasEntries(ctx context.Context, url string) ([]byte, error) {
+	page, err := utils.GetPage(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +72,15 @@ func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	}
 }
 
-func dispatchScraper(searchURL string, pt PageType, ch chan<- *PageData, wg *sync.WaitGroup) {
+func dispatchScraper(ctx context.Context, searchURL string, pt PageType, ch chan<- *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	i, retries, skipped := 0, 0, 0
-	for {
+	for ctx.Err() == nil {
 		pURL := searchURL + strconv.Itoa(i)
-		page, err := pageHasEntries(pURL)
-		if errors.Is(err, ErrNoEntries) {
+		page, err := pageHasEntries(ctx, pURL)
+		if ctx.Err() != nil {
+			break
+		} else if errors.Is(err, ErrNoEntries) {
 			break
 		} else if err != nil {
 			retries++
@@ -85,17 +95,17 @@ func dispatchScraper(searchURL string, pt PageType, ch chan<- *PageData, wg *syn
 				}
 				i++
 			}
-			time.Sleep(5 * time.Second)
+			sleep(ctx, 5*time.Second)
 			continue
 		}
 		retries, skipped = 0, 0
 		ch <- &PageData{n: i, pType: pt, data: page}
-		time.Sleep(time.Second)
+		sleep(ctx, time.Second)
 		i++
 	}
 }
 
-func DownloadPages(cfg *utils.Config) {
+func DownloadPages(ctx context.Context, cfg *utils.Config) {
 	ch := make(chan *PageData)
 
 	var wg sync.WaitGroup
@@ -104,8 +114,8 @@ func DownloadPages(cfg *utils.Config) {
 	var pageWG sync.WaitGroup
 	pageWG.Add(2)
 
-	go dispatchScraper(CoursesURL, COURSES, ch, &pageWG)
-	go dispatchScraper(ProgramsURL, PROGRAMS, ch, &pageWG)
+	go dispatchScraper(ctx, CoursesURL, COURSES, ch, &pageWG)
+	go dispatchScraper(ctx, ProgramsURL, PROGRAMS, ch, &pageWG)
 
 	go func() {
 		defer wg.Done()

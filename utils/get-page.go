@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"time"
@@ -8,8 +9,8 @@ import (
 
 var client = &http.Client{Timeout: 30 * time.Second}
 
-func GetPage(url string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func GetPage(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

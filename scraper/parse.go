@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -161,6 +162,12 @@ func parseDir[T any](dir string, parse func(*goquery.Document) []*T) []*T {
 	var wg sync.WaitGroup
 	for i, fp := range files {
 		wg.Go(func() {
+			// catch parser panics and continue
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("parse %s: panic: %v\n%s", fp, r, debug.Stack())
+				}
+			}()
 			doc, err := loadDoc(fp)
 			if err != nil {
 				log.Printf("load %s: %v", fp, err)

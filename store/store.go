@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,15 @@ var migrationsFS embed.FS
 
 type Store struct {
 	db *sql.DB
+}
+
+func (s *Store) Snapshot(ctx context.Context, path string) error {
+	tmp := path + ".tmp"
+	os.Remove(tmp) // VACUUM INTO fails if file exists
+	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", tmp); err != nil {
+		return fmt.Errorf("vacuum into %s: %v", tmp, err)
+	}
+	return os.Rename(tmp, path)
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"degree-explorer/types"
 )
@@ -88,7 +89,7 @@ func (s *Store) GetCourse(ctx context.Context, courseCode string) (types.Course,
 		&c.Prerequisites, &c.Corequisites, &c.Exclusions, &c.Breadth,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return types.Course{}, ErrNotFound
+		return types.Course{}, fmt.Errorf("get course %s: %w", courseCode, ErrNotFound)
 	}
 	if err != nil {
 		return types.Course{}, fmt.Errorf("get course %s: %w", courseCode, err)
@@ -204,7 +205,7 @@ func (s *Store) GetProgram(ctx context.Context, programCode string) (types.Progr
 	).Scan(&p.Code, &p.Type, &p.Number, &p.Title, &p.Enrolment, &p.Completion, &p.Areas)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return types.Program{}, ErrNotFound
+		return types.Program{}, fmt.Errorf("get program %s: %w", programCode, ErrNotFound)
 	}
 	if err != nil {
 		return types.Program{}, fmt.Errorf("get program %s: %w", programCode, err)
@@ -265,6 +266,37 @@ func (s *Store) DeleteProgram(ctx context.Context, programCode string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// ----------------------------------------------------------------------------
+// Version
+// ----------------------------------------------------------------------------
+
+// SchoolYear returns the latest school year the db was updated for, or "" if none.
+func (s *Store) SchoolYear(ctx context.Context) (string, error) {
+	var year string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT school_year FROM version ORDER BY school_year DESC LIMIT 1`,
+	).Scan(&year)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get school year: %w", err)
+	}
+	return year, nil
+}
+
+func (s *Store) SetVersion(ctx context.Context, schoolYear string, lastUpdated time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO version (school_year, last_updated) VALUES (?, ?)
+		ON CONFLICT(school_year) DO UPDATE SET last_updated = excluded.last_updated`,
+		schoolYear, lastUpdated.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("set version %s: %w", schoolYear, err)
 	}
 	return nil
 }
