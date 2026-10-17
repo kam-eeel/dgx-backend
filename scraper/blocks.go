@@ -13,11 +13,9 @@ import (
 	"golang.org/x/net/html"
 )
 
-// blockText renders a requirements section as line-structured text: one line
-// per paragraph, line break or list item, list items as "- " or "1. " (indented
-// two spaces per nesting level), bold as **x**, italics as _x_, and struck-out
-// text dropped. Unlike .Text() this keeps the boundaries the requirement
-// parsers depend on.
+// blockText renders a requirements section as text with a line per paragraph,
+// break or list item ("- ", "1. "), **bold**, _italics_ and no struck-out text.
+// Unlike .Text() it keeps the boundaries the requirement parsers depend on.
 func blockText(sel *goquery.Selection) string {
 	r := &renderer{}
 	for _, n := range sel.Nodes {
@@ -134,11 +132,9 @@ func (r *renderer) children(n *html.Node) {
 	}
 }
 
-// flush renders the inline runs as one line. Whitespace is collapsed across
-// runs, and markers are only opened right before a word and closed before the
-// space that follows it, so they never wrap whitespace. A marker that spans a
-// line break is closed at the end of the line and reopened on the next one,
-// because each line is rendered from its runs alone.
+// flush renders the inline runs as one line, collapsing whitespace. Markers
+// open right before a word and close before the next space; one that spans a
+// line break is closed at the line's end and reopened on the next line.
 func (r *renderer) flush() {
 	var b strings.Builder
 	var open []string

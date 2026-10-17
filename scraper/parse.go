@@ -174,8 +174,7 @@ func parseDir[T any](dir string, parse func(*goquery.Document) []*T) []*T {
 	return slices.Concat(results...)
 }
 
-// ParsePages parses the downloaded program and course pages, links them
-// (see reqs.Link), and stores both.
+// ParsePages parses, links and stores the downloaded program and course pages.
 func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	programs := parseDir(cfg.ProgramsDir, parsePrograms)
 	courses := parseDir(cfg.CoursesDir, parseCourses)

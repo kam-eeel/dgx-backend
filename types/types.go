@@ -87,7 +87,7 @@ type Course struct {
 	Prerequisites *Requisite  `json:"prerequisites"`
 	Corequisites  *Requisite  `json:"corequisites"`
 	Exclusions    *Exclusions `json:"exclusions"`
-	Breadth       IntList     `json:"breadth"` // breadth categories 1-5 (UTSGBreadthCategories)
+	Breadth       IntList     `json:"breadth"` // breadth categories 1-5
 }
 
 type Program struct {

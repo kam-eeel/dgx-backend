@@ -74,5 +74,4 @@ func TestNilPointersBecomeNULL(t *testing.T) {
 	}
 }
 
-// maxAmount is a MaxAmount value.
 func maxAmount(v float64) *float64 { return &v }
