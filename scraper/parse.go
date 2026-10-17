@@ -2,7 +2,7 @@ package scraper
 
 import (
 	"context"
-	"degree-explorer/reqs"
+	"degree-explorer/parser"
 	"degree-explorer/store"
 	"degree-explorer/types"
 	"degree-explorer/utils"
@@ -81,13 +81,13 @@ func parseCourses(doc *goquery.Document) []*types.Course {
 		c.Description = strings.TrimSpace(s.Find(".views-field-body").Find(".field-content").Text())
 
 		if t := strings.TrimSpace(s.Find(".views-field-field-prerequisite").Find(".field-content").Text()); t != "" {
-			c.Prerequisites = reqs.ParseRequisite(t)
+			c.Prerequisites = parser.ParseRequisite(t)
 		}
 		if t := strings.TrimSpace(s.Find(".views-field-field-corequisite").Find(".field-content").Text()); t != "" {
-			c.Corequisites = reqs.ParseRequisite(t)
+			c.Corequisites = parser.ParseRequisite(t)
 		}
 		if t := strings.TrimSpace(s.Find(".views-field-field-exclusion").Find(".field-content").Text()); t != "" {
-			c.Exclusions = reqs.ParseExclusions(t)
+			c.Exclusions = parser.ParseExclusions(t)
 		}
 
 		t := strings.TrimSpace(s.Find(".views-field-field-breadth-requirements").Find(".field-content").Text())
@@ -138,10 +138,10 @@ func parsePrograms(doc *goquery.Document) []*types.Program {
 		}
 
 		if t := blockText(s.Find(".views-field-field-enrolment-requirements").Find(".field-content")); t != "" {
-			p.Enrolment = reqs.ParseEnrolment(t)
+			p.Enrolment = parser.ParseEnrolment(t)
 		}
 		if t := blockText(s.Find(".views-field-field-completion-requirements").Find(".field-content")); t != "" {
-			p.Completion = reqs.ParseCompletion(t)
+			p.Completion = parser.ParseCompletion(t)
 		}
 
 		s.Find(".views-field-field-section-link").Find("a").Each(func(_ int, ss *goquery.Selection) {
@@ -178,7 +178,7 @@ func parseDir[T any](dir string, parse func(*goquery.Document) []*T) []*T {
 func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	programs := parseDir(cfg.ProgramsDir, parsePrograms)
 	courses := parseDir(cfg.CoursesDir, parseCourses)
-	reqs.Link(courses, programs)
+	parser.Link(courses, programs)
 
 	if err := db.CreatePrograms(ctx, programs); err != nil {
 		return err
