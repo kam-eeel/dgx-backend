@@ -2,8 +2,6 @@ package utils
 
 import (
 	"degree-explorer/types"
-	"errors"
-	"os"
 )
 
 type Config struct {
@@ -12,21 +10,12 @@ type Config struct {
 	CoursesDir  string
 	ProgramsDir string
 	Campuses    []string
-}
-
-func dirExists(p string) bool {
-	info, err := os.Stat(p)
-	if err == nil {
-		return info.IsDir()
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	return false
+	ListenOn    string
+	Port        string
 }
 
 func LoadConfig() *Config {
-	cfg := &Config{
+	return &Config{
 		DBPath:      "app.db",
 		DataDir:     "data",
 		CoursesDir:  "data/courses",
@@ -36,14 +25,7 @@ func LoadConfig() *Config {
 			string(types.UTM),
 			string(types.UTSC),
 		},
+		ListenOn: "127.0.0.1",
+		Port:     "8080",
 	}
-
-	if !dirExists(cfg.CoursesDir) {
-		os.MkdirAll(cfg.CoursesDir, 0755)
-	}
-	if !dirExists(cfg.ProgramsDir) {
-		os.MkdirAll(cfg.ProgramsDir, 0755)
-	}
-
-	return cfg
 }

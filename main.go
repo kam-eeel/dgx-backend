@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"degree-explorer/scraper"
+	"degree-explorer/api"
 	"degree-explorer/store"
 	"degree-explorer/utils"
 	"log"
@@ -24,8 +24,18 @@ func main() {
 	}
 	defer db.Close()
 
-	// scraper.DownloadPages(cfg)
-	if err := scraper.ParsePages(ctx, cfg, db); err != nil {
-		log.Fatal(err)
+	// start api server
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- api.Serve(ctx, cfg, db) }()
+
+	// block until server exit (signal-triggered or app shutdown)
+	if err := <-serveErr; err != nil {
+		log.Fatalf("server: %v", err)
 	}
+	log.Println("shutdown complete")
+
+	// scraper.DownloadPages(cfg)
+	// if err := scraper.ParsePages(ctx, cfg, db); err != nil {
+	// 	log.Fatal(err)
+	// }
 }
