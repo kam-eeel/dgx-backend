@@ -1,7 +1,6 @@
 package reqs
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -26,15 +25,6 @@ const (
 	roleCrNcr                           // a rule on courses taken CR/NCR
 	roleOverlap                         // a course may count toward two named requirements
 )
-
-var sentenceRoleNames = [...]string{"requirement", "constraint", "limit", "listDef", "advisory", "exclusion", "transfer", "crNcr", "overlap"}
-
-func (r sentenceRole) String() string {
-	if r >= 0 && int(r) < len(sentenceRoleNames) {
-		return sentenceRoleNames[r]
-	}
-	return fmt.Sprintf("sentenceRole(%d)", int(r))
-}
 
 const complAmountPat = `\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?`
 

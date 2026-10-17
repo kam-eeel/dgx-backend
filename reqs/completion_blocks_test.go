@@ -752,3 +752,7 @@ func TestBlkItemOrdinal(t *testing.T) {
 		}
 	}
 }
+
+var blockKindNames = [...]string{"prose", "heading", "item", "bullet", "labelled"}
+
+func (k blockKind) String() string { return blockKindNames[k] }

@@ -15,10 +15,10 @@ import (
 //  1. Parsing stays pure: a membership phrase that does nothing but name
 //     programs becomes a program node that keeps the phrase in Text. Explicit
 //     codes go straight into Programs.
-//  2. ResolvePrograms fills in Programs by matching the subject names and
-//     program types in Text against the scraped catalogue. A node it can't
-//     resolve with confidence goes back to membership text (Review), so a
-//     resolved tree never has a program node without Programs.
+//  2. ProgramIndex.Resolve fills in Programs by matching the subject names
+//     and program types in Text against the scraped catalogue. A node it
+//     can't resolve with confidence goes back to membership text (Review), so
+//     a resolved tree never has a program node without Programs.
 //
 // A program node is Met when the student is in any of its Programs and NotMet
 // otherwise. A wrong resolution therefore produces a false NotMet, which is
@@ -430,13 +430,8 @@ func NewProgramIndex(programs []*types.Program) *ProgramIndex {
 	return idx
 }
 
-// ResolvePrograms fills in Programs for every program node in r from the
-// catalogue, and turns nodes it can't resolve back into membership text.
-func ResolvePrograms(r *types.Requisite, programs []*types.Program) {
-	NewProgramIndex(programs).Resolve(r)
-}
-
-// Resolve is ResolvePrograms with a prebuilt index. r may be nil.
+// Resolve fills in Programs for every program node in r from the catalogue,
+// and turns nodes it can't resolve back into membership text. r may be nil.
 func (idx *ProgramIndex) Resolve(r *types.Requisite) {
 	if r != nil {
 		idx.resolveNode(r.Req)

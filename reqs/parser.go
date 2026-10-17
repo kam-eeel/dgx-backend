@@ -60,11 +60,6 @@ func newParser(src string, toks []token) *parser {
 	return &parser{src: src, toks: toks, spans: map[*types.ReqNode]span{}}
 }
 
-// parseExpr lexes and parses src without post-processing.
-func parseExpr(src string) *types.ReqNode {
-	return newParser(src, lex(src)).parseAll()
-}
-
 // parseAll parses every token, stepping over stray ")" so nothing after one
 // is lost.
 func (p *parser) parseAll() *types.ReqNode {

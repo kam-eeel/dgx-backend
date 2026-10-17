@@ -42,7 +42,7 @@ func Link(courses []*types.Course, programs []*types.Program) {
 	linkCompletionDesignators(courses, programs)
 	titles, areas := newTitleIndex(programs), newAreaIndex(programs)
 	cat := newEnrolCatalog(courses, programs)
-	linkCompletions(courses, programs, titles, idx, areas, cat)
+	linkCompletions(courses, programs, titles, cat)
 	for _, p := range programs {
 		p.Enrolment = repairEnrolment(p.Enrolment, known)
 		e := p.Enrolment

@@ -1199,7 +1199,6 @@ var (
 // and(pool, floor) carries (complCountFloorRe, a "including at least" part).
 type compStrictPool struct {
 	pool   *types.ReqNode // credits: amount, courses, designators, levels
-	lists  []string       // the pool's lists, when it was read from them
 	floors []*types.ReqNode
 	byName map[string]*types.CourseList
 }
@@ -1234,7 +1233,6 @@ func (a *compAssembler) strictPool(n *types.ReqNode, byName map[string]*types.Co
 					if it.Designators != nil || it.Courses != nil {
 						return sp, false
 					}
-					sp.lists = it.Lists
 					// Lists with filters stay a pool of lists, which only a
 					// route naming courses already on them widens (routeWider).
 					if codes, ok := a.listCodes(it.Lists, byName); ok {

@@ -65,7 +65,7 @@ var reqGoldens = []struct{ name, raw, want string }{
 	{"ANT456H1", "ANT207H1 and any 300-level course in Society",
 		jAnd(jC("ANT207H1"), `{"type":"credits","amount":0.5,"levels":[300]}`, jT("other", "in Society"))},
 	{"EUR495H1", "Open only to students enrolled in the European Studies Major Program. Third and Fourth year students only.",
-		jAnd(jP("Open only to students enrolled in the European Studies Major Program"), `{"type":"credits","amount":9}`)}, // names resolved later by ResolvePrograms
+		jAnd(jP("Open only to students enrolled in the European Studies Major Program"), `{"type":"credits","amount":9}`)}, // names resolved later by Link
 	{"NMC499Y1", "4th year status in NMC Specialist program",
 		jAnd(`{"type":"credits","amount":14}`, jP("in NMC Specialist program"))},
 

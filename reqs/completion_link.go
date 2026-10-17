@@ -720,7 +720,7 @@ func remark(c *types.Completion) {
 // and sets the Review markers again on the programs it changed (remark).
 // Link resolves program names in the exclusions (linkCompletionExclusions)
 // after the enrolment step, which tells it the programs enrolment requires.
-func linkCompletions(courses []*types.Course, programs []*types.Program, titleIdx titleIndex, progs *ProgramIndex, areas areaIndex, cat *enrolCatalog) {
+func linkCompletions(courses []*types.Course, programs []*types.Program, titleIdx titleIndex, cat *enrolCatalog) {
 	titles := map[string]string{}
 	topics := map[string][]string{} // designator -> its special-topics courses
 	for _, c := range courses {

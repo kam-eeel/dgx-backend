@@ -156,53 +156,6 @@ func (m *markCauses) causes(r *types.Requirement) []*types.ReqNode {
 	return out
 }
 
-// markerCauses returns, for each row of c with a Review marker beside its
-// count (or(count, marker), markIncomplete's mark), the open texts that
-// leave that count incomplete, as markIncomplete found them: the row's own
-// (a total's), its parent's (a constraint's), or the incomplete top-level
-// allocations' (a top-level constraint's). A marker with none is a
-// shortfall's. c is not changed. A constraint the marker replaced (its own
-// and(floor, text)) is left out: its texts are gone, and its marker's kind
-// is theirs.
-func markerCauses(c *types.Completion) map[int][]*types.ReqNode {
-	stripped := &types.Completion{}
-	marked := map[int]bool{}
-	for _, r := range c.Requirements {
-		if r == nil {
-			stripped.Requirements = append(stripped.Requirements, nil)
-			continue
-		}
-		s := *r
-		if n := r.Req; n != nil && n.Type == types.NodeOr && len(n.Items) == 2 && isMarker(n.Items[1], r) {
-			s.Req = n.Items[0]
-			marked[r.Number] = true
-		}
-		stripped.Requirements = append(stripped.Requirements, &s)
-	}
-	m := newMarkCauses(stripped)
-	var top []*types.ReqNode
-	for _, r := range m.kids[0] {
-		if r.Kind == types.RequirementAllocation && m.incomplete(r) {
-			top = append(top, m.causes(r)...)
-		}
-	}
-	out := map[int][]*types.ReqNode{}
-	for _, r := range stripped.Requirements {
-		switch {
-		case r == nil || !marked[r.Number]:
-		case r.Kind != types.RequirementConstraint:
-			out[r.Number] = m.causes(r)
-		case r.Parent != 0:
-			if p := r.Parent - 1; p < len(stripped.Requirements) && stripped.Requirements[p] != nil {
-				out[r.Number] = m.causes(stripped.Requirements[p])
-			}
-		default:
-			out[r.Number] = top
-		}
-	}
-	return out
-}
-
 // markerKind is the kind of a Review marker whose count the open texts why
 // leave incomplete: theirs when every one is Review by design and of one
 // kind, else other ("If causes are mixed, keep other": a permission route

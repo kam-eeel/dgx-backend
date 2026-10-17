@@ -361,10 +361,6 @@ func exclusionPhraseNodes(phrase string) []*types.ReqNode {
 	return out
 }
 
-func programText(s string) *types.ReqNode {
-	return &types.ReqNode{Type: types.NodeText, Kind: types.TextMembership, Text: s}
-}
-
 // programPhraseNode turns a phrase naming programs into program nodes:
 // explicit codes go into Programs ("Computer Science Major Program
 // (ASMAJ1689)"); names are left for Link to resolve ("History Specialist",

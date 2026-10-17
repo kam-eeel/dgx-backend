@@ -1,6 +1,7 @@
 package reqs
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -413,4 +414,13 @@ func TestSentenceRoleString(t *testing.T) {
 	if got := sentenceRole(99).String(); got != "sentenceRole(99)" {
 		t.Errorf("sentenceRole(99).String() = %q", got)
 	}
+}
+
+var sentenceRoleNames = [...]string{"requirement", "constraint", "limit", "listDef", "advisory", "exclusion", "transfer", "crNcr", "overlap"}
+
+func (r sentenceRole) String() string {
+	if r >= 0 && int(r) < len(sentenceRoleNames) {
+		return sentenceRoleNames[r]
+	}
+	return fmt.Sprintf("sentenceRole(%d)", int(r))
 }

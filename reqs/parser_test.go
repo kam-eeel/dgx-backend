@@ -466,3 +466,8 @@ func jPairCap(most float64, codes ...string) string {
 	b, _ := json.Marshal(codes)
 	return fmt.Sprintf(`{"type":"credits","courses":%s,"max_amount":%g}`, b, most)
 }
+
+// parseExpr lexes and parses src without post-processing.
+func parseExpr(src string) *types.ReqNode {
+	return newParser(src, lex(src)).parseAll()
+}

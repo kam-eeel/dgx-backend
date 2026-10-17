@@ -32,13 +32,9 @@ const (
 	blockLabelled                  // "**Group A:** CSC209H1; …", "Note: …", "- Computer Science: …"
 )
 
-var blockKindNames = [...]string{"prose", "heading", "item", "bullet", "labelled"}
-
 // isNotes reports whether a heading's name ends in notes: "Notes:", "**Important
 // Notes:**", "_Applied Genetics and Biotechnology Major Notes:_".
 func (b *compBlock) isNotes() bool { return blkEndsInNotesRe.MatchString(b.section) }
-
-func (k blockKind) String() string { return blockKindNames[k] }
 
 type compBlock struct {
 	kind   blockKind
