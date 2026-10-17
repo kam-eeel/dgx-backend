@@ -24,6 +24,9 @@ func schoolYear(t time.Time) string {
 
 func UpdateDB(ctx context.Context, cfg *utils.Config, db *store.Store, loc *time.Location) func() {
 	return func() {
+		cfg.SetStatus("checking for updates")
+		defer cfg.SetStatus("healthy")
+
 		year := schoolYear(time.Now().In(loc))
 		latest, err := db.SchoolYear(ctx)
 		if err != nil {
@@ -34,6 +37,7 @@ func UpdateDB(ctx context.Context, cfg *utils.Config, db *store.Store, loc *time
 			return
 		}
 		log.Printf("updating db for %s", year)
+		cfg.SetStatus("updating database")
 
 		err = scrape(ctx, cfg, db)
 		if rmErr := os.RemoveAll(cfg.DataDir); rmErr != nil {

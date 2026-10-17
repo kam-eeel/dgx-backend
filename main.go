@@ -41,6 +41,10 @@ func run() error {
 	}
 	defer db.Close()
 
+	// start api server
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- api.Serve(ctx, cfg, db) }()
+
 	// check for db snapshot (for GET /db) and create if not exists
 	if _, err := os.Stat(cfg.SnapshotPath); os.IsNotExist(err) {
 		if err := db.Snapshot(ctx, cfg.SnapshotPath); err != nil {
@@ -69,11 +73,9 @@ func run() error {
 	// also run at startup, to recover a missed or failed update
 	c.Schedule(&once{}, cron.FuncJob(update))
 
-	c.Start()
+	cfg.SetStatus("healthy")
 
-	// start api server
-	serveErr := make(chan error, 1)
-	go func() { serveErr <- api.Serve(ctx, cfg, db) }()
+	c.Start()
 
 	// block until server exit (signal-triggered or server failure)
 	var runErr error

@@ -42,8 +42,10 @@ func clientIP(r *http.Request) string {
 }
 
 // GET /health -> JSON
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, Status{Status: "ok", Time: time.Now().UTC()})
+func healthHandler(cfg *utils.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, Status{Status: cfg.Status(), Time: time.Now().UTC()})
+	}
 }
 
 // GET /course/{id} -> JSON
@@ -90,7 +92,7 @@ func Serve(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /health", healthHandler(cfg))
 	mux.HandleFunc("GET /course/{id}", courseHandler(db))
 	mux.HandleFunc("GET /program/{id}", programHandler(db))
 	mux.HandleFunc("GET /db", dbHandler(cfg.SnapshotPath))
