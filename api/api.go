@@ -5,9 +5,11 @@ import (
 	"degree-explorer/store"
 	"degree-explorer/utils"
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -28,6 +30,31 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeError(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+// writeLookupError sends 404 for a missing row; other errors are logged and
+// sent as a plain 500.
+func writeLookupError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	log.Print(err)
+	writeError(w, http.StatusInternalServerError, "internal server error")
+}
+
+// cacheData is the Cache-Control for course, program and db responses, which
+// change at most once a day.
+const cacheData = "public, max-age=3600"
+
+// withHeaders sets headers every response shares; handlers override
+// Cache-Control on success.
+func withHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func clientIP(r *http.Request) string {
@@ -56,9 +83,10 @@ func courseHandler(db *store.Store) http.HandlerFunc {
 		c_id := r.PathValue("id")
 		course, err := db.GetCourse(searchCtx, c_id)
 		if err != nil {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeLookupError(w, err)
 			return
 		}
+		w.Header().Set("Cache-Control", cacheData)
 		writeJSON(w, http.StatusOK, course)
 	}
 }
@@ -71,9 +99,10 @@ func programHandler(db *store.Store) http.HandlerFunc {
 		p_id := r.PathValue("id")
 		course, err := db.GetProgram(searchCtx, p_id)
 		if err != nil {
-			writeError(w, http.StatusNotFound, err.Error())
+			writeLookupError(w, err)
 			return
 		}
+		w.Header().Set("Cache-Control", cacheData)
 		writeJSON(w, http.StatusOK, course)
 	}
 }
@@ -82,6 +111,9 @@ func programHandler(db *store.Store) http.HandlerFunc {
 func dbHandler(snapshotPath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="dgx.db"`)
+		if _, err := os.Stat(snapshotPath); err == nil {
+			w.Header().Set("Cache-Control", cacheData)
+		}
 		http.ServeFile(w, r, snapshotPath)
 	}
 }
@@ -102,8 +134,11 @@ func Serve(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           logRequests(limiter.middleware(mux)),
+		Handler:           logRequests(withHeaders(limiter.middleware(mux))),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      60 * time.Second, // covers sending the whole db file
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// buffered so goroutine can always exit, even if no reads

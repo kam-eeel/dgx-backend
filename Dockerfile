@@ -11,9 +11,15 @@ RUN go build -o dgx-backend main.go
 
 FROM alpine:3.24
 
+RUN adduser -D -H -u 10001 dgx
+
 WORKDIR /srv
 
 COPY --from=builder /srv/dgx-backend .
+
+RUN mkdir data tmp && chown dgx:dgx data tmp
+
+USER dgx
 
 EXPOSE 8080
 

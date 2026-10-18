@@ -1,6 +1,8 @@
 services:
   dgx-backend:
-    build: .
+    build:
+      context: .
+      pull: true
     container_name: dgx-backend
     expose:
       - 8080
@@ -11,6 +13,14 @@ services:
     environment:
       - TZ=America/Toronto
     stop_grace_period: 45s
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /srv/tmp:uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:

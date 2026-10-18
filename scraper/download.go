@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,6 +37,12 @@ const (
 
 var ErrNoEntries = errors.New("no entries found on the page")
 
+var (
+	pageDelay        = time.Second
+	rateLimitWait    = 30 * time.Second
+	maxRateLimitWait = 10 * time.Minute
+)
+
 func sleep(ctx context.Context, d time.Duration) {
 	select {
 	case <-ctx.Done():
@@ -62,68 +69,85 @@ func pageHasEntries(ctx context.Context, url string) ([]byte, error) {
 	return page, nil
 }
 
-func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for page := range ch {
-		fp := filepath.Join(cfg.TempDir, string(page.pType), fmt.Sprintf("page-%d.html", page.n))
-		if err := os.WriteFile(fp, page.data, 0644); err != nil {
-			log.Printf("failed to write file %s: %v", fp, err)
-		}
+// rateLimit reports whether err is a rate-limit response (429, or 503 with
+// Retry-After) and the wait the server asked for (0 if none).
+func rateLimit(err error) (time.Duration, bool) {
+	var he *utils.HTTPError
+	if !errors.As(err, &he) {
+		return 0, false
 	}
+	switch {
+	case he.StatusCode == http.StatusTooManyRequests:
+		return he.RetryAfter, true
+	case he.StatusCode == http.StatusServiceUnavailable && he.RetryAfter > 0:
+		return he.RetryAfter, true
+	}
+	return 0, false
 }
 
-func dispatchScraper(ctx context.Context, searchURL string, pt PageType, ch chan<- *PageData, wg *sync.WaitGroup) {
-	defer wg.Done()
-	i, retries, skipped := 0, 0, 0
-	for ctx.Err() == nil {
+// dispatchScraper sends search pages from page 0 until one has no entries.
+// A rate-limited page is retried after a wait; any other error ends the run.
+func dispatchScraper(ctx context.Context, searchURL string, pt PageType, ch chan<- *PageData) error {
+	backoff := rateLimitWait
+	for i := 0; ; {
 		pURL := searchURL + strconv.Itoa(i)
 		page, err := pageHasEntries(ctx, pURL)
 		if ctx.Err() != nil {
-			break
-		} else if errors.Is(err, ErrNoEntries) {
-			break
-		} else if err != nil {
-			retries++
-			log.Printf("error getting page %s (attempt %d): %v", pURL, retries, err)
-			if retries >= 3 {
-				log.Printf("skipping page %s after %d attempts", pURL, retries)
-				retries = 0
-				skipped++
-				if skipped >= 3 {
-					log.Printf("giving up on %s after %d consecutive skipped pages", searchURL, skipped)
-					break
-				}
-				i++
+			return ctx.Err()
+		}
+		if errors.Is(err, ErrNoEntries) {
+			return nil
+		}
+		if wait, ok := rateLimit(err); ok {
+			if wait == 0 {
+				wait, backoff = backoff, min(2*backoff, maxRateLimitWait)
 			}
-			sleep(ctx, 5*time.Second)
+			wait = min(wait, time.Hour)
+			log.Printf("rate limited on %s; retrying in %s", pURL, wait)
+			sleep(ctx, wait)
 			continue
 		}
-		retries, skipped = 0, 0
-		ch <- &PageData{n: i, pType: pt, data: page}
-		sleep(ctx, time.Second)
+		if err != nil {
+			return fmt.Errorf("get %s: %w", pURL, err)
+		}
+		backoff = rateLimitWait
+		select {
+		case ch <- &PageData{n: i, pType: pt, data: page}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		sleep(ctx, pageDelay)
 		i++
 	}
 }
 
-func DownloadPages(ctx context.Context, cfg *utils.Config) {
+func DownloadPages(ctx context.Context, cfg *utils.Config) error {
+	return downloadPages(ctx, cfg, map[PageType]string{COURSES: CoursesURL, PROGRAMS: ProgramsURL})
+}
+
+func downloadPages(ctx context.Context, cfg *utils.Config, sources map[PageType]string) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
 	ch := make(chan *PageData)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var pageWG sync.WaitGroup
-	pageWG.Add(2)
-
-	go dispatchScraper(ctx, CoursesURL, COURSES, ch, &pageWG)
-	go dispatchScraper(ctx, ProgramsURL, PROGRAMS, ch, &pageWG)
-
+	var scrapers sync.WaitGroup
+	for pt, url := range sources {
+		scrapers.Go(func() {
+			if err := dispatchScraper(ctx, url, pt, ch); err != nil {
+				cancel(err)
+			}
+		})
+	}
 	go func() {
-		defer wg.Done()
-		pageWG.Wait()
+		scrapers.Wait()
 		close(ch)
 	}()
 
-	go savePages(cfg, ch, &wg)
-
-	wg.Wait()
+	for page := range ch {
+		fp := filepath.Join(cfg.TempDir, string(page.pType), fmt.Sprintf("page-%d.html", page.n))
+		if err := os.WriteFile(fp, page.data, 0644); err != nil {
+			cancel(fmt.Errorf("write %s: %w", fp, err))
+		}
+	}
+	return context.Cause(ctx)
 }

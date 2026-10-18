@@ -1,6 +1,6 @@
 # dgx-backend
 
-dgx-backend is the backend for a version of the University of Toronto's Degree Explorer being created as a student project in [CSC207H1](https://artsci.calendar.utoronto.ca/course/csc207h1). It scrapes every course and program in the Faculty of Arts & Science academic calendar at `artsci.calendar.utoronto.ca`. It parses course prerequisites, corequisites, and exclusions, and program enrolment and completion requirements, into JSON requirement trees stored in SQLite. At startup and daily at 5 AM `TZ` time (default `America/Toronto`, Eastern Time), it scrapes again if no data exists for the current school year. An HTTP API serves single courses and programs, and the whole database as a file.
+dgx-backend is the backend for a student project in [CSC207H1](https://artsci.calendar.utoronto.ca/course/csc207h1): a version of the University of Toronto's Degree Explorer. It scrapes every course and program in the Faculty of Arts & Science academic calendar at `artsci.calendar.utoronto.ca`. It parses course prerequisites, corequisites, and exclusions, and program enrolment and completion requirements, into JSON requirement trees stored in SQLite. At startup and daily at 5 AM `TZ` time (default `America/Toronto`, UTC−5 or UTC−4), it scrapes again if no data exists for the current school year. An HTTP API serves single courses and programs, and the whole database as a file.
 
 ## Contents
 
@@ -17,9 +17,12 @@ The server listens on port `8080` and accepts only `GET` requests. Every respons
 | Status | When | Body |
 |---|---|---|
 | `404 Not Found` | A course or program lookup fails. | `{"error": "get course XYZ999H1: not found"}` |
-| `429 Too Many Requests` | A client IP address exceeds 5 requests per second, in bursts of up to 5. The response has `Retry-After: 1`. | `{"error": "rate limit exceeded"}` |
+| `429 Too Many Requests` | A client exceeds 5 requests per second, in bursts of up to 5. IPv6 clients share one limit per /64 prefix. The response has `Retry-After: 1`. | `{"error": "rate limit exceeded"}` |
+| `500 Internal Server Error` | A course or program lookup fails for another reason. The server logs the cause. | `{"error": "internal server error"}` |
 
 The server reads the client IP address from the `CF-Connecting-IP` header, or from the connection if the header is missing.
+
+Every response has `X-Content-Type-Options: nosniff`. A successful course, program, or `/db` response has `Cache-Control: public, max-age=3600`, and every other response has `Cache-Control: no-store`.
 
 ### Health
 
@@ -40,7 +43,7 @@ curl http://localhost:8080/health
 |---|---|
 | `starting up` | From process start until the server schedules the update job, including writing the `/db` snapshot if it's missing. |
 | `checking for updates` | The update job is reading the school year from the `version` table. |
-| `updating database` | The update job is scraping the calendar. |
+| `updating database` | The update job is scraping the calendar, including any waits while the calendar site rate-limits the job. |
 | `healthy` | Any other time. |
 
 ### Database file
@@ -54,10 +57,12 @@ curl -OJ http://localhost:8080/db
 ```http
 HTTP/1.1 200 OK
 Accept-Ranges: bytes
+Cache-Control: public, max-age=3600
 Content-Disposition: attachment; filename="dgx.db"
 Content-Length: 12275712
 Content-Type: application/octet-stream
 Last-Modified: Sat, 17 Oct 2026 23:17:54 GMT
+X-Content-Type-Options: nosniff
 ```
 
 ### Course
@@ -511,7 +516,7 @@ prerequisites = {"req":{"type":"and","items":[{"type":"program","programs":["ASM
 
 #### Prerequisites and corequisites
 
-`req` is the requirement tree, or `null` when nothing is required, for example `{"req": null, "notes": ["NA"], "raw": "NA"}`.
+`req` is the requirement tree, or `null` when the course requires nothing, for example `{"req": null, "notes": ["NA"], "raw": "NA"}`.
 
 <details>
 <summary>JSON Schema and Field Types</summary>
@@ -1002,7 +1007,7 @@ An array of subject area names, for example `["Computer Science", "Statistical S
 
 ### Version table
 
-The table has one row per school year scraped. The update job compares the highest `school_year` with the current school year, which starts in June.
+The table has one row per school year scraped. The update job compares the highest `school_year` with the current school year, which starts in June. If the calendar site rate-limits a download, the job waits and retries. Any other failure ends the run without storing anything, and the next scheduled run tries again.
 
 ```sql
 CREATE TABLE version (

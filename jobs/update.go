@@ -5,9 +5,12 @@ import (
 	"degree-explorer/scraper"
 	"degree-explorer/store"
 	"degree-explorer/utils"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -41,11 +44,11 @@ func UpdateDB(ctx context.Context, cfg *utils.Config, db *store.Store, loc *time
 		defer log.Println("database update run complete. see logs for details")
 
 		err = scrape(ctx, cfg, db)
-		if rmErr := os.RemoveAll(cfg.TempDir); rmErr != nil {
+		if rmErr := clearDir(cfg.TempDir); rmErr != nil {
 			log.Printf("clean up %s: %v", cfg.TempDir, rmErr)
 		}
 		if err != nil {
-			log.Printf("update %s: %v", year, err)
+			log.Printf("update %s: %v; the next scheduled run retries", year, err)
 			return
 		}
 
@@ -62,7 +65,7 @@ func UpdateDB(ctx context.Context, cfg *utils.Config, db *store.Store, loc *time
 // scrape downloads, parses and stores the calendar pages.
 func scrape(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	// remove any stale pages from interrupted runs
-	if err := os.RemoveAll(cfg.TempDir); err != nil {
+	if err := clearDir(cfg.TempDir); err != nil {
 		return err
 	}
 	for _, dir := range []string{cfg.CoursesDir, cfg.ProgramsDir} {
@@ -71,10 +74,28 @@ func scrape(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 		}
 	}
 
-	scraper.DownloadPages(ctx, cfg)
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("cancelled during download: %w", err)
+	if err := scraper.DownloadPages(ctx, cfg); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("cancelled during download: %w", ctx.Err())
+		}
+		return fmt.Errorf("download pages: %w", err)
 	}
 	log.Println("course and program pages downloaded successfully")
 	return scraper.ParsePages(ctx, cfg, db)
+}
+
+func clearDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
