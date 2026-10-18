@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,36 @@ func TestRequisiteRoundTrip(t *testing.T) {
 	var fromBytes Requisite
 	if err := fromBytes.Scan([]byte(v.(string))); err != nil || !reflect.DeepEqual(in, fromBytes) {
 		t.Errorf("[]byte scan failed: %v", err)
+	}
+}
+
+func TestProfileValueRoundTrip(t *testing.T) {
+	in := Requisite{Raw: "profile", Req: &ReqNode{Type: NodeAnd, Items: []*ReqNode{
+		{Type: NodeProfile, Attr: "has_transfer_credits", Value: true},
+		{Type: NodeProfile, Attr: "has_learning_community", Value: false},
+		{Type: NodeProfile, Attr: "min_year_of_study", Value: 3},
+		{Type: NodeProfile, Attr: "max_cr_ncr", Value: 0},
+		{Type: NodeProfile, Attr: "complete_by", Value: "--05-01"},
+		{Type: NodeProfile, Attr: "faculty", Value: "Arts & Science"},
+	}}}
+	v, err := in.Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"value":true`, `"value":false`, `"value":3`, `"value":0`, `"value":"--05-01"`} {
+		if !strings.Contains(v.(string), want) {
+			t.Errorf("missing %s in %s", want, v)
+		}
+	}
+	var out Requisite
+	if err := out.Scan(v); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Errorf("round trip mismatch:\n in: %+v\nout: %+v", in, out)
+	}
+	if again, _ := out.Value(); again != v {
+		t.Errorf("re-marshal changed:\n%s\n%s", v, again)
 	}
 }
 

@@ -457,7 +457,7 @@ var (
 func profileBody(s string) *types.ReqNode {
 	t := Clean(s)
 	if learningCommunityRe.MatchString(t) {
-		return &types.ReqNode{Type: types.NodeProfile, Attr: "has_learning_community", Value: "true", Text: t}
+		return &types.ReqNode{Type: types.NodeProfile, Attr: "has_learning_community", Value: true, Text: t}
 	}
 	m := proficiencyRe.FindStringSubmatch(t)
 	if m == nil {
@@ -467,7 +467,7 @@ func profileBody(s string) *types.ReqNode {
 	if courses = checkedBody(courses, m[3]); courses == nil || !courseCodesOnly(courses) {
 		return nil
 	}
-	level := strconv.Itoa(grammar.OrdinalYear(m[1]))
+	level := grammar.OrdinalYear(m[1])
 	var placed []*types.ReqNode
 	for _, lang := range languageNameRe.FindAllString(m[2], -1) {
 		placed = append(placed, &types.ReqNode{Type: types.NodeProfile, Attr: "min_" + strings.ToLower(lang) + "_level", Value: level, Text: m[4]})

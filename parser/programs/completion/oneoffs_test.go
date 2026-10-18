@@ -176,7 +176,7 @@ func TestCompletionOneOffsPools(t *testing.T) {
 				`1 allocation {"type":"or","items":[{"type":"credits","amount":10},{"type":"text","kind":"other","text":"(10.0 credits)"}]}`,
 				`2 allocation p1 {"type":"course","code":"EAS209H1"}`,
 				`  note: highly recommended to be taken in the second year`,
-				`3 allocation p1 {"type":"or","items":[{"type":"course","code":"EAS300Y1"},{"type":"course","code":"EAS310Y1"},{"type":"course","code":"EAS320Y1"},{"type":"credits","amount":0.5,"levels":[400],"lists":["Language Courses"]},{"type":"profile","attr":"min_chinese_level","value":"3","text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_korean_level","value":"3","text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_japanese_level","value":"3","text":"by demonstrating the required proficiency in the initial placement"}]}`,
+				`3 allocation p1 {"type":"or","items":[{"type":"course","code":"EAS300Y1"},{"type":"course","code":"EAS310Y1"},{"type":"course","code":"EAS320Y1"},{"type":"credits","amount":0.5,"levels":[400],"lists":["Language Courses"]},{"type":"profile","attr":"min_chinese_level","value":3,"text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_korean_level","value":3,"text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_japanese_level","value":3,"text":"by demonstrating the required proficiency in the initial placement"}]}`,
 				`list: Language Courses: [{"type":"credits","courses":["EAS100Y1","EAS300Y1","EAS310Y1","EAS320Y1","EAS401H1","EAS402H1"]}]`,
 			},
 			nil},

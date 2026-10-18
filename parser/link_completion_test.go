@@ -301,7 +301,7 @@ func TestLinkInheritance(t *testing.T) {
 		`7 allocation {"type":"credits","amount":0.5,"courses":["CSB427H1","CSB428H1","CSB429H1","CSB435H1","CSB451H1","CSB453H1","CSB454H1","CSB457H1","CSB458H1","CSB459H1","CSB460H1","CSB475H1"]}`,
 		`8 allocation {"type":"credits","amount":1,"courses":["BCH422H1","BCH426H1","BCH444H1","BCH445H1","CJH332H1","CSB299Y1","CSB327H1","CSB330H1","CSB331H1","CSB353H1","CSB360H1","CSB397Y0","CSB399Y1","CSB427H1","CSB428H1","CSB429H1","CSB435H1","CSB450H1","CSB451H1","CSB452H1","CSB453H1","CSB454H1","CSB457H1","CSB458H1","CSB459H1","CSB460H1","CSB475H1","CSB490H1","CSB491H1","CSB497H1","CSB498Y1","CSB499Y1"]}`,
 		`9 limit p8 {"type":"credits","designators":["BCH"],"max_amount":0.5}`,
-		`10 allocation {"type":"profile","attr":"has_learning_community","value":"true","text":"Molecular Network Learning Community (each year of focus enrolment)"}`,
+		`10 allocation {"type":"profile","attr":"has_learning_community","value":true,"text":"Molecular Network Learning Community (each year of focus enrolment)"}`,
 		`row 1 label "First Year 1" section "First Year" raw "1. BIO120H1, BIO130H1; ( CHM135H1, CHM136H1)/ CHM151Y1"`,
 		`row 2 label "First Year 2" section "First Year" raw "2. 1.0 credit from JMB170Y1/ MAT130H1/ MAT135H1/ MAT136H1/ ( MAT148H1, MAT149H1)/ MAT137Y1/ ( MAT158H1, MAT159H1)/ MAT157Y1/ PHY131H1/ PHY132H1/ PHY151H1/ PHY152H1"`,
 		`row 3 label "Higher Years 1" section "Higher Years" raw "1. BIO220H1, BIO230H1/ BIO255H1"`,

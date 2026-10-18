@@ -64,13 +64,13 @@ func TestCompletionRuleLimits(t *testing.T) {
 			"4. 1.0 credit from: CJH332H1, CSB327H1, CSB331H1, CSB353H1, CSB360H1\n7. Molecular Network Learning Community (each year of focus enrolment)",
 			[]string{
 				`1 allocation {"type":"credits","amount":1,"courses":["CJH332H1","CSB327H1","CSB331H1","CSB353H1","CSB360H1"]}`,
-				`2 allocation {"type":"profile","attr":"has_learning_community","value":"true","text":"Molecular Network Learning Community (each year of focus enrolment)"}`,
+				`2 allocation {"type":"profile","attr":"has_learning_community","value":true,"text":"Molecular Network Learning Community (each year of focus enrolment)"}`,
 			},
 			nil},
 		{"proficiency by a course or by placement: the courses or min_<language>_level (ASMAJ1058, shortened)",
 			"3. At least second-year proficiency in Chinese, Korean or Japanese, either by completing an appropriate language course (e.g., EAS201H1/ EAS200Y1/ EAS210Y1/ EAS211Y1/ EAS212H1/ EAS220Y1/ EAS221H1 or a higher level language course) or by demonstrating the required proficiency in the initial placement.",
 			[]string{
-				`1 allocation {"type":"or","items":[{"type":"course","code":"EAS201H1"},{"type":"course","code":"EAS200Y1"},{"type":"course","code":"EAS210Y1"},{"type":"course","code":"EAS211Y1"},{"type":"course","code":"EAS212H1"},{"type":"course","code":"EAS220Y1"},{"type":"course","code":"EAS221H1"},{"type":"text","kind":"other","text":"a higher level language course"},{"type":"profile","attr":"min_chinese_level","value":"2","text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_korean_level","value":"2","text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_japanese_level","value":"2","text":"by demonstrating the required proficiency in the initial placement"}]}`,
+				`1 allocation {"type":"or","items":[{"type":"course","code":"EAS201H1"},{"type":"course","code":"EAS200Y1"},{"type":"course","code":"EAS210Y1"},{"type":"course","code":"EAS211Y1"},{"type":"course","code":"EAS212H1"},{"type":"course","code":"EAS220Y1"},{"type":"course","code":"EAS221H1"},{"type":"text","kind":"other","text":"a higher level language course"},{"type":"profile","attr":"min_chinese_level","value":2,"text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_korean_level","value":2,"text":"by demonstrating the required proficiency in the initial placement"},{"type":"profile","attr":"min_japanese_level","value":2,"text":"by demonstrating the required proficiency in the initial placement"}]}`,
 			},
 			nil},
 		{"where the enrolment courses count, restating that row's pool, is a note; the full-year cap over a list of half courses caps nothing and joins the item's raw (ASMAJ1533, shortened)",

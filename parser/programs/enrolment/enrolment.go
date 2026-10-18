@@ -207,7 +207,7 @@ func (p *parser) finish() *types.Enrolment {
 		for _, a := range p.auds[1:] {
 			for i, c := range a.cond {
 				if c.Type == types.NodeNot && c.Items[0].Type == types.NodeProfile && c.Items[0].Attr == "admission_category" {
-					a.cond[i] = programs.OrNode(c, programs.AmbiguousText("a "+c.Items[0].Value+" student who doesn't meet the admission guarantee may also apply this way"))
+					a.cond[i] = programs.OrNode(c, programs.AmbiguousText("a "+c.Items[0].Value.(string)+" student who doesn't meet the admission guarantee may also apply this way"))
 				}
 			}
 		}

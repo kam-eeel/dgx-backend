@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"degree-explorer/parser/grammar"
 	"degree-explorer/parser/programs"
@@ -162,10 +163,23 @@ func (p *parser) specialSentence(s string) bool {
 	return true
 }
 
+// monthDay reads a month name or abbreviation and a day ("Sept", "1") as an
+// ISO month-day ("--09-01"). It reports false if they aren't a date.
+func monthDay(month, day string) (string, bool) {
+	if len(month) < 3 {
+		return "", false
+	}
+	d, err := time.Parse("Jan 2", month[:3]+" "+day)
+	if err != nil || !strings.HasPrefix(strings.ToLower(d.Month().String()), strings.ToLower(month)) {
+		return "", false
+	}
+	return d.Format("--01-02"), true
+}
+
 // withinNode is the condition on the admission guarantees: the route's courses
 // done in the student's first 12 months.
 func withinNode() *types.ReqNode {
-	return &types.ReqNode{Type: types.NodeProfile, Attr: "max_months_from_start", Value: "12",
+	return &types.ReqNode{Type: types.NodeProfile, Attr: "max_months_from_start", Value: 12,
 		Text: "required courses completed within 12 months of beginning studies"}
 }
 
@@ -268,7 +282,7 @@ var (
 	// CR/NCR option".
 	noCRRe = regexp.MustCompile(`(?i)\bnone\s+of\s+the\s+required\s+courses\s+may\s+be\s+completed\s+using\s+the\s+CR/NCR\s+option`)
 	// completedByRe matches "must be completed by May 1".
-	completedByRe = regexp.MustCompile(`(?i)\bmust\s+be\s+completed\s+by\s+([A-Z][a-z]+\s+\d{1,2})\b`)
+	completedByRe = regexp.MustCompile(`(?i)\bmust\s+be\s+completed\s+by\s+([A-Z][a-z]+)\s+(\d{1,2})\b`)
 )
 
 // hsAltText is the other way to meet a Grade 12 course.
@@ -277,7 +291,7 @@ const hsAltText = "met another way, as the Psychology section of the Calendar de
 // routeSentence handles sentences that open another way in, or add a
 // condition to the route they are in. It reports whether s was one.
 func (p *parser) routeSentence(s string) bool {
-	profile := func(attr, value, text string) *types.ReqNode {
+	profile := func(attr string, value any, text string) *types.ReqNode {
 		return &types.ReqNode{Type: types.NodeProfile, Attr: attr, Value: value, Text: text}
 	}
 	admission := func(text string) *types.ReqNode {
@@ -286,14 +300,14 @@ func (p *parser) routeSentence(s string) bool {
 	switch {
 	case holisticRe.MatchString(s):
 		p.alts = append(p.alts, programs.AndNode(
-			programs.OrNode(profile("has_missing_numeric_grades", "true", "lacking numerical grades in one or more of the specified prerequisites"),
-				profile("min_year_of_study", "2", "applying in their second or later years")),
+			programs.OrNode(profile("has_missing_numeric_grades", true, "lacking numerical grades in one or more of the specified prerequisites"),
+				profile("min_year_of_study", 2, "applying in their second or later years")),
 			admission("considered on the basis of their entire academic record")))
 	case transferRouteRe.MatchString(s):
-		p.alts = append(p.alts, programs.AndNode(profile("has_transfer_credits", "true", "applying utilizing transfer credits"),
+		p.alts = append(p.alts, programs.AndNode(profile("has_transfer_credits", true, "applying utilizing transfer credits"),
 			admission("considered on a case-by-case basis")))
 	case afterSecondRe.MatchString(s):
-		alt := programs.AndNode(profile("min_year_of_study", "3", "enrolling after their second year"), admission("considered on a case-by-case basis"))
+		alt := programs.AndNode(profile("min_year_of_study", 3, "enrolling after their second year"), admission("considered on a case-by-case basis"))
 		if c := afterSecondRe.FindStringSubmatch(s)[1]; c != "" {
 			alt = programs.AndNode(alt, &types.ReqNode{Type: types.NodeCourse, Code: c})
 		}
@@ -310,13 +324,18 @@ func (p *parser) routeSentence(s string) bool {
 	case missingHSRe.MatchString(s):
 		p.hsAlt = true
 	case repeatOnceRe.MatchString(s):
-		p.addPart(p.cur, profile("max_attempts_per_course", "2", "at most two attempts at each required course"), partOther)
+		p.addPart(p.cur, profile("max_attempts_per_course", 2, "at most two attempts at each required course"), partOther)
 	case noSwitchRe.MatchString(s):
-		p.addPart(p.cur, profile("max_attempts_per_requirement", "2", "at most two attempts in total at the mathematics requirement: no switching to another mathematics course after two failed attempts"), partOther)
+		p.addPart(p.cur, profile("max_attempts_per_requirement", 2, "at most two attempts in total at the mathematics requirement: no switching to another mathematics course after two failed attempts"), partOther)
 	case noCRRe.MatchString(s):
-		p.addPart(p.cur, profile("max_cr_ncr", "0", "none of the required courses completed using the CR/NCR option"), partOther)
+		p.addPart(p.cur, profile("max_cr_ncr", 0, "none of the required courses completed using the CR/NCR option"), partOther)
 	case completedByRe.MatchString(s):
-		p.addPart(p.cur, profile("complete_by", completedByRe.FindStringSubmatch(s)[1], s), partOther)
+		m := completedByRe.FindStringSubmatch(s)
+		date, ok := monthDay(m[1], m[2])
+		if !ok {
+			return false
+		}
+		p.addPart(p.cur, profile("complete_by", date, s), partOther)
 	default:
 		return false
 	}

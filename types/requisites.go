@@ -79,15 +79,27 @@ type ReqNode struct {
 	Programs []string `json:"programs,omitempty"` // program: catalogue codes
 
 	// profile: Attr names the fact and Value what it must be: has_* is a
-	// boolean, min_*/max_* a numeric limit, *_by a date.
+	// bool, min_*/max_* an int, *_by an ISO month-day ("--05-01"), else a string.
 	Attr  string `json:"attr,omitempty"`
-	Value string `json:"value,omitempty"`
+	Value any    `json:"value,omitempty"`
 
 	Kind TextKind `json:"kind,omitempty"` // text
 	Text string   `json:"text,omitempty"` // text, program, profile (the phrase as written)
 
 	// within this subtree a course in progress counts as taken
 	Concurrent bool `json:"concurrent,omitempty"`
+}
+
+// UnmarshalJSON reads a numeric Value back as the int it was written as.
+func (n *ReqNode) UnmarshalJSON(b []byte) error {
+	type plain ReqNode
+	if err := json.Unmarshal(b, (*plain)(n)); err != nil {
+		return err
+	}
+	if f, ok := n.Value.(float64); ok {
+		n.Value = int(f)
+	}
+	return nil
 }
 
 // Requisite is the stored form of a prerequisites or corequisites field.

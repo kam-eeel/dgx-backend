@@ -1,6 +1,7 @@
 package enrolment
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -23,8 +24,9 @@ func jAdm(text string) string { return jT("admission", text) }
 
 func jNot(item string) string { return `{"type":"not","items":[` + item + `]}` }
 
-func jProf(attr, value, text string) string {
-	return fmt.Sprintf(`{"type":"profile","attr":%q,"value":%q,"text":%s}`, attr, value, jsonString(text))
+func jProf(attr string, value any, text string) string {
+	v, _ := json.Marshal(value)
+	return fmt.Sprintf(`{"type":"profile","attr":%q,"value":%s,"text":%s}`, attr, v, jsonString(text))
 }
 
 const (
@@ -162,7 +164,7 @@ func TestParseEnrolment(t *testing.T) {
 				"2. Due to the limited enrolment nature of this program, students are strongly advised to plan to enrol in backup programs.",
 			"limited", jAnd(jCr(4), jOr(
 				jAnd(jProf("admission_category", "Computer Science", "students admitted to Arts & Science in the Year 1 Computer Science (CMP1) admission category"),
-					jProf("max_months_from_start", "12", "required courses completed within 12 months of beginning studies"),
+					jProf("max_months_from_start", 12, "required courses completed within 12 months of beginning studies"),
 					jCG("CSC110Y1", 70), jCG("CSC111H1", 77),
 					jOr(jAnd(jOr(jC("MAT148H1"), jC("MAT158H1")), jOr(jC("MAT149H1"), jC("MAT159H1"))), jC("MAT137Y1"), jC("MAT157Y1"))),
 				jAnd(jOr(jNot(jProf("admission_category", "Computer Science", "students admitted to other Arts & Science Year 1 admission categories")),
@@ -427,8 +429,8 @@ func TestEnrolmentAuditFixes(t *testing.T) {
 			"This is an open enrolment program. A student who has completed 4.0 credits may enrol in the program.\n" +
 				"Applications from students lacking numerical grades in one or more of the specified prerequisites, or students applying in their second or later years, may be considered on the basis of their entire academic record and the availability of space in the program.",
 			jOr(jCr(4), jAnd(jCr(4), jOr(
-				jProf("has_missing_numeric_grades", "true", "lacking numerical grades in one or more of the specified prerequisites"),
-				jProf("min_year_of_study", "2", "applying in their second or later years")),
+				jProf("has_missing_numeric_grades", true, "lacking numerical grades in one or more of the specified prerequisites"),
+				jProf("min_year_of_study", 2, "applying in their second or later years")),
 				jAdm("considered on the basis of their entire academic record")))},
 		{"one course (0.5 credit): one half of a pair may be enough",
 			limitedLead + "_Variable Minimum Grade_\nA minimum grade is needed for entry, and this minimum changes each year depending on available spaces and the number of applicants. One of the following courses (0.5 credit) must be completed:\n" +
@@ -472,5 +474,28 @@ func TestEnrolmentAuditFixes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assertJSON(t, Parse(tt.raw).Req, tt.want)
 		})
+	}
+}
+
+func TestMonthDay(t *testing.T) {
+	tests := []struct {
+		month, day, want string
+		ok               bool
+	}{
+		{"May", "1", "--05-01", true},
+		{"september", "30", "--09-30", true},
+		{"Sept", "1", "--09-01", true},
+		{"Aug", "15", "--08-15", true},
+		{"February", "29", "--02-29", true},
+		{"February", "30", "", false},
+		{"Year", "2", "", false},
+		{"Junior", "2", "", false},
+		{"Ma", "1", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := monthDay(tt.month, tt.day)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("monthDay(%q, %q) = %q, %v; want %q, %v", tt.month, tt.day, got, ok, tt.want, tt.ok)
+		}
 	}
 }
