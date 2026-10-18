@@ -1031,3 +1031,11 @@ The same row as JSON:
   "last_updated": "2026-10-17T22:26:23Z"
 }
 ```
+
+---
+
+## AI disclaimer
+
+Claude Opus 5.5 helped write the parser package, particularly the regex patterns built from raw page data. Claude also helped test and harden the code, and write both comments throughout the codebase and this README.
+
+All other code in this repository was written by a human.
