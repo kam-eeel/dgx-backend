@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -35,6 +36,9 @@ func run() error {
 	defer stop()
 
 	// initialize db connection
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
+		return err
+	}
 	db, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return err

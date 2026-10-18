@@ -2,18 +2,19 @@ package utils
 
 import (
 	"degree-explorer/types"
+	"os"
 	"sync"
 )
 
 type Config struct {
 	DBPath         string
 	SnapshotPath   string
-	DataDir        string
+	TempDir        string
 	CoursesDir     string
 	ProgramsDir    string
 	Campuses       []string
 	UpdateSchedule string
-	ListenOn       string
+	Host           string
 	Port           string
 	TZ             string
 	status         string
@@ -33,21 +34,26 @@ func (c *Config) Status() string {
 }
 
 func LoadConfig() *Config {
+	tz, ok := os.LookupEnv("TZ")
+	if !ok {
+		tz = "America/Toronto"
+	}
+
 	return &Config{
-		DBPath:       "app.db",
-		SnapshotPath: "dgx.db",
-		DataDir:      "data",
-		CoursesDir:   "data/courses",
-		ProgramsDir:  "data/programs",
+		DBPath:       "data/app.db",
+		SnapshotPath: "data/dgx.db",
+		TempDir:      "tmp",
+		CoursesDir:   "tmp/courses",
+		ProgramsDir:  "tmp/programs",
 		Campuses: []string{
 			string(types.UTSG),
 			string(types.UTM),
 			string(types.UTSC),
 		},
 		UpdateSchedule: "0 5 * * *",
-		ListenOn:       "127.0.0.1",
+		Host:           "0.0.0.0",
 		Port:           "8080",
-		TZ:             "America/Toronto",
+		TZ:             tz,
 		status:         "starting up",
 	}
 }

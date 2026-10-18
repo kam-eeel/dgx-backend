@@ -65,7 +65,7 @@ func pageHasEntries(ctx context.Context, url string) ([]byte, error) {
 func savePages(cfg *utils.Config, ch <-chan *PageData, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for page := range ch {
-		fp := filepath.Join(cfg.DataDir, string(page.pType), fmt.Sprintf("page-%d.html", page.n))
+		fp := filepath.Join(cfg.TempDir, string(page.pType), fmt.Sprintf("page-%d.html", page.n))
 		if err := os.WriteFile(fp, page.data, 0644); err != nil {
 			log.Printf("failed to write file %s: %v", fp, err)
 		}

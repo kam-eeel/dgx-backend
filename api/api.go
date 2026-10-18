@@ -88,7 +88,7 @@ func dbHandler(snapshotPath string) http.HandlerFunc {
 
 // blocks until ctx is cancelled, then graceful shutdown - or server fails.
 func Serve(ctx context.Context, cfg *utils.Config, db *store.Store) error {
-	addr := cfg.ListenOn + ":" + cfg.Port
+	addr := cfg.Host + ":" + cfg.Port
 
 	mux := http.NewServeMux()
 

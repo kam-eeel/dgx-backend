@@ -1,0 +1,21 @@
+services:
+  dgx-backend:
+    build: .
+    container_name: dgx-backend
+    expose:
+      - 8080
+    networks:
+      - cloudflared-net
+    volumes:
+      - data:/srv/data
+    environment:
+      - TZ=America/Toronto
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+volumes:
+  data:
+
+networks:
+  cloudflared-net:
+    external: true
