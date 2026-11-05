@@ -186,6 +186,7 @@ func ParsePages(ctx context.Context, cfg *utils.Config, db *store.Store) error {
 	programs := parseDir(cfg.ProgramsDir, parsePrograms)
 	courses := parseDir(cfg.CoursesDir, parseCourses)
 	parser.Link(courses, programs)
+	parser.LinkSessions(ctx, courses)
 
 	if err := db.CreatePrograms(ctx, programs); err != nil {
 		return err

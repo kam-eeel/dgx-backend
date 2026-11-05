@@ -84,6 +84,7 @@ type Course struct {
 	Campus        string      `json:"campus"`     // online (0), utsg (1), utsc (3), utm (5)
 	Title         string      `json:"title"`
 	Description   string      `json:"description"`
+	Sessions      *StringList `json:"sessions"` // ex. ["F"], ["F", "S"], ["Y"]
 	Prerequisites *Requisite  `json:"prerequisites"`
 	Corequisites  *Requisite  `json:"corequisites"`
 	Exclusions    *Exclusions `json:"exclusions"`

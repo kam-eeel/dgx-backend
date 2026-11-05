@@ -12,8 +12,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, description, prerequisites, corequisites, exclusions, breadth)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, description, sessions, prerequisites, corequisites, exclusions, breadth)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			designator = excluded.designator,
 			number = excluded.number,
@@ -22,6 +22,7 @@ const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, w
 			campus = excluded.campus,
 			title = excluded.title,
 			description = excluded.description,
+			sessions = excluded.sessions,
 			prerequisites = excluded.prerequisites,
 			corequisites = excluded.corequisites,
 			exclusions = excluded.exclusions,
@@ -44,7 +45,7 @@ const upsertProgramSQL = `INSERT INTO programs (code, type, number, title, enrol
 func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
 	_, err := s.db.ExecContext(ctx, upsertCourseSQL,
 		c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title, c.Description,
-		c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
+		c.Sessions, c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
 	)
 	if err != nil {
 		return fmt.Errorf("insert course: %w", err)
@@ -68,7 +69,7 @@ func (s *Store) CreateCourses(ctx context.Context, cl []*types.Course) error {
 	for _, c := range cl {
 		if _, err := stmt.ExecContext(ctx,
 			c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title, c.Description,
-			c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
+			c.Sessions, c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
 		); err != nil {
 			return fmt.Errorf("insert course %s: %w", c.Code, err)
 		}
@@ -83,10 +84,10 @@ func (s *Store) CreateCourses(ctx context.Context, cl []*types.Course) error {
 func (s *Store) GetCourse(ctx context.Context, courseCode string) (types.Course, error) {
 	var c types.Course
 	err := s.db.QueryRowContext(ctx,
-		`SELECT code, designator, number, level, weight, campus, title, description, prerequisites, corequisites, exclusions, breadth
+		`SELECT code, designator, number, level, weight, campus, title, description, sessions, prerequisites, corequisites, exclusions, breadth
 		FROM courses WHERE code = ?`, courseCode,
 	).Scan(&c.Code, &c.Designator, &c.Number, &c.Level, &c.Weight, &c.Campus, &c.Title, &c.Description,
-		&c.Prerequisites, &c.Corequisites, &c.Exclusions, &c.Breadth,
+		&c.Sessions, &c.Prerequisites, &c.Corequisites, &c.Exclusions, &c.Breadth,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return types.Course{}, fmt.Errorf("get course %s: %w", courseCode, ErrNotFound)
@@ -99,7 +100,7 @@ func (s *Store) GetCourse(ctx context.Context, courseCode string) (types.Course,
 
 func (s *Store) SearchCourses(ctx context.Context, q string, limit int) ([]types.Course, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, designator, number, level, weight, campus, title, description, prerequisites, corequisites, exclusions, breadth
+		`SELECT code, designator, number, level, weight, campus, title, description, sessions, prerequisites, corequisites, exclusions, breadth
 		FROM courses
 		WHERE code LIKE ?
 		ORDER BY code
@@ -116,7 +117,7 @@ func (s *Store) SearchCourses(ctx context.Context, q string, limit int) ([]types
 		var c types.Course
 		if err := rows.Scan(
 			&c.Code, &c.Designator, &c.Number, &c.Level, &c.Weight, &c.Campus, &c.Title, &c.Description,
-			&c.Prerequisites, &c.Corequisites, &c.Exclusions, &c.Breadth,
+			&c.Sessions, &c.Prerequisites, &c.Corequisites, &c.Exclusions, &c.Breadth,
 		); err != nil {
 			return nil, fmt.Errorf("scan course: %w", err)
 		}
@@ -128,9 +129,9 @@ func (s *Store) SearchCourses(ctx context.Context, q string, limit int) ([]types
 func (s *Store) UpdateCourse(ctx context.Context, c types.Course) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE courses
-		SET title = ?, description = ?, prerequisites = ?, corequisites = ?, exclusions = ?, breadth = ?
+		SET title = ?, description = ?, sessions = ?, prerequisites = ?, corequisites = ?, exclusions = ?, breadth = ?
 		WHERE code = ?`,
-		c.Title, c.Description, c.Prerequisites, c.Corequisites,
+		c.Title, c.Description, c.Sessions, c.Prerequisites, c.Corequisites,
 		c.Exclusions, c.Breadth, c.Code,
 	)
 	if err != nil {

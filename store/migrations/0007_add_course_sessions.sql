@@ -1,0 +1,1 @@
+ALTER TABLE courses ADD sessions TEXT AFTER description;
