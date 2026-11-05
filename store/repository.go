@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -12,8 +13,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, description, sessions, prerequisites, corequisites, exclusions, breadth)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, weight, campus, title, description, prerequisites, corequisites, exclusions, breadth)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			designator = excluded.designator,
 			number = excluded.number,
@@ -22,7 +23,6 @@ const upsertCourseSQL = `INSERT INTO courses (code, designator, number, level, w
 			campus = excluded.campus,
 			title = excluded.title,
 			description = excluded.description,
-			sessions = excluded.sessions,
 			prerequisites = excluded.prerequisites,
 			corequisites = excluded.corequisites,
 			exclusions = excluded.exclusions,
@@ -45,7 +45,7 @@ const upsertProgramSQL = `INSERT INTO programs (code, type, number, title, enrol
 func (s *Store) CreateCourse(ctx context.Context, c *types.Course) error {
 	_, err := s.db.ExecContext(ctx, upsertCourseSQL,
 		c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title, c.Description,
-		c.Sessions, c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
+		c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
 	)
 	if err != nil {
 		return fmt.Errorf("insert course: %w", err)
@@ -69,7 +69,7 @@ func (s *Store) CreateCourses(ctx context.Context, cl []*types.Course) error {
 	for _, c := range cl {
 		if _, err := stmt.ExecContext(ctx,
 			c.Code, c.Designator, c.Number, c.Level, c.Weight, c.Campus, c.Title, c.Description,
-			c.Sessions, c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
+			c.Prerequisites, c.Corequisites, c.Exclusions, c.Breadth,
 		); err != nil {
 			return fmt.Errorf("insert course %s: %w", c.Code, err)
 		}
@@ -155,6 +155,66 @@ func (s *Store) DeleteCourse(ctx context.Context, courseCode string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ReplaceSessions sets each course's sessions from offerings, keyed by course
+// code, and clears them for courses not in offerings. Only rows whose sessions
+// differ are written. If any are, the latest version row's last_updated is set
+// to now. It returns the number of courses changed.
+func (s *Store) ReplaceSessions(ctx context.Context, offerings map[string]types.Sessions, now time.Time) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	codes := make([]string, 0, len(offerings))
+	for code := range offerings {
+		codes = append(codes, code)
+	}
+	codesJSON, err := json.Marshal(codes)
+	if err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx,
+		`UPDATE courses SET sessions = NULL
+		WHERE sessions IS NOT NULL AND code NOT IN (SELECT value FROM json_each(?))`,
+		string(codesJSON),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("clear sessions: %w", err)
+	}
+	changed, _ := res.RowsAffected()
+
+	stmt, err := tx.PrepareContext(ctx, `UPDATE courses SET sessions = ?1 WHERE code = ?2 AND sessions IS NOT ?1`)
+	if err != nil {
+		return 0, fmt.Errorf("prepare update: %w", err)
+	}
+	defer stmt.Close()
+
+	for code, ss := range offerings {
+		res, err := stmt.ExecContext(ctx, ss, code)
+		if err != nil {
+			return 0, fmt.Errorf("update sessions %s: %w", code, err)
+		}
+		n, _ := res.RowsAffected()
+		changed += n
+	}
+
+	if changed > 0 {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE version SET last_updated = ?
+			WHERE school_year = (SELECT max(school_year) FROM version)`,
+			now.UTC().Format(time.RFC3339),
+		); err != nil {
+			return 0, fmt.Errorf("update version: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return changed, nil
 }
 
 // ----------------------------------------------------------------------------

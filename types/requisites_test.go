@@ -94,10 +94,32 @@ func TestExclusionsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSessionsRoundTrip(t *testing.T) {
+	in := Sessions{FallWinter: StringList{"F", "S"}, Summer: StringList{"Y"}}
+	v, err := in.Value()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Sessions
+	if err := out.Scan(v); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Errorf("round trip mismatch:\n in: %+v\nout: %+v", in, out)
+	}
+
+	// A term not offered is omitted, not null.
+	fw := Sessions{FallWinter: StringList{"Y"}}
+	if v, _ := fw.Value(); v != `{"fall_winter":["Y"]}` {
+		t.Errorf("fall-winter only JSON = %s", v)
+	}
+}
+
 func TestNilPointersBecomeNULL(t *testing.T) {
 	var r *Requisite
 	var e *Exclusions
-	for _, v := range []any{r, e} {
+	var s *Sessions
+	for _, v := range []any{r, e, s} {
 		got, err := driver.DefaultParameterConverter.ConvertValue(v)
 		if err != nil || got != nil {
 			t.Errorf("%T: got %v, %v; want nil, nil", v, got, err)

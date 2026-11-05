@@ -1,12 +1,12 @@
 # dgx-backend
 
-dgx-backend is the backend for a student project in [CSC207H1](https://artsci.calendar.utoronto.ca/course/csc207h1): a version of the University of Toronto's Degree Explorer. It scrapes every course and program in the Faculty of Arts & Science academic calendar at `artsci.calendar.utoronto.ca`. It parses course prerequisites, corequisites, and exclusions, and program enrolment and completion requirements, into JSON requirement trees stored in SQLite. At startup and daily at 5 AM `TZ` time (default `America/Toronto`, UTC−5 or UTC−4), it scrapes again if no data exists for the current school year. An HTTP API serves single courses and programs, and the whole database as a file.
+dgx-backend is the backend for a student project in [CSC207H1](https://artsci.calendar.utoronto.ca/course/csc207h1): a version of the University of Toronto's Degree Explorer. It scrapes every course and program in the Faculty of Arts & Science academic calendar at `artsci.calendar.utoronto.ca`. It parses course prerequisites, corequisites, and exclusions, and program enrolment and completion requirements, into JSON requirement trees stored in SQLite. At startup and daily at 5 AM `TZ` time (default `America/Toronto`, UTC−5 or UTC−4), it scrapes again if no data exists for the current school year, then refreshes which courses the [Timetable Builder](https://ttb.utoronto.ca) offers in its current sessions. An HTTP API serves single courses and programs, and the whole database as a file.
 
 ## Contents
 
 - [Endpoints](#endpoints): [health](#health), [database file](#database-file), [course](#course), [program](#program)
 - [Schema](#schema): [conventions](#conventions), [requirement nodes](#requirement-nodes)
-  - [Courses table](#courses-table): [prerequisites and corequisites](#prerequisites-and-corequisites), [exclusions](#exclusions), [breadth](#breadth)
+  - [Courses table](#courses-table): [prerequisites and corequisites](#prerequisites-and-corequisites), [exclusions](#exclusions), [breadth](#breadth), [sessions](#sessions)
   - [Programs table](#programs-table): [enrolment](#enrolment), [completion](#completion), [areas](#areas)
   - [Version table](#version-table)
 
@@ -44,11 +44,12 @@ curl http://localhost:8080/health
 | `starting up` | From process start until the server schedules the update job, including writing the `/db` snapshot if it's missing. |
 | `checking for updates` | The update job is reading the school year from the `version` table. |
 | `updating database` | The update job is scraping the calendar, including any waits while the calendar site rate-limits the job. |
+| `updating sessions` | The update job is fetching the current sessions from the Timetable Builder. |
 | `healthy` | Any other time. |
 
 ### Database file
 
-`GET /db` downloads `dgx.db`, a SQLite copy of the database with the same [schema](#schema). The server writes the copy at startup if it's missing, and after each successful update. The endpoint supports range requests and `If-Modified-Since`.
+`GET /db` downloads `dgx.db`, a SQLite copy of the database with the same [schema](#schema). The server writes the copy at startup if it's missing, after each successful calendar update, and after a sessions refresh that changes any course's sessions. A refresh that changes nothing leaves the file and its `Last-Modified` alone. The endpoint supports range requests and `If-Modified-Since`.
 
 ```sh
 curl -OJ http://localhost:8080/db
@@ -86,6 +87,11 @@ curl http://localhost:8080/course/PHY152H1
   "campus": "utsg",
   "title": "Foundations of Physics II",
   "description": "The concept of fields will be introduced and discussed in the context of gravity and electricity. Topics include rotational motion, oscillations, waves, electricity and magnetism.",
+  "sessions": {
+    "fall_winter": [
+      "S"
+    ]
+  },
   "prerequisites": {
     "req": {
       "type": "or",
@@ -429,7 +435,8 @@ CREATE TABLE courses (
     prerequisites TEXT,               -- requisite JSON, or NULL if none
     corequisites TEXT,                -- requisite JSON, or NULL if none
     exclusions TEXT,                  -- exclusions JSON, or NULL if none
-    breadth TEXT                      -- breadth JSON, or NULL if none
+    breadth TEXT,                     -- breadth JSON, or NULL if none
+    sessions TEXT                     -- sessions JSON, or NULL if not offered
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_course_designator ON courses(designator);
@@ -453,6 +460,7 @@ prerequisites = {"req":{"type":"and","items":[{"type":"program","programs":["ASM
  corequisites = {"req":{"type":"course","code":"DRM220Y1"},"raw":"DRM220Y1"}
    exclusions = {"items":[{"courses":["DRE362H5"]}],"raw":"DRE362H5"}
       breadth = [1]
+     sessions = {"fall_winter":["S"]}
 ```
 
 <details>
@@ -468,6 +476,11 @@ prerequisites = {"req":{"type":"and","items":[{"type":"program","programs":["ASM
   "campus": "utsg",
   "title": "Playwriting I",
   "description": "A hands-on study of the craft of dramatic writing. The class examines the basic elements of playwriting such as plot, structure, theme, character, dialogue, setting, with an emphasis on story-making. Attention is given to the development of students own work through written assignments and in-class exercises. Priority will be given to students in the Drama Specialist and Major.",
+  "sessions": {
+    "fall_winter": [
+      "S"
+    ]
+  },
   "prerequisites": {
     "req": {
       "type": "and",
@@ -632,6 +645,34 @@ An array of breadth category numbers, for example `[1, 3]`:
 | Field | Type | Required |
 |---|---|---|
 | `[]` | `integer`, 1 to 5 | Yes |
+
+</details>
+
+#### Sessions
+
+The sections the [Timetable Builder](https://ttb.utoronto.ca) offers in its current sessions, by term, for example `{"fall_winter": ["F", "S"]}`. A section is `F` (first term), `S` (second term), or `Y` (both). In summer, `F` and `S` are the first and second sub-sessions. A term the course isn't offered in is omitted, and a course offered in neither is `NULL`.
+
+The update job refreshes sessions daily, after the calendar check, and writes only courses whose sessions changed. The column reflects only what the Timetable Builder lists as current: when it lists only summer, every course's `fall_winter` is cleared. If the fetch fails or lists no courses, the stored sessions are kept, and the next scheduled run tries again.
+
+<details>
+<summary>JSON Schema and Field Types</summary>
+
+```json
+{
+  "$id": "urn:dgx:sessions",
+  "type": "object",
+  "properties": {
+    "fall_winter": {"type": "array", "items": {"enum": ["F", "S", "Y"]}},
+    "summer": {"type": "array", "items": {"enum": ["F", "S", "Y"]}}
+  },
+  "additionalProperties": false
+}
+```
+
+| Field | Type | Required |
+|---|---|---|
+| `fall_winter` | `string[]`, sorted | No |
+| `summer` | `string[]`, sorted | No |
 
 </details>
 
@@ -1007,7 +1048,7 @@ An array of subject area names, for example `["Computer Science", "Statistical S
 
 ### Version table
 
-The table has one row per school year scraped. The update job compares the highest `school_year` with the current school year, which starts in June. If the calendar site rate-limits a download, the job waits and retries. Any other failure ends the run without storing anything, and the next scheduled run tries again.
+The table has one row per school year scraped. The update job compares the highest `school_year` with the current school year, which starts in June. If the calendar site rate-limits a download, the job waits and retries. Any other failure ends the run without storing anything, and the next scheduled run tries again. A [sessions](#sessions) refresh that changes any course also sets `last_updated` on the latest row.
 
 ```sql
 CREATE TABLE version (

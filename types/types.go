@@ -75,6 +75,31 @@ func (l *IntList) Scan(src any) error {
 	return fmt.Errorf("IntList: unsupported type %T", src)
 }
 
+// Sessions is a course's timetable sections by term, stored as a JSON object:
+// {"fall_winter": ["F", "S"], "summer": ["Y"]}. A term not offered is omitted.
+type Sessions struct {
+	FallWinter StringList `json:"fall_winter,omitempty"`
+	Summer     StringList `json:"summer,omitempty"`
+}
+
+func (s Sessions) Value() (driver.Value, error) {
+	b, err := json.Marshal(s)
+	return string(b), err
+}
+
+func (s *Sessions) Scan(src any) error {
+	switch v := src.(type) {
+	case nil:
+		*s = Sessions{}
+		return nil
+	case []byte:
+		return json.Unmarshal(v, s)
+	case string:
+		return json.Unmarshal([]byte(v), s)
+	}
+	return fmt.Errorf("Sessions: unsupported type %T", src)
+}
+
 type Course struct {
 	Code          string      `json:"code"`       // ex. CSC148H1
 	Designator    string      `json:"designator"` // ex. CSC
@@ -84,7 +109,7 @@ type Course struct {
 	Campus        string      `json:"campus"`     // online (0), utsg (1), utsc (3), utm (5)
 	Title         string      `json:"title"`
 	Description   string      `json:"description"`
-	Sessions      *StringList `json:"sessions"` // ex. ["F"], ["F", "S"], ["Y"]
+	Sessions      *Sessions   `json:"sessions"` // null if not offered in the current sessions
 	Prerequisites *Requisite  `json:"prerequisites"`
 	Corequisites  *Requisite  `json:"corequisites"`
 	Exclusions    *Exclusions `json:"exclusions"`

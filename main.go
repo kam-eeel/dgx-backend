@@ -56,7 +56,8 @@ func run() error {
 		}
 	}
 
-	// register db update job (checks for updates daily; runs only once for each new school year)
+	// register db update job (checks for calendar updates daily, which run only
+	// once for each new school year, then refreshes timetable sessions)
 	loc, err := time.LoadLocation(cfg.TZ)
 	if err != nil {
 		return err
@@ -69,7 +70,12 @@ func run() error {
 			cron.SkipIfStillRunning(cronLogger),
 		),
 	)
-	update := jobs.UpdateDB(ctx, cfg, db, loc)
+	updateDB := jobs.UpdateDB(ctx, cfg, db, loc)
+	updateSessions := jobs.UpdateSessions(ctx, cfg, db)
+	update := func() {
+		updateDB()
+		updateSessions()
+	}
 	if _, err := c.AddFunc(cfg.UpdateSchedule, update); err != nil {
 		return err
 	}
